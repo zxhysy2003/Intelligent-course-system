@@ -5,5 +5,5 @@ import com.sy.course_system.dto.RecommendResponseDTO;
 public interface RecommendService {
     RecommendResponseDTO recommend(Long userId);
 
-    void refreshUserRecommendCache(Long userId);
+    
 }

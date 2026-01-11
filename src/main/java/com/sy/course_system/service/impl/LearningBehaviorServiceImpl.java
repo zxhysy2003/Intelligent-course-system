@@ -20,7 +20,6 @@ import com.sy.course_system.repository.KnowledgePointRepository;
 import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.LearningAnalysisService;
 import com.sy.course_system.service.LearningBehaviorService;
-import com.sy.course_system.service.RecommendService;
 
 @Service
 public class LearningBehaviorServiceImpl implements LearningBehaviorService {
@@ -35,9 +34,6 @@ public class LearningBehaviorServiceImpl implements LearningBehaviorService {
 
     @Autowired
     private LearningAnalysisService learningAnalysisService;
-
-    @Autowired
-    private RecommendService recommendService;
 
     @Autowired
     private StringRedisTemplate redisTemplate;
@@ -74,7 +70,7 @@ public class LearningBehaviorServiceImpl implements LearningBehaviorService {
         // 4. FAVOURITE行为需要刷新推荐缓存
         if (behaviorType.equals(LearnBehaviorType.FAVOURITE)) {
             // 刷新推荐缓存
-            recommendService.refreshUserRecommendCache(userId);
+            learningAnalysisService.refreshUserRecommendCache(userId);
         }
 
     }
@@ -93,7 +89,7 @@ public class LearningBehaviorServiceImpl implements LearningBehaviorService {
         }
 
         // 3.刷新推荐缓存(surprise)
-        recommendService.refreshUserRecommendCache(userId);
+        learningAnalysisService.refreshUserRecommendCache(userId);
 
     }
 

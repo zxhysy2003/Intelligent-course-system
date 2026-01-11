@@ -12,4 +12,6 @@ public interface LearningAnalysisService {
     void increaseCourseHot(Long courseId, double score);
 
     List<CourseRecommendVO> getHotCourses(Integer topN);
+
+    void refreshUserRecommendCache(Long userId);
 }

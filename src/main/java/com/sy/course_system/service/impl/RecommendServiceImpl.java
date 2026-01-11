@@ -142,9 +142,5 @@ public class RecommendServiceImpl implements RecommendService {
         }
     }
 
-    @Override
-    public void refreshUserRecommendCache(Long userId) {
-        String key = "recommend:user:" + userId;
-        redisTemplate.delete(key); // 删除缓存，下次访问时会重新计算推荐结果
-    }
+    
 }
