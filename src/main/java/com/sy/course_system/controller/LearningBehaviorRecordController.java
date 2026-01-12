@@ -6,8 +6,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.sy.course_system.behavior.enums.LearnBehaviorType;
 import com.sy.course_system.common.Result;
+import com.sy.course_system.enums.LearnBehaviorType;
 import com.sy.course_system.service.LearningBehaviorService;
 
 /**

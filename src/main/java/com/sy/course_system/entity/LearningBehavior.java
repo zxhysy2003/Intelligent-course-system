@@ -1,11 +1,11 @@
-package com.sy.course_system.behavior.entity;
+package com.sy.course_system.entity;
 
 import java.time.LocalDateTime;
 
 import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.sy.course_system.behavior.enums.LearnBehaviorType;
+import com.sy.course_system.enums.LearnBehaviorType;
 
 @TableName("learning_behavior")
 public class LearningBehavior {

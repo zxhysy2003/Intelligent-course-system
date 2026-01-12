@@ -22,6 +22,11 @@ public class JwtInterceptor implements HandlerInterceptor {
             throws Exception {
         // 在这里实现JWT验证逻辑
 
+        // 如果是跨域预检请求，直接放行
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            return true;
+        }
+
         // 1. 获取请求头 token
         String token = request.getHeader("Authorization");
         // 2. 验证 token 的有效性

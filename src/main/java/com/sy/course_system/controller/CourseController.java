@@ -32,4 +32,6 @@ public class CourseController {
         }
         return Result.success("注册成功");
     }
+
+
 }

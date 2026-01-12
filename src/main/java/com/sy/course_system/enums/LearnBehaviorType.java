@@ -1,4 +1,4 @@
-package com.sy.course_system.behavior.enums;
+package com.sy.course_system.enums;
 
 public enum LearnBehaviorType {
     VIEW,       // 浏览
