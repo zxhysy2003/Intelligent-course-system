@@ -6,7 +6,7 @@ import org.springframework.data.neo4j.repository.query.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import com.sy.course_system.dto.LearningPathDto;
+import com.sy.course_system.dto.LearningPathDTO;
 import com.sy.course_system.graph.node.CourseNode;
 
 @Repository
@@ -30,6 +30,6 @@ public interface LearningPathRepository extends Neo4jRepository<CourseNode, Long
             ORDER BY support DESC
             LIMIT $limit;
             """)
-    List<LearningPathDto> recommendPath(@Param("courseId") Long courseId,
-            @Param("limit") int limit);
+    List<LearningPathDTO> recommendPath(@Param("courseId") Long courseId,
+                                        @Param("limit") int limit);
 }

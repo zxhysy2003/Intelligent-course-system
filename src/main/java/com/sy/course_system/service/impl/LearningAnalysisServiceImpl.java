@@ -1,23 +1,26 @@
 package com.sy.course_system.service.impl;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.SessionCallback;
+import org.springframework.data.redis.core.RedisOperations;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import com.sy.course_system.common.UserContext;
 import com.sy.course_system.entity.Course;
 import com.sy.course_system.mapper.LearningBehaviorMapper;
-import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.LearningAnalysisService;
-import com.sy.course_system.vo.CourseRecommendVO;
 
 @Service
 public class LearningAnalysisServiceImpl implements LearningAnalysisService {
@@ -29,7 +32,8 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
     private RedisTemplate<String, Object> redisTemplate;
 
     @Autowired
-    private CourseService courseService;
+    private StringRedisTemplate stringRedisTemplate;
+
 
     private static final String HOT_COURSE_KEY = "course:hot";
 
@@ -57,54 +61,72 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
     }
 
     /**
-    * 获取热门课程 TopN
-    */
+     * 获取热门课程 TopN
+     */
     @Override
-    public List<CourseRecommendVO> getHotCourses(Integer topN) {
+    public List<Long> getHotCourses(Integer topN) {
         // 1.从redis sorted set中获取热度最高的 TopN 个课程ID
         Set<Object> courseIdSet = redisTemplate.opsForZSet()
                 .reverseRange(HOT_COURSE_KEY, 0, topN - 1);
         if (courseIdSet == null || courseIdSet.isEmpty()) {
             return Collections.emptyList();
         }
-        List<Long> courseIds = courseIdSet.stream()
+
+        return courseIdSet.stream()
                 .map(id -> Long.parseLong(id.toString()))
-                .collect(Collectors.toList());
-        // 2.调用课程服务获取课程详情
-        Map<Long, Course> courseMap = courseService.mapByIds(courseIds);
-
-        // 3.构建返回结果，保持热度排序
-        List<CourseRecommendVO> result = new ArrayList<>();
-        for (Long courseId : courseIds) {
-            Course course = courseMap.get(courseId);
-            if (course == null) continue;
-            CourseRecommendVO vo = new CourseRecommendVO();
-            vo.setCourseId(course.getId());
-            vo.setTitle(course.getTitle());
-            vo.setCoverUrl(course.getCoverUrl());
-            vo.setDifficulty(course.getDifficulty());
-            vo.setDuration(course.getDuration());
-            vo.setTags(parseTags(course.getTags()));
-            vo.setRecommendReason("热门课程");
-            result.add(vo);
-        }
-        return result;
-    }
-
-    private List<String> parseTags(String tagsStr) {
-        if (tagsStr == null || tagsStr.isEmpty()) {
-            return Collections.emptyList();
-        }
-        return Arrays.stream(tagsStr.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
     public void refreshUserRecommendCache(Long userId) {
         String key = "recommend:user:" + userId;
         redisTemplate.delete(key); // 删除缓存，下次访问时会重新计算推荐结果
+    }
+
+    @Override
+    public List<Course> sortCoursesByHotness(List<Course> courses) {
+        if (courses == null || courses.isEmpty()) {
+            return courses;
+        }
+        // 1. 批量获取所有课程的热度值
+        Map<Long, Double> courseHotMap = batchGetCourseHotness(courses);
+        if (CollectionUtils.isEmpty(courseHotMap)) {
+            return courses;
+        }
+
+        // 2. 根据热度值对课程进行降序排序
+        courses.sort(Comparator.comparingDouble(
+            course -> -courseHotMap.getOrDefault(course.getId(), 0.0)
+        ));
+        return courses;
+    }
+
+    private Map<Long, Double> batchGetCourseHotness(List<Course> courses) {
+        // 提取课程ID列表
+        List<Long> courseIds = courses.stream()
+                .map(Course::getId)
+                .collect(Collectors.toList());
+        
+        // 批量获取热度值（使用 SessionCallback 与 opsForZSet().score）
+        List<Object> results = stringRedisTemplate.executePipelined(new SessionCallback<Object>() {
+            @Override
+            public Object execute(RedisOperations operations) throws DataAccessException {
+                for (Long courseId : courseIds) {
+                    operations.opsForZSet().score(HOT_COURSE_KEY, courseId.toString());
+                }
+                return null;
+            }
+        });
+
+        Map<Long, Double> map = new HashMap<>();
+        if (results != null) {
+            for (int i = 0; i < courseIds.size(); i++) {
+                Object result = results.get(i);
+                Double score = (result == null) ? 0.0 : Double.valueOf(result.toString());
+                map.put(courseIds.get(i), score);
+            }
+        }
+        return map;
     }
 
 

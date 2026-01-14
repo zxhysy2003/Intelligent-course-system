@@ -1,7 +1,8 @@
 package com.sy.course_system.service;
 
 import java.util.List;
-import com.sy.course_system.vo.CourseRecommendVO;
+
+import com.sy.course_system.entity.Course;
 
 public interface LearningAnalysisService {
     
@@ -11,7 +12,9 @@ public interface LearningAnalysisService {
 
     void increaseCourseHot(Long courseId, double score);
 
-    List<CourseRecommendVO> getHotCourses(Integer topN);
+    List<Long> getHotCourses(Integer topN);
 
     void refreshUserRecommendCache(Long userId);
+
+    List<Course> sortCoursesByHotness(List<Course> courses);
 }

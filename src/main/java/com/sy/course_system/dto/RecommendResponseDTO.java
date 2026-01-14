@@ -4,20 +4,22 @@ import java.util.List;
 
 public class RecommendResponseDTO {
     private Long userId;
-    private List<Long> courseIds;
+    private List<RecommendItemDTO> items;
     
     public Long getUserId() {
         return userId;
     }
+    
     public void setUserId(Long userId) {
         this.userId = userId;
     }
-    public List<Long> getCourseIds() {
-        return courseIds;
-    }
-    public void setCourseIds(List<Long> courseIds) {
-        this.courseIds = courseIds;
+    
+    public List<RecommendItemDTO> getItems() {
+        return items;
     }
 
+    public void setItems(List<RecommendItemDTO> items) {
+        this.items = items;
+    }
     
 }

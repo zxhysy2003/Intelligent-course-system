@@ -6,7 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.sy.course_system.common.UserContext;
-import com.sy.course_system.dto.LearningPathDto;
+import com.sy.course_system.dto.LearningPathDTO;
 import com.sy.course_system.graph.node.KnowledgePointNode;
 import com.sy.course_system.repository.KnowledgePointRepository;
 import com.sy.course_system.repository.LearningPathRepository;
@@ -25,7 +25,7 @@ public class LearningPathServiceImpl implements LearningPathService {
     @Override
     public List<LearningPathRecommendVO> recommendPath(Long courseId) {
         
-        List<LearningPathDto> nodes = learningPathRepository.recommendPath(courseId, 5);
+        List<LearningPathDTO> nodes = learningPathRepository.recommendPath(courseId, 5);
 
         if (nodes == null || nodes.isEmpty()) {
             return Collections.emptyList();

@@ -9,6 +9,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sy.course_system.common.UserContext;
 import com.sy.course_system.common.util.TimeDecayUtil;
 import com.sy.course_system.dto.UserCourseBaseScoreDTO;
@@ -22,10 +23,7 @@ import com.sy.course_system.service.LearningAnalysisService;
 import com.sy.course_system.service.LearningBehaviorService;
 
 @Service
-public class LearningBehaviorServiceImpl implements LearningBehaviorService {
-    @Autowired
-    private LearningBehaviorMapper learningBehaviorMapper;
-
+public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMapper, LearningBehavior> implements LearningBehaviorService {
     @Autowired
     private CourseService courseService;
 
@@ -51,7 +49,7 @@ public class LearningBehaviorServiceImpl implements LearningBehaviorService {
         behavior.setDuration(duration != null ? duration : 0);
         behavior.setCreateTime(LocalDateTime.now());
 
-        learningBehaviorMapper.insert(behavior);
+        this.save(behavior);
 
         // 2.更新课程热度
         double hotScore = switch (behaviorType) {
@@ -96,7 +94,7 @@ public class LearningBehaviorServiceImpl implements LearningBehaviorService {
 
     @Override
     public List<LearningBehavior> listAllBehaviors() {
-        return learningBehaviorMapper.selectList(null);
+        return this.list();
     }
 
     /**
@@ -104,7 +102,7 @@ public class LearningBehaviorServiceImpl implements LearningBehaviorService {
      */
     @Override
     public List<UserCourseScoreDTO> listAggregatedScores() {
-        List<UserCourseBaseScoreDTO> baseScores = learningBehaviorMapper.listUserCourseBaseScores();
+        List<UserCourseBaseScoreDTO> baseScores = baseMapper.listUserCourseBaseScores();
 
         return baseScores.stream().map(bs -> {
             UserCourseScoreDTO dto = new UserCourseScoreDTO();
@@ -157,7 +155,7 @@ public class LearningBehaviorServiceImpl implements LearningBehaviorService {
         behavior.setBehaviorType(LearnBehaviorType.STUDY);
         behavior.setDuration(durationMinutes);
         behavior.setCreateTime(LocalDateTime.now());
-        learningBehaviorMapper.insert(behavior);
+        this.save(behavior);
 
         // 更新课程热度
         double hotScore = durationMinutes / 30.0; // 每30分钟增加1点热度

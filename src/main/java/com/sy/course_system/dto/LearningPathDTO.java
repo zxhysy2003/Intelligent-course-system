@@ -1,13 +1,13 @@
 package com.sy.course_system.dto;
 
-public class LearningPathDto {
+public class LearningPathDTO {
     private Long fromId;
     private String fromName;
     private Long toId;
     private String toName;
     private Long support;
 
-    public LearningPathDto(Long fromId, String fromName, Long toId, String toName, Long support) {
+    public LearningPathDTO(Long fromId, String fromName, Long toId, String toName, Long support) {
         this.fromId = fromId;
         this.fromName = fromName;
         this.toId = toId;
@@ -15,7 +15,7 @@ public class LearningPathDto {
         this.support = support;
     }
 
-    public LearningPathDto() {
+    public LearningPathDTO() {
     }
 
     public Long getFromId() {

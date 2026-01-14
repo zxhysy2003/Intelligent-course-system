@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.sy.course_system.mapper.CourseMapper">
+
+    <!-- insertCourseCategoryRelations --> 
+
+    <insert id="insertCourseCategoryRelations">
+        INSERT INTO course_category_relation (course_id, category_id)
+        VALUES
+        <foreach collection="categoryIds" item="categoryId" separator=",">
+            (#{id}, #{categoryId})
+        </foreach>
+    </insert>
+</mapper>

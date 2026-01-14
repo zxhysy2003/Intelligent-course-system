@@ -42,17 +42,9 @@ public class RecommendServiceImpl implements RecommendService {
     @Value("${recommend.service.url}")
     private String recommendServiceUrl;
 
-    private static final long CACHE_TTL_MINUTES = 15; // 缓存15分钟
+    private static final long CACHE_TTL_MINUTES = 30; // 缓存30分钟
 
     public RecommendResponseDTO recommend(Long userId) {
-
-        // // 1. 获取所有用户的学习行为数据
-        // List<LearningBehavior> behaviors = learningBehaviorService.listAllBehaviors();
-
-        // // 2. 聚合成 (userId, courseId, score) 格式的数据
-        // Map<String, Double> scoresMap = ScoreAggregateService.aggregate(behaviors);
-
-        // List<UserCourseScoreDTO> scoreList = ScoreAggregateService.toScoreDTO(scoresMap);
 
         List<UserCourseScoreDTO> scoreList = learningBehaviorService.listAggregatedScores();
 
@@ -60,7 +52,7 @@ public class RecommendServiceImpl implements RecommendService {
         RecommendRequestDTO request = new RecommendRequestDTO();
         request.setTargetUserId(userId);
         request.setData(scoreList);
-        request.setTopN(5); // 假设推荐前5个课程
+        request.setTopN(100); // 候选池大小
 
         return restTemplate.postForObject(
                 recommendServiceUrl + "/recommend",
@@ -68,6 +60,7 @@ public class RecommendServiceImpl implements RecommendService {
                 RecommendResponseDTO.class);
     }
 
+    // TODO: 课程推荐结果组装为VO
     public List<CourseRecommendVO> recommendCourseVO(Long userId) {
 
         // 1.尝试从Redis缓存获取推荐结果
@@ -83,6 +76,7 @@ public class RecommendServiceImpl implements RecommendService {
 
         RecommendResponseDTO response = recommend(userId);
 
+        /* 
         List<Long> courseIds = response.getCourseIds();
         if (courseIds == null || courseIds.isEmpty()) {
             return Collections.emptyList();
@@ -111,21 +105,11 @@ public class RecommendServiceImpl implements RecommendService {
             vo.setRecommendReason(buildRecommendReason(userId, course));
             result.add(vo);
         }
-
+        */
         // 3.将结果缓存到Redis
-        redisTemplate.opsForValue().set(key, result, CACHE_TTL_MINUTES, TimeUnit.MINUTES);
+        // redisTemplate.opsForValue().set(key, result, CACHE_TTL_MINUTES, TimeUnit.MINUTES);
 
-        return result;
-    }
-
-    private List<String> parseTags(String tagsStr) {
-        if (tagsStr == null || tagsStr.isEmpty()) {
-            return Collections.emptyList();
-        }
-        return Arrays.stream(tagsStr.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toList());
+        return null;
     }
 
     private String buildRecommendReason(Long userId, Course course) {

@@ -1,6 +1,7 @@
 package com.sy.course_system.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sy.course_system.dto.LoginDTO;
 import com.sy.course_system.dto.UserRegisterDTO;
 import com.sy.course_system.entity.User;
@@ -19,10 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 @Service
-public class UserServiceImpl implements UserService {
-
-    @Autowired
-    private UserMapper userMapper;
+public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements UserService {
 
     @Autowired
     private UserNodeRepository userNodeRepository;
@@ -30,7 +28,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public List<UserVO> listUsers() {
-        List<User> users = userMapper.selectList(null);
+        List<User> users = this.list();
         List<UserVO> userVOs = users.stream().map(user -> {
             UserVO userVO = new UserVO();
             userVO.setId(user.getId());
@@ -47,7 +45,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UserVO getUserById(Long id) {
-        User user = userMapper.selectById(id);
+        User user = this.getById(id);
         if (user == null) {
             return null;
         }
@@ -68,7 +66,7 @@ public class UserServiceImpl implements UserService {
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("username", registerDTO.getUsername());
 
-        if (userMapper.selectOne(queryWrapper) != null) {
+        if (this.getOne(queryWrapper) != null) {
             return -1; // 用户名已存在
         }
         User user = new User();
@@ -78,7 +76,7 @@ public class UserServiceImpl implements UserService {
         user.setPhone(registerDTO.getPhone());
         user.setRole("STUDENT");
         user.setStatus(1);
-        userMapper.insert(user);
+        this.save(user);
 
         Long userId = user.getId();
         // 在图数据库中创建用户节点
@@ -91,7 +89,7 @@ public class UserServiceImpl implements UserService {
     public String login(LoginDTO loginDTO) {
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("username", loginDTO.getUsername());
-        User user = userMapper.selectOne(queryWrapper);
+        User user = this.getOne(queryWrapper);
         if (user == null) {
             return null; // 用户不存在
         }
