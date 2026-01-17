@@ -1,4 +1,4 @@
-package com.sy.course_system.controller;
+package com.sy.course_system.controller.client;
 
 import com.sy.course_system.common.Result;
 import com.sy.course_system.common.UserContext;

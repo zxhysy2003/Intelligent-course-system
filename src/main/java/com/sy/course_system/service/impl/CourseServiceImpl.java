@@ -67,7 +67,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     }
 
     @Override
-    @Transactional
+    @Transactional(transactionManager = "transactionManager")
     public Integer register(CourseRegisterDTO registerDTO) {
         QueryWrapper<Course> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("title", registerDTO.getTitle());

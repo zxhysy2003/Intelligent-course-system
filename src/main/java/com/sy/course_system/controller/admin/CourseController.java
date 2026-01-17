@@ -1,4 +1,4 @@
-package com.sy.course_system.controller;
+package com.sy.course_system.controller.admin;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;

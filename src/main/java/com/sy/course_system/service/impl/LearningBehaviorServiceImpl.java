@@ -37,7 +37,7 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
     private StringRedisTemplate redisTemplate;
 
     @Override
-    @Transactional
+    @Transactional(transactionManager = "transactionManager")
     public void recordBehavior(Long courseId, LearnBehaviorType behaviorType, Integer duration) {
         Long userId = UserContext.getUserId();
 
@@ -128,8 +128,8 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
     /**
      * STUDY 结束
      */
-    @Transactional
     @Override
+    @Transactional(transactionManager = "transactionManager")
     public void endStudy(Long courseId) {
         Long userId = UserContext.getUserId();
         String key = "study:start:" + userId + ":" + courseId;

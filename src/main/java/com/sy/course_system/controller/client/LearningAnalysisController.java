@@ -1,4 +1,4 @@
-package com.sy.course_system.controller;
+package com.sy.course_system.controller.client;
 
 import java.util.HashMap;
 import java.util.Map;
