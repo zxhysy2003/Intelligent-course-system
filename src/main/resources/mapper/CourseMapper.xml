@@ -11,4 +11,112 @@
             (#{id}, #{categoryId})
         </foreach>
     </insert>
+
+    <!-- countStudyByCourseIds --> 
+
+    <select id="countStudyByCourseIds">
+        SELECT course_id AS courseId,
+        COUNT(DISTINCT user_id) AS studyCount
+        FROM user_course_relation
+        WHERE course_id IN
+        <foreach collection="courseIds" item="courseId" open="(" separator="," close=")">
+            #{courseId}
+        </foreach>
+        GROUP BY course_id
+    </select>
+
+    <!-- countProgressByCourseIds --> 
+
+    <select id="countProgressByCourseIds">
+        SELECT course_id AS courseId,
+        progress
+        FROM user_course_relation
+        WHERE course_id IN
+        <foreach collection="courseIds" item="courseId" open="(" separator="," close=")">
+            #{courseId}
+        </foreach>
+    </select>
+
+    <!-- selectCoursePage --> 
+
+    <select id="selectCoursePage">
+    SELECT
+        c.id,
+        c.title,
+        cat.name AS category,
+        -- 课程标签，逗号分隔
+        tag.tags,
+        c.description,
+        c.cover_url as cover,
+        -- 学习人数
+        IFNULL(learn.learners, 0) AS learners,
+        c.difficulty,
+
+        -- 当前用户是否已选课
+        EXISTS (
+            SELECT 1
+            FROM user_course_relation ucr2
+            WHERE ucr2.course_id = c.id
+            AND ucr2.user_id = #{userId}
+        ) AS enrolled,
+
+        -- 当前用户学习进度
+        (
+            SELECT ucr3.progress
+            FROM user_course_relation ucr3
+            WHERE ucr3.course_id = c.id
+            AND ucr3.user_id = #{userId}
+            LIMIT 1
+        ) AS progress,
+
+        c.update_time AS lastTime
+
+    FROM course c
+
+    LEFT JOIN (
+        SELECT 
+            cc.course_id,
+            categ.id AS category_id,
+            categ.name
+        FROM course_category_relation cc
+        JOIN category categ ON cc.category_id = categ.id
+    )cat ON c.id = cat.course_id
+
+    -- 学习人数子查询
+    LEFT JOIN (
+        SELECT
+            course_id,
+            COUNT(DISTINCT user_id) AS learners
+        FROM user_course_relation
+        GROUP BY course_id
+    ) learn ON learn.course_id = c.id
+
+    -- 标签子查询
+    LEFT JOIN (
+        SELECT
+            ct.course_id,
+            GROUP_CONCAT(t.name) AS tags
+        FROM course_tag ct
+        JOIN tag t ON ct.tag_id = t.id
+        GROUP BY ct.course_id
+    ) tag ON tag.course_id = c.id
+
+    <where>
+        <!-- 课程标题模糊查询 -->
+        <if test="dto.keyword != null and dto.keyword != ''">
+            AND c.title LIKE CONCAT('%', #{dto.keyword}, '%')
+        </if>
+
+        <!-- 分类过滤 -->
+        <if test="dto.categoryId != null">
+            AND cat.category_id = #{dto.categoryId}
+        </if>
+
+        <!-- 难度过滤 -->
+        <if test="dto.difficulty != null">
+            AND c.difficulty = #{dto.difficulty}
+        </if>
+    </where>
+    </select>
+    
 </mapper>

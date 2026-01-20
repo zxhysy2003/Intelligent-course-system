@@ -21,6 +21,7 @@ import com.sy.course_system.common.UserContext;
 import com.sy.course_system.entity.Course;
 import com.sy.course_system.mapper.LearningBehaviorMapper;
 import com.sy.course_system.service.LearningAnalysisService;
+import com.sy.course_system.vo.CourseVO;
 
 @Service
 public class LearningAnalysisServiceImpl implements LearningAnalysisService {
@@ -84,7 +85,7 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
     }
 
     @Override
-    public List<Course> sortCoursesByHotness(List<Course> courses) {
+    public List<CourseVO> sortCoursesByHotness(List<CourseVO> courses) {
         if (courses == null || courses.isEmpty()) {
             return courses;
         }
@@ -101,10 +102,10 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
         return courses;
     }
 
-    private Map<Long, Double> batchGetCourseHotness(List<Course> courses) {
+    private Map<Long, Double> batchGetCourseHotness(List<CourseVO> courses) {
         // 提取课程ID列表
         List<Long> courseIds = courses.stream()
-                .map(Course::getId)
+                .map(CourseVO::getId)
                 .collect(Collectors.toList());
         
         // 批量获取热度值（使用 SessionCallback 与 opsForZSet().score）

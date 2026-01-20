@@ -1,6 +1,7 @@
 package com.sy.course_system.service.impl;
 
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -15,17 +16,20 @@ import org.springframework.util.StringUtils;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.BeanUtils;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sy.course_system.common.PageResult;
+import com.sy.course_system.common.UserContext;
 import com.sy.course_system.dto.CourseAdminQueryDTO;
 import com.sy.course_system.dto.CourseQueryDTO;
 import com.sy.course_system.dto.CourseRegisterDTO;
+import com.sy.course_system.dto.CourseTempDTO;
 import com.sy.course_system.dto.CourseUpdateDTO;
 import com.sy.course_system.entity.Course;
 import com.sy.course_system.mapper.CourseMapper;
-import com.sy.course_system.mapper.CourseMapperStruct;
+import com.sy.course_system.mapper.mapperStruct.CourseMapperStruct;
 import com.sy.course_system.repository.CourseNodeRepository;
 import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.LearningAnalysisService;
@@ -39,6 +43,8 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
     @Autowired
     private LearningAnalysisService learningAnalysisService;
+
+    
 
     @Override
     public Course getById(Long courseId) {
@@ -101,58 +107,51 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     public PageResult<CourseVO> pageForUser(CourseQueryDTO dto) {
         // 1.分页参数
         int page = dto.getPage() != null && dto.getPage() > 0 ? dto.getPage() : 1;
-        int pageSize = dto.getPageSize() != null && dto.getPageSize() > 0 ? dto.getPageSize() : 10;
+        int pageSize = dto.getPageSize() != null && dto.getPageSize() > 0 ? dto.getPageSize() : 9;
         
         // 2.构建分页对象
-        Page<Course> pageParam = new Page<>(page, pageSize);
+        Page<CourseTempDTO> pageParam = new Page<>(page, pageSize);
 
-        // 3.构建查询条件
-        LambdaQueryWrapper<Course> qw = new LambdaQueryWrapper<>();
+        // 3.执行分页查询
+        IPage<CourseTempDTO> coursePage = baseMapper.selectCoursePage(pageParam, UserContext.getUserId(), dto);
 
-        // 只显示上线的课程
-        qw.eq(Course::getStatus, CourseStatus.ONLINE.getCode());
+        // 4.转换为VO
+        List<CourseTempDTO> courseTempList = coursePage.getRecords();
+        List<CourseVO> courses = convertToVO(courseTempList, dto);
 
-        // 关键词搜索
-        if (StringUtils.hasText(dto.getKeyword())) {
-            qw.like(Course::getTitle, dto.getKeyword());
-        }
+        // 5.返回分页结果
+        return PageResult.of(coursePage.getTotal(), page, pageSize, courses);
 
-        // 分类搜索：根据关系表筛选拥有指定分类的课程
-        if (dto.getCategoryId() != null) {
-            qw.inSql(Course::getId,
-                "select course_id from course_category_relation where category_id = " + dto.getCategoryId());
-        }
 
-        // 推荐结果过滤
-        if (dto.getCourseIds() != null && !dto.getCourseIds().isEmpty()) {
-            qw.in(Course::getId, dto.getCourseIds());
-        }
-
-        // 4.普通排序（数据库支持）
-        if (dto.getOrderBy() == CourseOrderType.NEW) {
-            qw.orderByDesc(Course::getCreateTime);
-        } else if (dto.getOrderBy() != CourseOrderType.HOT && dto.getOrderBy() != CourseOrderType.SCORE) {
-            qw.orderByDesc(Course::getId); // 默认按最新排序
-        }
-
-        // 5.执行分页查询
-        Page<Course> coursePage = this.page(pageParam, qw);
-        List<Course> courses = coursePage.getRecords();
-        
-        // 6.热度排序 (Redis 热度)
-        if (dto.getOrderBy() == CourseOrderType.HOT && courses != null && !courses.isEmpty()) {
-            courses = learningAnalysisService.sortCoursesByHotness(courses);
-        }
-
-        // 7.封装结果并返回
-        List<CourseVO> voList = convertToVO(courses, dto);
-
-        return PageResult.of(coursePage.getTotal(), page, pageSize, voList);
     }
 
-    // TODO: 完善 CourseVO 转换逻辑
-    private List<CourseVO> convertToVO(List<Course> courses, CourseQueryDTO dto) {
-        return null;
+    private List<CourseVO> convertToVO(List<CourseTempDTO> courseTempList, CourseQueryDTO dto) {
+        List<CourseVO> courses = courseTempList.stream()
+                .map(CourseMapperStruct.INSTANCE::tempToVO)
+                .collect(Collectors.toList());
+    
+        Integer sortBy = dto.getSortBy();
+        
+        // 热度排序特殊处理
+        if (CourseOrderType.HOT.getCode().equals(sortBy)) {
+            return learningAnalysisService.sortCoursesByHotness(courses);
+        }
+        
+        // 定义排序规则映射
+        Map<Integer, Comparator<CourseVO>> sortStrategies = Map.of(
+            CourseOrderType.DEFAULT.getCode(), Comparator.comparing(CourseVO::getLearners).reversed(),
+            CourseOrderType.DIFFICULTY.getCode(), Comparator.comparing(CourseVO::getDifficulty),
+            CourseOrderType.PROGRESS.getCode(), Comparator.comparing(CourseVO::getProgress).reversed(),
+            CourseOrderType.NEW.getCode(), Comparator.comparing(CourseVO::getLastTime).reversed(),
+            CourseOrderType.SCORE.getCode(), Comparator.comparing(CourseVO::getScore).reversed()
+        );
+        
+        Comparator<CourseVO> comparator = sortStrategies.get(sortBy);
+        if (comparator != null) {
+            courses.sort(comparator);
+        }
+        
+        return courses;
     }
 
     @Override
@@ -183,6 +182,13 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     public boolean bindKnowledgePoints(Long courseId, List<Long> knowledgePointIds) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'bindKnowledgePoints'");
+    }
+
+    @Override
+    public List<CourseVO> listWithQuery(CourseQueryDTO queryDTO) {
+
+
+        return null;
     }
 
 }

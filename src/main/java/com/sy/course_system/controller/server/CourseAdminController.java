@@ -1,4 +1,4 @@
-package com.sy.course_system.controller.admin;
+package com.sy.course_system.controller.server;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -11,8 +11,8 @@ import com.sy.course_system.dto.CourseRegisterDTO;
 import com.sy.course_system.service.CourseService;
 
 @RestController
-@RequestMapping("/course")
-public class CourseController {
+@RequestMapping("admin/course")
+public class CourseAdminController {
     
     @Autowired
     private CourseService courseService;

@@ -1,14 +1,12 @@
-package com.sy.course_system.vo;
+package com.sy.course_system.dto;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
-public class CourseVO {
-     // ===== 基础信息 =====
+public class CourseTempDTO {
     private Long id;
     private String title;
     private String category;
-    private List<String> tagList;
+    private String tags;
     private String description;
     private String cover;
     private Integer learners;
@@ -16,10 +14,6 @@ public class CourseVO {
     private Boolean enrolled;
     private Integer progress;
     private LocalDateTime lastTime;
-
-    // ===== 推荐 & 排序相关 =====
-    private Double score;        // 推荐评分 / 协同过滤预测值
-    private Double hotScore;      // 热度（可从 Redis 或表中）
 
     public Long getId() {
         return id;
@@ -45,12 +39,12 @@ public class CourseVO {
         this.category = category;
     }
 
-    public List<String> getTagList() {
-        return tagList;
+    public String getTags() {
+        return tags;
     }
 
-    public void setTagList(List<String> tagList) {
-        this.tagList = tagList;
+    public void setTags(String tags) {
+        this.tags = tags;
     }
 
     public String getDescription() {
@@ -107,21 +101,5 @@ public class CourseVO {
 
     public void setLastTime(LocalDateTime lastTime) {
         this.lastTime = lastTime;
-    }
-
-    public Double getScore() {
-        return score;
-    }
-
-    public void setScore(Double score) {
-        this.score = score;
-    }
-
-    public Double getHotScore() {
-        return hotScore;
-    }
-
-    public void setHotScore(Double hotScore) {
-        this.hotScore = hotScore;
     }
 }

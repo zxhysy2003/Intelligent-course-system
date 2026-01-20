@@ -46,4 +46,7 @@ public interface CourseService {
 
     // ===== 课程-知识点 关联绑定 =====
     boolean bindKnowledgePoints(Long courseId, List<Long> knowledgePointIds);
+
+    
+    List<CourseVO> listWithQuery(CourseQueryDTO queryDTO);
 }
