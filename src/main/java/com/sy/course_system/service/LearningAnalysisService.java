@@ -2,7 +2,6 @@ package com.sy.course_system.service;
 
 import java.util.List;
 
-import com.sy.course_system.entity.Course;
 import com.sy.course_system.vo.CourseVO;
 
 public interface LearningAnalysisService {

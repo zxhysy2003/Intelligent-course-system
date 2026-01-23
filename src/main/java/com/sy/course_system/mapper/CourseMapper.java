@@ -31,6 +31,7 @@ public interface CourseMapper extends BaseMapper<Course> {
 
     Map<Long, Integer> countProgressByCourseIds(@Param("courseIds") List<Long> courseIds);
     
-    IPage<CourseTempDTO> selectCoursePage(Page<CourseTempDTO> page, @Param("userId") Long userId, @Param("dto") CourseQueryDTO dto);
+    Page<CourseTempDTO> selectCoursePage(Page<CourseTempDTO> page, @Param("userId") Long userId, @Param("dto") CourseQueryDTO dto);
     
+    Long selectCoursePageCount(@Param("dto") CourseQueryDTO dto);
 }

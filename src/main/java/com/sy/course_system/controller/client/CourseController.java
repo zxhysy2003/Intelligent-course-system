@@ -1,5 +1,6 @@
 package com.sy.course_system.controller.client;
 
+import com.sy.course_system.common.PageResult;
 import com.sy.course_system.common.Result;
 import com.sy.course_system.dto.CourseQueryDTO;
 import com.sy.course_system.mapper.CategoryMapper;
@@ -26,8 +27,8 @@ public class CourseController {
     private CategoryMapper categoryMapper;
 
     @PostMapping("/list")
-    public Result<List<CourseVO>> list(@RequestBody CourseQueryDTO queryDTO) {
-        return Result.success(courseService.listWithQuery(queryDTO));
+    public Result<PageResult<CourseVO>> list(@RequestBody CourseQueryDTO queryDTO) {
+        return Result.success(courseService.pageForUser(queryDTO));
     }
 
     @GetMapping("/categories")

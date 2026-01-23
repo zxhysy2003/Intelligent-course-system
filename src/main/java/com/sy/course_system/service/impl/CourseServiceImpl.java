@@ -1,10 +1,8 @@
 package com.sy.course_system.service.impl;
 
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 import com.sy.course_system.enums.CourseOrderType;
@@ -12,12 +10,8 @@ import com.sy.course_system.enums.CourseStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
-
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.core.toolkit.BeanUtils;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sy.course_system.common.PageResult;
@@ -44,65 +38,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     @Autowired
     private LearningAnalysisService learningAnalysisService;
 
-    
-
-    @Override
-    public Course getById(Long courseId) {
-        return this.getById(courseId);
-    }
-
-    @Override
-    public List<Course> listByIds(List<Long> courseIds) {
-        if (courseIds == null || courseIds.isEmpty()) {
-            return Collections.emptyList();
-        }
-        return baseMapper.selectList(new LambdaQueryWrapper<Course>()
-                .in(Course::getId, courseIds)
-                .eq(Course::getStatus, 1));
-    }
-
-    @Override
-    public Map<Long, Course> mapByIds(List<Long> courseIds) {
-        List<Course> coursesList = listByIds(courseIds);
-
-        // 转Map，方便推荐结果组装
-        return coursesList.stream()
-                .collect(Collectors.toMap(
-                        Course::getId,
-                        course -> course));
-    }
-
-    @Override
-    @Transactional(transactionManager = "transactionManager")
-    public Integer register(CourseRegisterDTO registerDTO) {
-        QueryWrapper<Course> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("title", registerDTO.getTitle());
-
-        if (baseMapper.selectOne(queryWrapper) != null) {
-            return -1; // 课程已存在
-        }
-
-        Course course = CourseMapperStruct.INSTANCE.toEntity(registerDTO);
-
-        this.save(course);
-
-        if (registerDTO.getCategoryIds() == null || registerDTO.getCategoryIds().isEmpty()) {
-            return null;
-        }
-        // 关联课程分类
-        baseMapper.insertCourseCategoryRelations(course.getId(), registerDTO.getCategoryIds());
-
-        // 创建课程知识图谱根节点
-        courseNodeRepository.createCourse(course.getId(), course.getTitle());
-
-        return 1;
-    }
-
-    @Override
-    public List<Long> getKnowledgePointIdsByCourseId(Long courseId) {
-        return baseMapper.selectKnowledgePointIdsByCourseId(courseId);
-    }
-
+    // ===== 前台课程池 =====
     @Override
     public PageResult<CourseVO> pageForUser(CourseQueryDTO dto) {
         // 1.分页参数
@@ -113,7 +49,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         Page<CourseTempDTO> pageParam = new Page<>(page, pageSize);
 
         // 3.执行分页查询
-        IPage<CourseTempDTO> coursePage = baseMapper.selectCoursePage(pageParam, UserContext.getUserId(), dto);
+        Page<CourseTempDTO> coursePage = baseMapper.selectCoursePage(pageParam, UserContext.getUserId(), dto);
+        Long total = baseMapper.selectCoursePageCount(dto);
+        coursePage.setTotal(total);
 
         // 4.转换为VO
         List<CourseTempDTO> courseTempList = coursePage.getRecords();
@@ -155,6 +93,41 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     }
 
     @Override
+    public List<Long> getKnowledgePointIdsByCourseId(Long courseId) {
+        return baseMapper.selectKnowledgePointIdsByCourseId(courseId);
+    }
+
+    // ===== 后台课程管理 =====
+
+    @Override
+    @Transactional(transactionManager = "transactionManager")
+    public Integer register(CourseRegisterDTO registerDTO) {
+        QueryWrapper<Course> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("title", registerDTO.getTitle());
+
+        if (baseMapper.selectOne(queryWrapper) != null) {
+            return -1; // 课程已存在
+        }
+
+        Course course = CourseMapperStruct.INSTANCE.toEntity(registerDTO);
+
+        this.save(course);
+
+        if (registerDTO.getCategoryIds() == null || registerDTO.getCategoryIds().isEmpty()) {
+            return null;
+        }
+        // 关联课程分类
+        baseMapper.insertCourseCategoryRelations(course.getId(), registerDTO.getCategoryIds());
+
+        // 创建课程知识图谱根节点
+        courseNodeRepository.createCourse(course.getId(), course.getTitle());
+
+        return 1;
+    }
+
+
+
+    @Override
     public PageResult<CourseAdminVO> pageForAdmin(CourseAdminQueryDTO queryDTO) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'pageForAdmin'");
@@ -182,13 +155,6 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     public boolean bindKnowledgePoints(Long courseId, List<Long> knowledgePointIds) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'bindKnowledgePoints'");
-    }
-
-    @Override
-    public List<CourseVO> listWithQuery(CourseQueryDTO queryDTO) {
-
-
-        return null;
     }
 
 }
