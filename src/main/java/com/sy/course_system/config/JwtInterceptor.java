@@ -2,6 +2,7 @@ package com.sy.course_system.config;
 
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.web.util.WebUtils;
 
 import com.sy.course_system.common.UserContext;
 import com.sy.course_system.common.UserInfo;
@@ -10,12 +11,16 @@ import com.sy.course_system.utils.JwtUtil;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.lang.Nullable;
 
 @Component
 public class JwtInterceptor implements HandlerInterceptor {
+
+    private static final String AUTH_COOKIE_NAME = "auth_token";
+
     // JWT拦截器的实现可以在这里添加
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
@@ -27,22 +32,35 @@ public class JwtInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        // 1. 获取请求头 token
-        String token = request.getHeader("Authorization");
-        // 2. 验证 token 的有效性
-        if (token == null || !token.startsWith("Bearer ")) {
-            response.setStatus(401);
-            response.getWriter().write("未登录或Token缺失");
+        String token = null;
+
+        // 1. 优先从Header获取token
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7);
+        } 
+
+        // 2. 如果Header中没有，再从Cookie获取token
+        if (token == null) {
+            Cookie cookie = WebUtils.getCookie(request, AUTH_COOKIE_NAME);
+            if (cookie != null) {
+                token = cookie.getValue();
+            }
+        }
+
+        // 3. 如果token仍然为空，拒绝请求
+        if (token == null) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.getWriter().write("缺少Token，未授权访问");
             return false;
         }
 
-        token = token.replace("Bearer ", "");
-
+        // 4. 验证token
         try {
-            // 3.解析 token
+            // 1.解析 token
             Claims claims = JwtUtil.parseToken(token);
 
-            // 4. 可以将用户信息存储在请求属性中，供后续使用
+            // 2. 可以将用户信息存储在请求属性中，供后续使用
             Number userIdNum = (Number) claims.get("userId");
             Long userId = userIdNum.longValue();
             String username = (String) claims.get("username");

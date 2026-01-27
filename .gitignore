@@ -34,3 +34,4 @@ build/
 
 ### Test ###
 src/test/
+src/main/resources/static/

@@ -20,6 +20,9 @@ public interface CourseService {
     // ===== 前台课程池 =====
     PageResult<CourseVO> pageForUser(CourseQueryDTO queryDTO);
 
+    // ===== 用户是否已选修课程 =====
+    Boolean userAttendCourse(Long courseId);
+
     // ===== 后台课程管理 =====
     PageResult<CourseAdminVO> pageForAdmin(CourseAdminQueryDTO queryDTO);
 

@@ -1,5 +1,6 @@
 package com.sy.course_system.service.impl;
 
+import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -11,7 +12,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sy.course_system.common.PageResult;
@@ -22,6 +22,7 @@ import com.sy.course_system.dto.CourseRegisterDTO;
 import com.sy.course_system.dto.CourseTempDTO;
 import com.sy.course_system.dto.CourseUpdateDTO;
 import com.sy.course_system.entity.Course;
+import com.sy.course_system.entity.UserCourseRelation;
 import com.sy.course_system.mapper.CourseMapper;
 import com.sy.course_system.mapper.mapperStruct.CourseMapperStruct;
 import com.sy.course_system.repository.CourseNodeRepository;
@@ -155,6 +156,28 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     public boolean bindKnowledgePoints(Long courseId, List<Long> knowledgePointIds) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'bindKnowledgePoints'");
+    }
+
+    // ===== 用户是否已选修课程 =====
+    @Override
+    public Boolean userAttendCourse(Long courseId) {
+        Long userId = UserContext.getUserId();
+        Long count = baseMapper.countUserAttendCourse(userId, courseId);
+        if (count != null && count > 0) {
+            return false;
+        }
+        UserCourseRelation relation = new UserCourseRelation();
+        relation.setUserId(userId);
+        relation.setCourseId(courseId);
+        relation.setProgress(0);
+        relation.setLearnedSeconds(0);
+        relation.setStatus(0); // 未开始
+        relation.setLastLearnTime(LocalDateTime.now());
+        relation.setCompleteTime(LocalDateTime.now());
+        relation.setIsFavorite(0); // 非收藏
+
+        baseMapper.insertUserCourseRelation(relation);
+        return true;
     }
 
 }
