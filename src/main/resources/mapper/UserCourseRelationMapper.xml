@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.sy.course_system.mapper.UserCourseRelationMapper">
+
+    <!-- updateUserCourseRelation --> 
+
+    <update id="updateUserCourseRelation">
+        UPDATE user_course_relation
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="relation.progress != null">
+                progress = #{relation.progress},
+            </if>
+            <if test="relation.learnedSeconds != null">
+                learned_seconds = #{relation.learnedSeconds},
+            </if>
+            <if test="relation.status != null">
+                status = #{relation.status},
+            </if>
+            <if test="relation.lastLearnTime != null">
+                last_learn_time = #{relation.lastLearnTime},
+            </if>
+            <if test="relation.completeTime != null">
+                complete_time = #{relation.completeTime},
+            </if>
+            <if test="relation.isFavorite != null">
+                is_favorite = #{relation.isFavorite},
+            </if>
+        </trim>
+        WHERE user_id = #{relation.userId} AND course_id = #{relation.courseId}
+    </update>
+</mapper>

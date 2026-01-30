@@ -4,5 +4,6 @@ public enum LearnBehaviorType {
     VIEW,       // 浏览
     STUDY,      // 学习
     FINISH,     // 完成
-    FAVOURITE,  // 收藏
+    FAVORITE,  // 收藏
+    UNFAVORITE // 取消收藏
 }

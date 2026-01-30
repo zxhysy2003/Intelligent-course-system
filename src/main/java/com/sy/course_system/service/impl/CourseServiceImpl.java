@@ -28,6 +28,7 @@ import com.sy.course_system.mapper.mapperStruct.CourseMapperStruct;
 import com.sy.course_system.repository.CourseNodeRepository;
 import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.LearningAnalysisService;
+import com.sy.course_system.service.VideoService;
 import com.sy.course_system.vo.CourseAdminVO;
 import com.sy.course_system.vo.CourseVO;
 
@@ -38,6 +39,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
     @Autowired
     private LearningAnalysisService learningAnalysisService;
+
+    @Autowired
+    private VideoService videoService;
 
     // ===== 前台课程池 =====
     @Override
@@ -178,6 +182,11 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
         baseMapper.insertUserCourseRelation(relation);
         return true;
+    }
+
+    @Override
+    public String getCourseVideoPath(Long courseId) {
+        return videoService.getVideoPath(courseId);
     }
 
 }

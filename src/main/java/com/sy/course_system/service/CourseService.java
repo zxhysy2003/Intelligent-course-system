@@ -23,6 +23,9 @@ public interface CourseService {
     // ===== 用户是否已选修课程 =====
     Boolean userAttendCourse(Long courseId);
 
+    // ===== 获取课程视频地址 =====
+    String getCourseVideoPath(Long courseId);
+
     // ===== 后台课程管理 =====
     PageResult<CourseAdminVO> pageForAdmin(CourseAdminQueryDTO queryDTO);
 

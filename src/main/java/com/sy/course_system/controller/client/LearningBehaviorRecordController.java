@@ -27,28 +27,12 @@ public class LearningBehaviorRecordController {
     @PostMapping("/record")
     public Result<?> recordBehavior(
         @RequestParam Long courseId, 
-        @RequestParam LearnBehaviorType behaviorType
+        @RequestParam LearnBehaviorType behaviorType,
+        @RequestParam(required = false) Integer duration
         ) {
         // 记录用户的学习行为逻辑
-        learningBehaviorService.recordBehavior(courseId, behaviorType, null);
+        learningBehaviorService.recordBehavior(courseId, behaviorType, duration);
         return Result.success(null);
     }
 
-    /**
-     * STUDY 开始
-     */
-    @PostMapping("/study/start")
-    public Result<Void> startStudy(@RequestParam Long courseId) {
-        learningBehaviorService.startStudy(courseId);
-        return Result.success(null);
-    }
-
-    /**
-     * STUDY 结束
-     */
-    @PostMapping("/study/end")
-    public Result<Void> endStudy(@RequestParam Long courseId) {
-        learningBehaviorService.endStudy(courseId);
-        return Result.success(null);
-    }
 }

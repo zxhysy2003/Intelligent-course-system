@@ -27,11 +27,13 @@ public class CourseController {
     @Autowired
     private CategoryMapper categoryMapper;
 
+    // 课程列表（分页+条件）
     @PostMapping("/list")
     public Result<PageResult<CourseVO>> list(@RequestBody CourseQueryDTO queryDTO) {
         return Result.success(courseService.pageForUser(queryDTO));
     }
 
+    // 课程分类列表
     @GetMapping("/categories")
     public Result<List<CategoryVO>> listCategories() {
         return Result.success(categoryMapper.selectList(null).stream().map(entity -> {
@@ -42,6 +44,7 @@ public class CourseController {
         }).toList());
     }
 
+    // 用户添加课程
     @GetMapping("/attend/{courseId}")
     public Result<Boolean> UserAttendCourse(@PathVariable Long courseId) {
         Boolean status = courseService.userAttendCourse(courseId);
@@ -49,6 +52,18 @@ public class CourseController {
             return Result.error(400,"用户已添加过该课程。");
         }
         return Result.success("添加课程成功。", status);
+    }
+
+    // 获取课程视频地址
+    @GetMapping("/video/{courseId}")
+    public Result<String> getCourseVideo(@PathVariable Long courseId) {
+        // 拼接完整视频URL
+        String videoPath = courseService.getCourseVideoPath(courseId);
+        if (videoPath == null || videoPath.isEmpty()) {
+            return Result.error(404, "课程视频未找到。");
+        }
+        String videoUrl = "http://localhost:8080/" + videoPath + ".mp4";
+        return Result.success(videoUrl);
     }
 
 }

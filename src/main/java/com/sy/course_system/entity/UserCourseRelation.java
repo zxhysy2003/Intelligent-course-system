@@ -12,7 +12,7 @@ public class UserCourseRelation {
     private Long userId;
     private Long courseId;
     private Integer progress;
-    private Integer learnedSeconds;
+    private Integer learnedSeconds; // 已学习时长，单位：秒
     private Integer status; // 0: not started, 1: in progress, 2: completed
     private LocalDateTime lastLearnTime;
     private LocalDateTime completeTime;

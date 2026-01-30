@@ -19,12 +19,6 @@ import com.sy.course_system.entity.UserCourseRelation;
 @Mapper
 public interface CourseMapper extends BaseMapper<Course> {
 
-    @Select("""
-            SELECT kp_id
-            FROM course_knowledge_point
-            WHERE course_id = #{courseId}
-            """)
-    List<Long> selectKnowledgePointIdsByCourseId(@Param("courseId") Long courseId);
 
     void insertCourseCategoryRelations(@Param("id") Long id, @Param("categoryIds") List<Integer> categoryIds);
 
@@ -35,6 +29,13 @@ public interface CourseMapper extends BaseMapper<Course> {
     Page<CourseTempDTO> selectCoursePage(Page<CourseTempDTO> page, @Param("userId") Long userId, @Param("dto") CourseQueryDTO dto);
     
     Long selectCoursePageCount(@Param("dto") CourseQueryDTO dto);
+
+    @Select("""
+            SELECT kp_id
+            FROM course_knowledge_point
+            WHERE course_id = #{courseId}
+            """)
+    List<Long> selectKnowledgePointIdsByCourseId(@Param("courseId") Long courseId);
 
     @Select("""
             SELECT COUNT(*)
@@ -48,4 +49,6 @@ public interface CourseMapper extends BaseMapper<Course> {
             VALUES (#{relation.userId}, #{relation.courseId}, #{relation.progress}, #{relation.learnedSeconds}, #{relation.status}, #{relation.lastLearnTime}, #{relation.completeTime}, #{relation.isFavorite})
             """)
     void insertUserCourseRelation(@Param("relation") UserCourseRelation relation);
+
+    
 }
