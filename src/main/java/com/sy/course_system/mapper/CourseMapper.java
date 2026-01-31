@@ -37,18 +37,5 @@ public interface CourseMapper extends BaseMapper<Course> {
             """)
     List<Long> selectKnowledgePointIdsByCourseId(@Param("courseId") Long courseId);
 
-    @Select("""
-            SELECT COUNT(*)
-            FROM user_course_relation
-            WHERE user_id = #{userId} AND course_id = #{courseId}
-            """)
-    Long countUserAttendCourse(@Param("userId") Long userId, @Param("courseId") Long courseId);
-
-    @Insert("""
-            INSERT INTO user_course_relation (user_id, course_id, progress, learned_seconds, status, last_learn_time, complete_time, is_favorite)
-            VALUES (#{relation.userId}, #{relation.courseId}, #{relation.progress}, #{relation.learnedSeconds}, #{relation.status}, #{relation.lastLearnTime}, #{relation.completeTime}, #{relation.isFavorite})
-            """)
-    void insertUserCourseRelation(@Param("relation") UserCourseRelation relation);
-
     
 }

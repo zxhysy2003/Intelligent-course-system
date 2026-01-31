@@ -7,6 +7,7 @@ import org.mapstruct.factory.Mappers;
 import com.sy.course_system.dto.CourseRegisterDTO;
 import com.sy.course_system.dto.CourseTempDTO;
 import com.sy.course_system.entity.Course;
+import com.sy.course_system.vo.CourseDetailVO;
 import com.sy.course_system.vo.CourseVO;
 
 @Mapper(componentModel = "spring")
@@ -23,4 +24,6 @@ public interface CourseMapperStruct {
     @Mapping(target = "score", ignore = true)
     @Mapping(target = "hotScore", ignore = true)
     CourseVO tempToVO(CourseTempDTO tempDTO);
+
+    CourseDetailVO toDetailVO(Course course);
 }

@@ -18,7 +18,6 @@ import org.springframework.stereotype.Service;
 
 import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import com.sy.course_system.common.UserContext;
-import com.sy.course_system.entity.Course;
 import com.sy.course_system.mapper.LearningBehaviorMapper;
 import com.sy.course_system.service.LearningAnalysisService;
 import com.sy.course_system.vo.CourseVO;

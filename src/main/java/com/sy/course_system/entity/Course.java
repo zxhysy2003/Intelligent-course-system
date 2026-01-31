@@ -14,7 +14,7 @@ public class Course {
     private String description;
     private String coverUrl;
     private Integer difficulty;
-    private Integer duration; // 课程时长，单位：分钟
+    private Integer duration; // 课程时长，单位：秒数
     private Integer status; // 0-DRAFT 1-ONLINE 2-OFFLINE
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;

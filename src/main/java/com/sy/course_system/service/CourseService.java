@@ -8,6 +8,7 @@ import com.sy.course_system.dto.CourseRegisterDTO;
 import com.sy.course_system.dto.CourseUpdateDTO;
 import com.sy.course_system.enums.CourseStatus;
 import com.sy.course_system.vo.CourseAdminVO;
+import com.sy.course_system.vo.CourseDetailVO;
 import com.sy.course_system.vo.CourseVO;
 
 public interface CourseService {
@@ -20,11 +21,13 @@ public interface CourseService {
     // ===== 前台课程池 =====
     PageResult<CourseVO> pageForUser(CourseQueryDTO queryDTO);
 
-    // ===== 用户是否已选修课程 =====
-    Boolean userAttendCourse(Long courseId);
-
     // ===== 获取课程视频地址 =====
     String getCourseVideoPath(Long courseId);
+
+    // ===== 根据课程id获取课程详情 =====
+    CourseDetailVO getCourseByIdForUser(Long courseId);
+
+    // ===============================================================
 
     // ===== 后台课程管理 =====
     PageResult<CourseAdminVO> pageForAdmin(CourseAdminQueryDTO queryDTO);

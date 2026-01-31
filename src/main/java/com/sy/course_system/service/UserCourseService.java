@@ -7,4 +7,6 @@ public interface UserCourseService {
     Integer updateUserCourseRelation(UserCourseRelation relation);
     // 查询用户课程关联关系
     UserCourseRelation getUserCourseRelation(Long userId, Long courseId);
+    // 用户选修课程
+    Boolean userAttendCourse(Long courseId);
 }

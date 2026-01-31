@@ -17,6 +17,7 @@ public class UserCourseRelation {
     private LocalDateTime lastLearnTime;
     private LocalDateTime completeTime;
     private Integer isFavorite; // 0: no, 1: yes
+    private Integer progressSeconds; // 已学习时长，单位：秒
     
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
@@ -91,7 +92,12 @@ public class UserCourseRelation {
     public void setUpdateTime(LocalDateTime updateTime) {
         this.updateTime = updateTime;
     }
-
+    public Integer getProgressSeconds() {
+        return progressSeconds;
+    }
+    public void setProgressSeconds(Integer progressSeconds) {
+        this.progressSeconds = progressSeconds;
+    }
     
     
         

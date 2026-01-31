@@ -2,9 +2,12 @@ package com.sy.course_system.controller.client;
 
 import com.sy.course_system.common.PageResult;
 import com.sy.course_system.common.Result;
+import com.sy.course_system.common.UserContext;
 import com.sy.course_system.dto.CourseQueryDTO;
+import com.sy.course_system.entity.UserCourseRelation;
 import com.sy.course_system.mapper.CategoryMapper;
 import com.sy.course_system.vo.CategoryVO;
+import com.sy.course_system.vo.CourseDetailVO;
 import com.sy.course_system.vo.CourseVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,9 +15,11 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sy.course_system.service.CourseService;
+import com.sy.course_system.service.UserCourseService;
 
 import java.util.List;
 
@@ -26,6 +31,19 @@ public class CourseController {
 
     @Autowired
     private CategoryMapper categoryMapper;
+
+    @Autowired
+    private UserCourseService userCourseService;
+
+    // 根据课程id获取课程详情
+    @GetMapping("/{courseId}")
+    public Result<CourseDetailVO> getCourseById(@PathVariable Long courseId) {
+        CourseDetailVO courseDetailVO = courseService.getCourseByIdForUser(courseId);
+        if (courseDetailVO == null) {
+            return Result.error(404, "课程未找到。");
+        }
+        return Result.success(courseDetailVO);
+    }
 
     // 课程列表（分页+条件）
     @PostMapping("/list")
@@ -47,7 +65,7 @@ public class CourseController {
     // 用户添加课程
     @GetMapping("/attend/{courseId}")
     public Result<Boolean> UserAttendCourse(@PathVariable Long courseId) {
-        Boolean status = courseService.userAttendCourse(courseId);
+        Boolean status = userCourseService.userAttendCourse(courseId);
         if (!status) {
             return Result.error(400,"用户已添加过该课程。");
         }
@@ -64,6 +82,27 @@ public class CourseController {
         }
         String videoUrl = "http://localhost:8080/" + videoPath + ".mp4";
         return Result.success(videoUrl);
+    }
+
+    // 获取用户与课程的关系状态
+    @GetMapping("/relation/{courseId}")
+    public Result<UserCourseRelation> getUserCourseRelation(@PathVariable Long courseId) {
+        UserCourseRelation relation = userCourseService.getUserCourseRelation(UserContext.getUserId(), courseId);
+        return Result.success(relation);
+    }
+
+    // 更新课程视频断点信息，以便下次继续学习
+    @PostMapping("/relation/updateProgressSeconds")
+    public Result<Integer> updateCourseVideoProgressSeconds(@RequestParam Long courseId, @RequestParam Integer progressSeconds) {
+        UserCourseRelation relation = new UserCourseRelation();
+        relation.setUserId(UserContext.getUserId());
+        relation.setCourseId(courseId);
+        relation.setProgressSeconds(progressSeconds);
+        int updatedRecords = userCourseService.updateUserCourseRelation(relation);
+        if (updatedRecords == 0) {
+            return Result.error(400, "更新课程进度失败，关联关系不存在。");
+        }
+        return Result.success(updatedRecords);
     }
 
 }

@@ -25,6 +25,9 @@
             <if test="relation.isFavorite != null">
                 is_favorite = #{relation.isFavorite},
             </if>
+            <if test="relation.progressSeconds != null">
+                progress_seconds = #{relation.progressSeconds},
+            </if>
         </trim>
         WHERE user_id = #{relation.userId} AND course_id = #{relation.courseId}
     </update>

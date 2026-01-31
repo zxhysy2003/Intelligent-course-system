@@ -1,6 +1,5 @@
 package com.sy.course_system.service.impl;
 
-import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -22,7 +21,6 @@ import com.sy.course_system.dto.CourseRegisterDTO;
 import com.sy.course_system.dto.CourseTempDTO;
 import com.sy.course_system.dto.CourseUpdateDTO;
 import com.sy.course_system.entity.Course;
-import com.sy.course_system.entity.UserCourseRelation;
 import com.sy.course_system.mapper.CourseMapper;
 import com.sy.course_system.mapper.mapperStruct.CourseMapperStruct;
 import com.sy.course_system.repository.CourseNodeRepository;
@@ -30,6 +28,7 @@ import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.LearningAnalysisService;
 import com.sy.course_system.service.VideoService;
 import com.sy.course_system.vo.CourseAdminVO;
+import com.sy.course_system.vo.CourseDetailVO;
 import com.sy.course_system.vo.CourseVO;
 
 @Service
@@ -162,31 +161,21 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         throw new UnsupportedOperationException("Unimplemented method 'bindKnowledgePoints'");
     }
 
-    // ===== 用户是否已选修课程 =====
-    @Override
-    public Boolean userAttendCourse(Long courseId) {
-        Long userId = UserContext.getUserId();
-        Long count = baseMapper.countUserAttendCourse(userId, courseId);
-        if (count != null && count > 0) {
-            return false;
-        }
-        UserCourseRelation relation = new UserCourseRelation();
-        relation.setUserId(userId);
-        relation.setCourseId(courseId);
-        relation.setProgress(0);
-        relation.setLearnedSeconds(0);
-        relation.setStatus(0); // 未开始
-        relation.setLastLearnTime(LocalDateTime.now());
-        relation.setCompleteTime(LocalDateTime.now());
-        relation.setIsFavorite(0); // 非收藏
-
-        baseMapper.insertUserCourseRelation(relation);
-        return true;
-    }
-
     @Override
     public String getCourseVideoPath(Long courseId) {
         return videoService.getVideoPath(courseId);
     }
+
+    // 根据课程id获取课程详情（用户端）
+    @Override
+    public CourseDetailVO getCourseByIdForUser(Long courseId) {
+        Course course = this.getById(courseId);
+        if (course != null) {
+            CourseDetailVO vo = CourseMapperStruct.INSTANCE.toDetailVO(course);
+            return vo;
+        }
+        return null;
+    }
+
 
 }
