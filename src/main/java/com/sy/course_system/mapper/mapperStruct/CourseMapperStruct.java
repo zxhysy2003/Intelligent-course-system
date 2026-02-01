@@ -4,8 +4,8 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.factory.Mappers;
 
-import com.sy.course_system.dto.CourseRegisterDTO;
-import com.sy.course_system.dto.CourseTempDTO;
+import com.sy.course_system.dto.course.CourseRegisterDTO;
+import com.sy.course_system.dto.course.CourseTempDTO;
 import com.sy.course_system.entity.Course;
 import com.sy.course_system.vo.CourseDetailVO;
 import com.sy.course_system.vo.CourseVO;

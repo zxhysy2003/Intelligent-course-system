@@ -1,6 +1,6 @@
 package com.sy.course_system.graph.node;
 
-import org.springframework.data.annotation.Id;
+import org.springframework.data.neo4j.core.schema.Id;
 import org.springframework.data.neo4j.core.schema.Node;
 
 @Node("User")

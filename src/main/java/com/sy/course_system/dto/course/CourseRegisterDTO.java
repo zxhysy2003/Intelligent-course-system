@@ -1,4 +1,4 @@
-package com.sy.course_system.dto;
+package com.sy.course_system.dto.course;
 
 import java.util.List;
 

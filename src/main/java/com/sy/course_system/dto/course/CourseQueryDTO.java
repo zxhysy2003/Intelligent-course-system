@@ -1,4 +1,4 @@
-package com.sy.course_system.dto;
+package com.sy.course_system.dto.course;
 
 import com.sy.course_system.enums.CourseOrderType;
 

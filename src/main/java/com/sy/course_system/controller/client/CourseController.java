@@ -3,7 +3,7 @@ package com.sy.course_system.controller.client;
 import com.sy.course_system.common.PageResult;
 import com.sy.course_system.common.Result;
 import com.sy.course_system.common.UserContext;
-import com.sy.course_system.dto.CourseQueryDTO;
+import com.sy.course_system.dto.course.CourseQueryDTO;
 import com.sy.course_system.entity.UserCourseRelation;
 import com.sy.course_system.mapper.CategoryMapper;
 import com.sy.course_system.vo.CategoryVO;

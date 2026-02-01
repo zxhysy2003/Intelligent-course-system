@@ -7,7 +7,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.sy.course_system.dto.UserCourseBaseScoreDTO;
+import com.sy.course_system.dto.recommend.UserCourseBaseScoreDTO;
 import com.sy.course_system.entity.LearningBehavior;
 
 import io.lettuce.core.dynamic.annotation.Param;
@@ -44,7 +44,7 @@ public interface LearningBehaviorMapper extends BaseMapper<LearningBehavior> {
 
         // 聚合用户课程分数
         // 计算公式：基础分值 * 衰减系数(业务层计算)
-        // LOG(1 + LEAST(lb.duration, 180)) 限制单次最多算 180 分钟。
+        // LOG(1 + LEAST(lb.duration, 10800)) 限制单次最多算 180 分钟。
         @Select("""
                             SELECT
                                 lb.user_id,
@@ -52,7 +52,7 @@ public interface LearningBehaviorMapper extends BaseMapper<LearningBehavior> {
                                 SUM(
                                     CASE
                                         WHEN lb.behavior_type = 'STUDY'
-                                        THEN bw.weight * LOG(1 + LEAST(lb.duration, 180))
+                                        THEN bw.weight * LOG(1 + LEAST(lb.duration, 10800))
                                         ELSE bw.weight
                                     END
                                 ) AS base_score,

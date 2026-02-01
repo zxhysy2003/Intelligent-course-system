@@ -3,7 +3,6 @@ package com.sy.course_system.mapper;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -11,10 +10,9 @@ import org.apache.ibatis.annotations.Select;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.sy.course_system.dto.CourseQueryDTO;
-import com.sy.course_system.dto.CourseTempDTO;
+import com.sy.course_system.dto.course.CourseQueryDTO;
+import com.sy.course_system.dto.course.CourseTempDTO;
 import com.sy.course_system.entity.Course;
-import com.sy.course_system.entity.UserCourseRelation;
 
 @Mapper
 public interface CourseMapper extends BaseMapper<Course> {

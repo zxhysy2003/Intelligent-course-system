@@ -2,10 +2,10 @@ package com.sy.course_system.service;
 
 import java.util.List;
 import com.sy.course_system.common.PageResult;
-import com.sy.course_system.dto.CourseAdminQueryDTO;
-import com.sy.course_system.dto.CourseQueryDTO;
-import com.sy.course_system.dto.CourseRegisterDTO;
-import com.sy.course_system.dto.CourseUpdateDTO;
+import com.sy.course_system.dto.course.CourseAdminQueryDTO;
+import com.sy.course_system.dto.course.CourseQueryDTO;
+import com.sy.course_system.dto.course.CourseRegisterDTO;
+import com.sy.course_system.dto.course.CourseUpdateDTO;
 import com.sy.course_system.enums.CourseStatus;
 import com.sy.course_system.vo.CourseAdminVO;
 import com.sy.course_system.vo.CourseDetailVO;

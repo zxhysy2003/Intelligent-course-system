@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sy.course_system.common.Result;
-import com.sy.course_system.dto.CourseRegisterDTO;
+import com.sy.course_system.dto.course.CourseRegisterDTO;
 import com.sy.course_system.service.CourseService;
 
 @RestController

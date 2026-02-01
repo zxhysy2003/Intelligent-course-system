@@ -3,20 +3,14 @@ package com.sy.course_system.service.impl;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sy.course_system.dto.RecommendRequestDTO;
-import com.sy.course_system.dto.RecommendResponseDTO;
-import com.sy.course_system.dto.UserCourseScoreDTO;
-import com.sy.course_system.entity.Course;
-import com.sy.course_system.service.CourseService;
+import com.sy.course_system.dto.recommend.RecommendRequestDTO;
+import com.sy.course_system.dto.recommend.RecommendResponseDTO;
+import com.sy.course_system.dto.recommend.UserCourseScoreDTO;
 import com.sy.course_system.service.LearningBehaviorService;
 import com.sy.course_system.service.RecommendService;
-import com.sy.course_system.vo.CourseRecommendVO;
 
 @Service
 public class RecommendServiceImpl implements RecommendService {
@@ -26,17 +20,11 @@ public class RecommendServiceImpl implements RecommendService {
     @Autowired
     private LearningBehaviorService learningBehaviorService;
 
-    @Autowired
-    private CourseService courseService;
-
-    @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
 
     @Value("${recommend.service.url}")
     private String recommendServiceUrl;
 
-    private static final long CACHE_TTL_MINUTES = 30; // 缓存30分钟
-
+    @Override
     public RecommendResponseDTO recommend(Long userId) {
 
         List<UserCourseScoreDTO> scoreList = learningBehaviorService.listAggregatedScores();
@@ -53,71 +41,4 @@ public class RecommendServiceImpl implements RecommendService {
                 RecommendResponseDTO.class);
     }
 
-    // TODO: 课程推荐结果组装为VO
-    public List<CourseRecommendVO> recommendCourseVO(Long userId) {
-
-        // 1.尝试从Redis缓存获取推荐结果
-        String key = "recommend:user:" + userId;
-        Object cached = redisTemplate.opsForValue().get(key);
-
-        if (cached != null) {
-            List<CourseRecommendVO> cache = new ObjectMapper().convertValue(cached, new TypeReference<List<CourseRecommendVO>>() {});
-            return cache;
-        }
-        
-        // 2.缓存未命中 -> 调用原来的推荐逻辑
-
-        RecommendResponseDTO response = recommend(userId);
-
-        /* 
-        List<Long> courseIds = response.getCourseIds();
-        if (courseIds == null || courseIds.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        // 批量查课程 -> Map
-        Map<Long, Course> courseMap = courseService.mapByIds(courseIds);
-
-        // 按推荐顺序组装VO列表
-        List<CourseRecommendVO> result = new ArrayList<>();
-
-        for (Long courseId : courseIds) {
-            Course course = courseMap.get(courseId);
-            if (course == null) {
-                continue; // 课程下线或不存在
-            }
-            CourseRecommendVO vo = new CourseRecommendVO();
-            vo.setCourseId(course.getId());
-            vo.setTitle(course.getTitle());
-            vo.setCoverUrl(course.getCoverUrl());
-            vo.setDifficulty(course.getDifficulty());
-            vo.setDuration(course.getDuration());
-            vo.setTags(parseTags(course.getTags()));
-
-            // 设置推荐理由(规则生成)
-            vo.setRecommendReason(buildRecommendReason(userId, course));
-            result.add(vo);
-        }
-        */
-        // 3.将结果缓存到Redis
-        // redisTemplate.opsForValue().set(key, result, CACHE_TTL_MINUTES, TimeUnit.MINUTES);
-
-        return null;
-    }
-
-    private String buildRecommendReason(Long userId, Course course) {
-        // 简单示例：根据课程难度生成推荐理由
-        switch (course.getDifficulty()) {
-            case 1:
-                return "适合初学者的入门课程";
-            case 2:
-                return "提升技能的进阶课程";
-            case 3:
-                return "挑战自我的高级课程";
-            default:
-                return "优质推荐课程";
-        }
-    }
-
-    
 }

@@ -10,14 +10,14 @@ import org.springframework.transaction.annotation.Transactional;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sy.course_system.common.UserContext;
 import com.sy.course_system.common.util.TimeDecayUtil;
-import com.sy.course_system.dto.UserCourseBaseScoreDTO;
-import com.sy.course_system.dto.UserCourseScoreDTO;
+import com.sy.course_system.dto.recommend.UserCourseBaseScoreDTO;
+import com.sy.course_system.dto.recommend.UserCourseScoreDTO;
 import com.sy.course_system.entity.LearningBehavior;
 import com.sy.course_system.entity.UserCourseRelation;
 import com.sy.course_system.enums.BehaviorHandleResult;
 import com.sy.course_system.enums.LearnBehaviorType;
 import com.sy.course_system.mapper.LearningBehaviorMapper;
-import com.sy.course_system.repository.KnowledgePointRepository;
+import com.sy.course_system.repository.KnowledgeRepository;
 import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.LearningAnalysisService;
 import com.sy.course_system.service.LearningBehaviorService;
@@ -33,7 +33,7 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
     @Autowired
     private CourseService courseService;
     @Autowired
-    private KnowledgePointRepository knowledgePointRepository;
+    private KnowledgeRepository knowledgeRepository;
     @Autowired
     private LearningAnalysisService learningAnalysisService;
     @Autowired
@@ -187,13 +187,11 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
     private void handleCourseFinished(Long userId, Long courseId) {
         // 获取该课程的所有知识点ID
         List<Long> kpIds = courseService.getKnowledgePointIdsByCourseId(courseId);
-        // 标记用户已掌握这些知识点
-        if (kpIds != null && !kpIds.isEmpty()) {
-            kpIds.forEach(kp -> 
-                knowledgePointRepository
-                .markUserMasteredKnowledgePoint(userId, kp)
-            );
+        if (kpIds == null || kpIds.isEmpty()) {
+            return;
         }
+        // 标记用户掌握这些知识点
+        knowledgeRepository.markUserMasteredBatch(userId, kpIds, 1.0);
         // 刷新推荐缓存
         learningAnalysisService.refreshUserRecommendCache(userId);
     }
@@ -210,8 +208,11 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
             UserCourseScoreDTO dto = new UserCourseScoreDTO();
             dto.setUserId(bs.getUserId());
             dto.setCourseId(bs.getCourseId());
+            // 使用时间衰减后的评分
             dto.setScore(bs.getBaseScore() * TimeDecayUtil.decay(bs.getLastTime()));
             return dto;
-        }).toList();
+        })
+        .filter(dto -> dto.getScore() >= 0.1) // 过滤掉评分过低的记录
+        .toList();
     }
 }
