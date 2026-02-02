@@ -31,4 +31,33 @@
         </trim>
         WHERE user_id = #{relation.userId} AND course_id = #{relation.courseId}
     </update>
+
+    <!-- addStudyTimeAndUpdateProgress --> 
+
+    <update id="addStudyTimeAndUpdateProgress">
+        UPDATE user_course_relation
+        SET
+        learned_seconds = LEAST(learned_seconds + #{duration}, #{totalSeconds}),
+        progress = LEAST(100, (LEAST(learned_seconds + #{duration}, #{totalSeconds}) * 100) DIV #{totalSeconds}),
+        last_learn_time = #{now},
+        status = CASE
+                    WHEN LEAST(100, (LEAST(learned_seconds + #{duration}, #{totalSeconds}) * 100) DIV #{totalSeconds}) = 100
+                    THEN 2 ELSE 1
+                END
+        WHERE user_id = #{userId}
+        AND course_id = #{courseId}
+    </update>
+
+    <!-- tryMarkFinished --> 
+
+    <update id="tryMarkFinished">
+        UPDATE user_course_relation
+        SET
+            status = 2,
+            progress = 100,
+            complete_time = IFNULL(complete_time, #{now})
+        WHERE user_id = #{userId}
+            AND course_id = #{courseId}
+            AND status <> 2
+    </update>
 </mapper>

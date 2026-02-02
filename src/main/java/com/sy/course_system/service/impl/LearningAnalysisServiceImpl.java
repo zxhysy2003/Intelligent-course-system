@@ -17,16 +17,11 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
-import com.sy.course_system.common.UserContext;
-import com.sy.course_system.mapper.LearningBehaviorMapper;
 import com.sy.course_system.service.LearningAnalysisService;
 import com.sy.course_system.vo.CourseVO;
 
 @Service
 public class LearningAnalysisServiceImpl implements LearningAnalysisService {
-
-    @Autowired
-    private LearningBehaviorMapper learningBehaviorMapper;
 
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
@@ -36,18 +31,6 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
 
 
     private static final String HOT_COURSE_KEY = "course:hot";
-
-    @Override
-    public Integer getMyTotalStudyTime() {
-        Long userId = UserContext.getUserId();
-        return learningBehaviorMapper.sumStudyDurationByUser(userId);
-    }
-
-    @Override
-    public List<Long> getMyLearnedCourses() {
-        Long userId = UserContext.getUserId();
-        return learningBehaviorMapper.selectLearnedCourseIds(userId);
-    }
 
 
     /**

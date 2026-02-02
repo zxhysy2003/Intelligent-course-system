@@ -2,13 +2,13 @@ package com.sy.course_system.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.sy.course_system.common.util.JwtUtil;
 import com.sy.course_system.dto.LoginDTO;
 import com.sy.course_system.dto.UserRegisterDTO;
 import com.sy.course_system.entity.User;
 import com.sy.course_system.mapper.UserMapper;
 import com.sy.course_system.repository.UserNodeRepository;
 import com.sy.course_system.service.UserService;
-import com.sy.course_system.utils.JwtUtil;
 import com.sy.course_system.vo.UserVO;
 
 import org.springframework.beans.factory.annotation.Autowired;

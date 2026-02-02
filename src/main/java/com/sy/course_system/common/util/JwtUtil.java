@@ -1,4 +1,4 @@
-package com.sy.course_system.utils;
+package com.sy.course_system.common.util;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;

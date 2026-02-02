@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +30,7 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
     
     private static final int MAX_SINGLE_SESSION_SECONDS = 6 * 60 * 60; // 每次上报的最大学习时长: 6小时
     private static final double FINISH_HOT_SCORE = 2.0; // 完成课程后增加的热度分数
+    private static final double BASE_SCORE_THRESHOLD = 40.0; // 基础分数阈值
 
     @Autowired
     private CourseService courseService;
@@ -40,6 +42,10 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
     private UserCourseService userCourseService;
     @Autowired
     private VideoService videoService;
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
+
+    private static final long VIEW_COOLDOWN_SECONDS = 10 * 60; // 10分钟冷却时间
 
     /**
      * 主入口方法：记录学习行为
@@ -53,14 +59,18 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
 
         int safeDuration = duration != null ? Math.min(MAX_SINGLE_SESSION_SECONDS, duration) : 0;
 
+        // 1.先处理关系表（决定：是否忽略、是否触发FINISH）
         BehaviorHandleResult result = handleUserCourseRelation(userId, courseId, behaviorType, safeDuration);
 
-        // IGNORE 行为(如UNFAVOURITE)不入库
+        // 2.决定是否入库（行为表）
+        //   约定： IGNORE 表示本次不写"learning_behavior"表（例如UNFAVORITE）
         if (result != BehaviorHandleResult.IGNORE) {
             saveBehavior(userId, courseId, behaviorType, safeDuration);
+            // 热度： 对本行为加一次（STUDY/VIEW/FAVORITE）
             double hotScore = calcHotScore(behaviorType, safeDuration);
             learningAnalysisService.increaseCourseHot(courseId, hotScore);
         }
+        // 3.若首次完成：补写FINISH行为 + FINISH热度（里程碑事件）
         if(result == BehaviorHandleResult.TRIGGER_FINISH) {
             recordFinishInternal(userId, courseId);
         }
@@ -75,6 +85,7 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
                                                           Integer duration) {
         UserCourseRelation relation =  userCourseService.getUserCourseRelation(userId, courseId);
         if (relation == null) {
+            // 要求必须先选课，否则不记录行为
             return BehaviorHandleResult.IGNORE;
         }
 
@@ -82,17 +93,39 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
         
         return switch (behaviorType) {
 
+            case VIEW -> {
+                boolean allowed = allowViewOnceInCooldown(userId, courseId);
+                if (!allowed) {
+                    // 冷却中：不入库、不加热度
+                    yield BehaviorHandleResult.IGNORE; // 冷却中，忽略本次VIEW行为
+                }
+                // 允许记录VIEW行为
+                yield BehaviorHandleResult.NORMAL;
+            }
+
             case STUDY -> handleStudy(relation,userId, courseId, duration, now);
             case FAVORITE -> {
+                Integer old = relation.getIsFavorite() == null ? 0 : relation.getIsFavorite();
+                if (old == 1) {
+                    // 已收藏，忽略本次行为
+                    yield BehaviorHandleResult.IGNORE;
+                }
                 relation.setIsFavorite(1); // 标记为已收藏
+                relation.setLastLearnTime(now);
                 userCourseService.updateUserCourseRelation(relation);
+
+                // 收藏会影响推荐：刷新推荐缓存
                 learningAnalysisService.refreshUserRecommendCache(userId);
                 yield BehaviorHandleResult.NORMAL;
             }
             case UNFAVORITE -> {
                 relation.setIsFavorite(0); // 标记为未收藏
+                relation.setLastLearnTime(now);
                 userCourseService.updateUserCourseRelation(relation);
-                yield BehaviorHandleResult.IGNORE;
+
+                // 取消收藏会影响推荐：刷新推荐缓存
+                learningAnalysisService.refreshUserRecommendCache(userId);
+                yield BehaviorHandleResult.IGNORE; // 不记录该行为
             }
 
             default -> BehaviorHandleResult.IGNORE;
@@ -100,49 +133,60 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
 
     }
 
+    // VIEW行为冷却检查
+    // 成功返回 true → 允许记 VIEW；失败 false → 冷却中。
+    private boolean allowViewOnceInCooldown(Long userId, Long courseId) {
+        String key = "view:cooldown:" + userId + ":" + courseId;
+
+        Boolean ok = stringRedisTemplate.opsForValue().setIfAbsent(key, "1", java.time.Duration.ofSeconds(VIEW_COOLDOWN_SECONDS));
+
+        return Boolean.TRUE.equals(ok);
+    }
+
     /**
-     * 处理学习行为
+     * 处理学习行为（改进版：并发安全+性能优化）
+     * @param relation
+     * @param userId
+     * @param courseId
+     * @param duration
+     * @param now
+     * @return
      */
     private BehaviorHandleResult handleStudy(UserCourseRelation relation,
-                                                Long userId,
-                                                Long courseId,
-                                                Integer duration,
-                                                LocalDateTime now) {
-        // 获得进度旧值
-        Integer oldProgress = relation.getProgress() != null ? relation.getProgress() : 0;
-        // 获得已学习时长旧值
-        Integer learnedSeconds = relation.getLearnedSeconds() != null ? relation.getLearnedSeconds() : 0;
-        
-        // 累加学习时长
-        learnedSeconds += duration;
+                                        Long userId,
+                                        Long courseId,
+                                        Integer duration,
+                                        LocalDateTime now) {
 
-        // 获得视频总时长
-        Integer courseTotalSeconds = videoService.getVideoDurationInSeconds(courseId);
-
-        if (courseTotalSeconds == null || courseTotalSeconds <= 0) {
-            return BehaviorHandleResult.NORMAL;
-        }
-
-        // 计算进度百分比
-        Integer newProgress = (int) Math.min(100, (learnedSeconds * 100L) / courseTotalSeconds);
-
-        // 更新关联关系
-        relation.setLearnedSeconds(learnedSeconds); // 更新学习时长
-        relation.setProgress(newProgress); // 更新进度
-        relation.setLastLearnTime(now); // 更新最后学习时间
-
-        // 检查是否完成课程
-        if (oldProgress < 100 && newProgress == 100) {
-            relation.setStatus(2); // 标记为已完成
-            relation.setCompleteTime(now); // 设置完成时间
-            userCourseService.updateUserCourseRelation(relation); // 保存更新
-            handleCourseFinished(userId, courseId); // 处理课程完成后的逻辑
-            return BehaviorHandleResult.TRIGGER_FINISH;
-        } 
-
-        userCourseService.updateUserCourseRelation(relation); // 保存更新
+    Integer total = videoService.getVideoDurationInSeconds(courseId);
+    if (total == null || total <= 0) {
+        // 没有视频时长就只更新时间，不更新进度
+        relation.setLastLearnTime(now);
+        userCourseService.updateUserCourseRelation(relation);
         return BehaviorHandleResult.NORMAL;
     }
+
+    int d = duration != null ? Math.max(duration, 0) : 0;
+
+    // 1) 原子更新学习时长+进度（并发安全累加）
+    userCourseService.addStudyTimeAndUpdateProgress(userId, courseId, d, total, now);
+
+    // 2) 如果本来就已完成，不再尝试触发 FINISH（快路径）
+    Integer oldStatus = relation.getStatus();
+    if (oldStatus != null && oldStatus == 2) {
+        return BehaviorHandleResult.NORMAL;
+    }
+
+    // 3) 首次完成门闩：只有第一次会返回 1
+    int marked = userCourseService.tryMarkFinished(userId, courseId, now);
+    if (marked == 1) {
+        handleCourseFinished(userId, courseId); // 更新 Neo4j MASTERED + 刷新缓存
+        return BehaviorHandleResult.TRIGGER_FINISH; // 外层会写 FINISH 行为
+    }
+
+    return BehaviorHandleResult.NORMAL;
+}
+
 
     /**
      * 保存行为
@@ -190,8 +234,23 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
         if (kpIds == null || kpIds.isEmpty()) {
             return;
         }
+
+        // completionRate: 完成触发时基本为1，但保留写法更严谨
+        UserCourseRelation relation = userCourseService.getUserCourseRelation(userId, courseId);
+        Integer learnedSeconds = relation.getLearnedSeconds() != null ? relation.getLearnedSeconds() : 0;
+        Integer courseTotalSeconds = videoService.getVideoDurationInSeconds(courseId);
+        double completionRate = courseTotalSeconds != null && courseTotalSeconds > 0
+                                ? Math.min(1.0, (learnedSeconds * 1.0) / courseTotalSeconds)
+                                : 0.0;
+        
+        // behaviorMastery: 基于现有隐式评分公式（不加时间衰减，更符合“掌握”）
+        Double baseScore = baseMapper.getUserCourseBaseScore(userId, courseId);
+        double bahaviorMastery = Math.min(1.0, (baseScore == null ? 0.0 : baseScore) / BASE_SCORE_THRESHOLD); 
+
+        // 融合掌握度
+        double mastery = 0.7 * completionRate + 0.3 * bahaviorMastery;
         // 标记用户掌握这些知识点
-        knowledgeRepository.markUserMasteredBatch(userId, kpIds, 1.0);
+        knowledgeRepository.markUserMasteredBatch(userId, kpIds, mastery);
         // 刷新推荐缓存
         learningAnalysisService.refreshUserRecommendCache(userId);
     }

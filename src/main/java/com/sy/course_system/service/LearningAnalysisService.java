@@ -5,10 +5,6 @@ import java.util.List;
 import com.sy.course_system.vo.CourseVO;
 
 public interface LearningAnalysisService {
-    
-    Integer getMyTotalStudyTime();
-
-    List<Long> getMyLearnedCourses();
 
     void increaseCourseHot(Long courseId, double score);
 

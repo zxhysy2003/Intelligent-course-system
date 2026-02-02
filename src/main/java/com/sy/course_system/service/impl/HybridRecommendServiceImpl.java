@@ -22,7 +22,8 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     private RecommendService recommendService;
     @Autowired
     private CourseGraphRepository courseGraphRepository;
-
+    // TODO: 可以缓存用户推荐结果，提升性能
+    private static final String RECOMMEND_COURSE_KEY = "recommend:user:";
     /**
      * 融合推荐入口
      * CF推荐课程 + 图谱补齐路径

@@ -6,7 +6,7 @@ import org.springframework.web.util.WebUtils;
 
 import com.sy.course_system.common.UserContext;
 import com.sy.course_system.common.UserInfo;
-import com.sy.course_system.utils.JwtUtil;
+import com.sy.course_system.common.util.JwtUtil;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;

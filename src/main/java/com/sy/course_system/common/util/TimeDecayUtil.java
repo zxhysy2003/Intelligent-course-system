@@ -11,8 +11,9 @@ public class TimeDecayUtil {
         long days = Duration.between(behaviorTime, LocalDateTime.now()).toDays();
 
         if (days <= 7) return 1.0;
-        if (days <= 30) return 0.8;
-        if (days <= 90) return 0.5;
-        return 0.3;
+        if (days <= 30) return 0.85;
+        if (days <= 90) return 0.6;
+        if (days <= 180) return 0.4;
+        return 0.25;
     }
 }

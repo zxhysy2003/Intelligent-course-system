@@ -12,7 +12,20 @@ import com.sy.course_system.mapper.UserCourseRelationMapper;
 import com.sy.course_system.service.UserCourseService;
 
 @Service
-public class UserCourseServiceImpl extends ServiceImpl<UserCourseRelationMapper, UserCourseRelation> implements UserCourseService {
+public class UserCourseServiceImpl extends ServiceImpl<UserCourseRelationMapper, UserCourseRelation>
+        implements UserCourseService {
+
+    @Override
+    public int addStudyTimeAndUpdateProgress(Long userId, Long courseId, Integer duration, Integer totalSeconds,
+            LocalDateTime now) {
+        return baseMapper.addStudyTimeAndUpdateProgress(userId, courseId, duration, totalSeconds, now);
+    }
+
+    @Override
+    public int tryMarkFinished(Long userId, Long courseId, LocalDateTime now) {
+        return baseMapper.tryMarkFinished(userId, courseId, now);
+    }
+
     @Override
     public Integer updateUserCourseRelation(UserCourseRelation relation) {
         return baseMapper.updateUserCourseRelation(relation);
@@ -22,7 +35,7 @@ public class UserCourseServiceImpl extends ServiceImpl<UserCourseRelationMapper,
     public UserCourseRelation getUserCourseRelation(Long userId, Long courseId) {
         LambdaQueryWrapper<UserCourseRelation> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(UserCourseRelation::getUserId, userId)
-                    .eq(UserCourseRelation::getCourseId, courseId);
+                .eq(UserCourseRelation::getCourseId, courseId);
         return this.getOne(queryWrapper);
     }
 
@@ -32,7 +45,7 @@ public class UserCourseServiceImpl extends ServiceImpl<UserCourseRelationMapper,
         // 检查是否已存在关联关系
         LambdaQueryWrapper<UserCourseRelation> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(UserCourseRelation::getUserId, userId)
-                    .eq(UserCourseRelation::getCourseId, courseId);
+                .eq(UserCourseRelation::getCourseId, courseId);
         UserCourseRelation existingRelation = this.getOne(queryWrapper);
         if (existingRelation != null) {
             return false; // 已存在关联关系，返回false
@@ -53,6 +66,4 @@ public class UserCourseServiceImpl extends ServiceImpl<UserCourseRelationMapper,
         return true;
     }
 
-    
-    
 }
