@@ -58,6 +58,6 @@
             complete_time = IFNULL(complete_time, #{now})
         WHERE user_id = #{userId}
             AND course_id = #{courseId}
-            AND status <> 2
+            AND status &lt;&gt; 2
     </update>
 </mapper>

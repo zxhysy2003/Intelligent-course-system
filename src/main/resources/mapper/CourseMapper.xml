@@ -39,7 +39,7 @@
 
     <!-- selectCoursePage --> 
 
-    <select id="selectCoursePage" resultType="com.sy.course_system.dto.CourseTempDTO">
+    <select id="selectCoursePage" resultType="com.sy.course_system.dto.course.CourseTempDTO">
         SELECT
             c.id,
             c.title,
