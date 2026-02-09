@@ -177,5 +177,20 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         return null;
     }
 
+    @Override
+    public Map<Long, String> getCourseTitleMapByIds(List<Long> courseIds) {
+        Map<Long, String> result = new java.util.HashMap<>();
+        List<Course> courses = baseMapper.selectCourseNamesByIds(courseIds);
+        if (courses == null || courses.isEmpty()) {
+            return result;
+        }
+        for (Course course : courses) {
+            if (course != null && course.getId() != null) {
+                result.put(course.getId(), course.getTitle());
+            }
+        }
+        return result;
+    }
+
 
 }

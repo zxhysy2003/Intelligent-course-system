@@ -8,6 +8,9 @@ public class TimeDecayUtil {
      * 时间衰减（最近 7 天权重最高）
      */
     public static double decay(LocalDateTime behaviorTime) {
+
+        if(behaviorTime == null) return 1.0;
+        
         long days = Duration.between(behaviorTime, LocalDateTime.now()).toDays();
 
         if (days <= 7) return 1.0;

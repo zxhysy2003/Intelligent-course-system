@@ -15,30 +15,12 @@ public interface CourseGraphRepository extends Neo4jRepository<CourseNode, Long>
      // 课程知识点
      @Query("""
                MATCH (c:Course {id: $courseId})-[:HAS_KP]->(k:Knowledge)
-               RETURN DISTINCT k
+               RETURN DISTINCT k.id AS id, k.name AS name, k.difficulty AS difficulty
                ORDER BY coalesce(k.difficulty, 99), k.name
                """)
      List<KnowledgeNode> findCourseKnowledgePoints(
                @Param("courseId") Long courseId);
 
-     // 多跳路径
-     @Query("""
-               MATCH (u:User {id: $userId}),
-                     (c:Course {id: $courseId})-[:HAS_KP]->(k:Knowledge)
-               MATCH p = (k)-[:PRE_REQUIRES*1..3]->(pre:Knowledge)
-               // 路径上的所有先修节点,都要求 have < threshold 才纳入"待学习路径"
-               WHERE ALL(n IN nodes(p)[1..] WHERE
-                   coalesce( [(u)-[m:MASTERED]->(n) | m.score][0], 0.0 ) < $threshold
-                )
-               RETURN nodes(p) AS path
-               ORDER BY length(p), pre.difficulty
-               LIMIT $limit
-               """)
-     List<List<KnowledgeNode>> findLearningPaths(
-               @Param("userId") Long userId,
-               @Param("courseId") Long courseId,
-               @Param("threshold") Double threshold,
-               @Param("limit") int limit);
 
      @Query("""
                    MATCH (u:User {id: $userId})

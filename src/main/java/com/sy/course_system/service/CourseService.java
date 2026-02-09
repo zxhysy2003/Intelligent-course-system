@@ -1,6 +1,8 @@
 package com.sy.course_system.service;
 
 import java.util.List;
+import java.util.Map;
+
 import com.sy.course_system.common.PageResult;
 import com.sy.course_system.dto.course.CourseAdminQueryDTO;
 import com.sy.course_system.dto.course.CourseQueryDTO;
@@ -26,6 +28,9 @@ public interface CourseService {
 
     // ===== 根据课程id获取课程详情 =====
     CourseDetailVO getCourseByIdForUser(Long courseId);
+
+    // ===== 根据课程id列表获取课程标题列表 =====
+    Map<Long, String> getCourseTitleMapByIds(List<Long> courseIds);
 
     // ===============================================================
 

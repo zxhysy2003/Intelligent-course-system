@@ -141,4 +141,15 @@
             </if>
         </where>
     </select>    
+
+    <!-- selectCourseNamesByIds --> 
+
+    <select id="selectCourseNamesByIds" resultType="com.sy.course_system.entity.Course">
+        SELECT id, title
+        FROM course
+        WHERE id IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
 </mapper>

@@ -4,6 +4,7 @@ import java.util.List;
 
 public class HybridRecommendItemDTO {
     private Long courseId;
+    private String title;
     private Double cfScore; // 协同过滤分数
     private Double readiness; // 课程准备度
     private Double finalScore; // 融合后分数
@@ -18,11 +19,12 @@ public class HybridRecommendItemDTO {
     public HybridRecommendItemDTO() {
     }
 
-    public HybridRecommendItemDTO(Long courseId, Double cfScore, Double readiness, Double finalScore,
+    public HybridRecommendItemDTO(Long courseId, String title, Double cfScore, Double readiness, Double finalScore,
                                   List<KnowledgeBriefDTO> knowledgePoints,
                                   List<KnowledgeMasteryDTO> missingPrerequisitesMastery,
                                   List<List<KnowledgeBriefDTO>> learningPaths) {
         this.courseId = courseId;
+        this.title = title;
         this.cfScore = cfScore;
         this.readiness = readiness;
         this.finalScore = finalScore;
@@ -37,6 +39,14 @@ public class HybridRecommendItemDTO {
 
     public void setCourseId(Long courseId) {
         this.courseId = courseId;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
     }
 
     public Double getCfScore() {

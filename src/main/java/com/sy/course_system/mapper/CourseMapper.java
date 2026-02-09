@@ -36,4 +36,7 @@ public interface CourseMapper extends BaseMapper<Course> {
     List<Long> selectKnowledgePointIdsByCourseId(@Param("courseId") Long courseId);
 
     
+    List<Course> selectCourseNamesByIds(@Param("courseIds") List<Long> courseIds);
+
+    
 }
