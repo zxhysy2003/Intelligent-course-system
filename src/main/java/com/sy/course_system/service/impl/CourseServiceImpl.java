@@ -21,6 +21,7 @@ import com.sy.course_system.dto.course.CourseRegisterDTO;
 import com.sy.course_system.dto.course.CourseTempDTO;
 import com.sy.course_system.dto.course.CourseUpdateDTO;
 import com.sy.course_system.entity.Course;
+import com.sy.course_system.entity.Knowledge;
 import com.sy.course_system.mapper.CourseMapper;
 import com.sy.course_system.mapper.mapperStruct.CourseMapperStruct;
 import com.sy.course_system.repository.CourseNodeRepository;
@@ -30,6 +31,7 @@ import com.sy.course_system.service.VideoService;
 import com.sy.course_system.vo.CourseAdminVO;
 import com.sy.course_system.vo.CourseDetailVO;
 import com.sy.course_system.vo.CourseVO;
+import com.sy.course_system.vo.KnowledgeVO;
 
 @Service
 public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> implements CourseService {
@@ -99,6 +101,15 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     @Override
     public List<Long> getKnowledgePointIdsByCourseId(Long courseId) {
         return baseMapper.selectKnowledgePointIdsByCourseId(courseId);
+    }
+
+    @Override
+    public List<CourseDetailVO> getCourseDetailsByKnowledgePointId(Long kpId) {
+        List<Course> courses = baseMapper.selectCoursesByKnowledgePointId(kpId);
+        if (courses == null || courses.isEmpty()) {
+            return null;
+        }
+        return CourseMapperStruct.INSTANCE.toDetailVOs(courses);
     }
 
     // ===== 后台课程管理 =====
@@ -190,6 +201,24 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
             }
         }
         return result;
+    }
+
+    @Override
+    public List<KnowledgeVO> getKnowledgePointsByCourseId(Long courseId) {
+        List<Knowledge> knowledgePoints = baseMapper.selectKnowledgePointsByCourseId(courseId);
+        if (knowledgePoints == null || knowledgePoints.isEmpty()) {
+            return null;
+        }
+        return knowledgePoints.stream()
+                .map(kp -> {
+                    KnowledgeVO vo = new KnowledgeVO();
+                    vo.setId(kp.getId());
+                    vo.setName(kp.getName());
+                    vo.setDifficulty(kp.getDifficulty());
+                    return vo;
+                })
+                .collect(Collectors.toList());
+        
     }
 
 

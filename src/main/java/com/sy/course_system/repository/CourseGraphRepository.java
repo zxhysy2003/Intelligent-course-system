@@ -7,6 +7,8 @@ import org.springframework.data.neo4j.repository.query.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.sy.course_system.dto.recommend.CourseReadinessDTO;
+import com.sy.course_system.dto.graph.KnowledgeGraphLinkDTO;
+import com.sy.course_system.dto.graph.KnowledgeGraphNodeDTO;
 import com.sy.course_system.graph.node.CourseNode;
 import com.sy.course_system.graph.node.KnowledgeNode;
 
@@ -56,5 +58,68 @@ public interface CourseGraphRepository extends Neo4jRepository<CourseNode, Long>
      List<CourseReadinessDTO> getCourseReadinessBatch(@Param("userId") Long userId,
                @Param("courseIds") List<Long> courseIds,
                @Param("threshold") Double threshold);
+
+     // 课程知识点节点 + 掌握度
+     @Query("""
+               MATCH (c:Course {id: $courseId})
+               MATCH (u:User {id: $userId})
+               CALL {
+                   WITH c, u
+                   MATCH (c)-[:HAS_KP]->(k:Knowledge)
+                   OPTIONAL MATCH (u)-[m:MASTERED]->(k)
+                   RETURN k.id AS kpId,
+                          k.name AS name,
+                          k.difficulty AS difficulty,
+                          coalesce(m.score, 0.0) AS mastery,
+                          true AS inCourse,
+                          0 AS depth
+                   UNION
+                   WITH c, u
+                   MATCH (c)-[:HAS_KP]->(k:Knowledge)
+                   MATCH p = (k)-[:PRE_REQUIRES*1..]->(pre:Knowledge)
+                   WHERE length(p) <= $depth
+                   WITH pre, min(length(p)) AS d
+                   OPTIONAL MATCH (u)-[m:MASTERED]->(pre)
+                   RETURN pre.id AS kpId,
+                          pre.name AS name,
+                          pre.difficulty AS difficulty,
+                          coalesce(m.score, 0.0) AS mastery,
+                           false AS inCourse,
+                           d AS depth
+               }
+               WITH kpId,
+                    head(collect(name)) AS name,
+                    head(collect(difficulty)) AS difficulty,
+                    max(mastery) AS mastery,
+                    max(CASE WHEN inCourse THEN 1 ELSE 0 END) AS inCourseFlag,
+                    min(depth) AS minDepth
+               RETURN kpId,
+                      name,
+                      difficulty,
+                      mastery,
+                      CASE WHEN inCourseFlag = 1 THEN true ELSE false END AS inCourse,
+                      CASE WHEN inCourseFlag = 1 THEN 0 ELSE minDepth END AS depth
+               ORDER BY inCourse DESC, depth ASC, coalesce(difficulty, 99), name
+               """)
+     List<KnowledgeGraphNodeDTO> findKnowledgeGraphNodes(
+               @Param("courseId") Long courseId,
+               @Param("userId") Long userId,
+               @Param("depth") int depth);
+
+     // 课程内知识点之间的先修关系
+     @Query("""
+               MATCH (c:Course {id: $courseId})-[:HAS_KP]->(k:Knowledge)
+               OPTIONAL MATCH p = (k)-[:PRE_REQUIRES*1..]->(pre:Knowledge)
+               WHERE length(p) <= $depth
+               WITH collect(DISTINCT k) + collect(DISTINCT pre) AS nodes
+               UNWIND nodes AS n
+               MATCH (n)-[:PRE_REQUIRES]->(m)
+               WHERE m IN nodes
+               RETURN DISTINCT n.id AS sourceId,
+                               m.id AS targetId
+               """)
+     List<KnowledgeGraphLinkDTO> findKnowledgeGraphLinks(
+               @Param("courseId") Long courseId,
+               @Param("depth") int depth);
 
 }

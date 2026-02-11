@@ -1,7 +1,10 @@
 package com.sy.course_system.mapper.mapperStruct;
 
+import java.util.List;
+
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.NullValueMappingStrategy;
 import org.mapstruct.factory.Mappers;
 
 import com.sy.course_system.dto.course.CourseRegisterDTO;
@@ -10,7 +13,7 @@ import com.sy.course_system.entity.Course;
 import com.sy.course_system.vo.CourseDetailVO;
 import com.sy.course_system.vo.CourseVO;
 
-@Mapper(componentModel = "spring")
+@Mapper(componentModel = "spring", nullValueMappingStrategy = NullValueMappingStrategy.RETURN_DEFAULT)
 public interface CourseMapperStruct {
     CourseMapperStruct INSTANCE = Mappers.getMapper(CourseMapperStruct.class);
 
@@ -26,4 +29,6 @@ public interface CourseMapperStruct {
     CourseVO tempToVO(CourseTempDTO tempDTO);
 
     CourseDetailVO toDetailVO(Course course);
+
+    List<CourseDetailVO> toDetailVOs(List<Course> courses);
 }

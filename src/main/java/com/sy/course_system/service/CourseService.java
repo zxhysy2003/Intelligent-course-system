@@ -12,6 +12,7 @@ import com.sy.course_system.enums.CourseStatus;
 import com.sy.course_system.vo.CourseAdminVO;
 import com.sy.course_system.vo.CourseDetailVO;
 import com.sy.course_system.vo.CourseVO;
+import com.sy.course_system.vo.KnowledgeVO;
 
 public interface CourseService {
     // ===== 课程注册 =====
@@ -19,6 +20,12 @@ public interface CourseService {
 
     // ===== 课程-知识点 关联查询 =====
     List<Long> getKnowledgePointIdsByCourseId(Long courseId);
+
+    // ===== 根据课程id列表获取课程知识点列表 =====
+    List<KnowledgeVO> getKnowledgePointsByCourseId(Long courseId);
+
+    // ===== 根据知识点id获取课程详情集合 =====
+    List<CourseDetailVO> getCourseDetailsByKnowledgePointId(Long kpId);
 
     // ===== 前台课程池 =====
     PageResult<CourseVO> pageForUser(CourseQueryDTO queryDTO);

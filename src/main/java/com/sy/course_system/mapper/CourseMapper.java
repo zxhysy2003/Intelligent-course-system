@@ -13,6 +13,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sy.course_system.dto.course.CourseQueryDTO;
 import com.sy.course_system.dto.course.CourseTempDTO;
 import com.sy.course_system.entity.Course;
+import com.sy.course_system.entity.Knowledge;
 
 @Mapper
 public interface CourseMapper extends BaseMapper<Course> {
@@ -35,8 +36,24 @@ public interface CourseMapper extends BaseMapper<Course> {
             """)
     List<Long> selectKnowledgePointIdsByCourseId(@Param("courseId") Long courseId);
 
+    @Select("""
+            SELECT *
+            FROM knowledge_point kp
+            JOIN course_knowledge_point ckp ON kp.id = ckp.kp_id
+            WHERE ckp.course_id = #{courseId} AND kp.status = 1
+            """)
+    List<Knowledge> selectKnowledgePointsByCourseId(@Param("courseId") Long courseId);
+
     
     List<Course> selectCourseNamesByIds(@Param("courseIds") List<Long> courseIds);
+
+    @Select("""
+            SELECT c.*
+            FROM course c
+            JOIN course_knowledge_point ckp ON c.id = ckp.course_id
+            WHERE ckp.kp_id = #{kpId} AND c.status = 1
+            """)
+    List<Course> selectCoursesByKnowledgePointId(@Param("kpId") Long kpId);
 
     
 }

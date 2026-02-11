@@ -9,6 +9,8 @@ import com.sy.course_system.mapper.CategoryMapper;
 import com.sy.course_system.vo.CategoryVO;
 import com.sy.course_system.vo.CourseDetailVO;
 import com.sy.course_system.vo.CourseVO;
+import com.sy.course_system.vo.KnowledgeVO;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -45,6 +47,25 @@ public class CourseController {
         return Result.success(courseDetailVO);
     }
 
+    // 根据知识点id获取课程详情集合
+    @GetMapping("/by-kp")
+    public Result<List<CourseDetailVO>> getCourseDetailsByKnowledgePointId(@RequestParam Long kpId) {
+        List<CourseDetailVO> courseDetails = courseService.getCourseDetailsByKnowledgePointId(kpId);
+        if (courseDetails == null || courseDetails.isEmpty()) {
+            return Result.error(404, "未找到对应课程。");
+        }
+        return Result.success(courseDetails);
+    }
+    // 根据课程id获取课程关联的知识点列表
+    @GetMapping("/by-c")
+    public Result<List<KnowledgeVO>> getKnowledgePointsByCourseId(@RequestParam Long courseId) {
+        List<KnowledgeVO> knowledgePoints = courseService.getKnowledgePointsByCourseId(courseId);
+        if (knowledgePoints == null || knowledgePoints.isEmpty()) {
+            return Result.error(404, "未找到对应知识点。");
+        }
+        return Result.success(knowledgePoints);
+    }
+
     // 课程列表（分页+条件）
     @PostMapping("/list")
     public Result<PageResult<CourseVO>> list(@RequestBody CourseQueryDTO queryDTO) {
@@ -62,9 +83,9 @@ public class CourseController {
         }).toList());
     }
 
-    // 用户添加课程
+    // 用户注册课程
     @GetMapping("/attend/{courseId}")
-    public Result<Boolean> UserAttendCourse(@PathVariable Long courseId) {
+    public Result<Boolean> userAttendCourse(@PathVariable Long courseId) {
         Boolean status = userCourseService.userAttendCourse(courseId);
         if (!status) {
             return Result.error(400,"用户已添加过该课程。");
