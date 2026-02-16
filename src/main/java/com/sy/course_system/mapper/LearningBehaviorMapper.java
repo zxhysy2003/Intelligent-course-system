@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.sy.course_system.dto.ProgressDailyPointDTO;
 import com.sy.course_system.dto.recommend.UserCourseBaseScoreDTO;
 import com.sy.course_system.entity.LearningBehavior;
 
@@ -13,6 +14,21 @@ import com.sy.course_system.entity.LearningBehavior;
 
 @Mapper
 public interface LearningBehaviorMapper extends BaseMapper<LearningBehavior> {
+
+    // 按天汇总用户最近 N 天的学习时长与活跃课程数。
+    @Select("""
+            SELECT
+                DATE_FORMAT(lb.create_time, '%Y-%m-%d') AS day,
+                COALESCE(SUM(CASE WHEN lb.behavior_type = 'STUDY' THEN lb.duration ELSE 0 END), 0) AS study_seconds,
+                COUNT(DISTINCT lb.course_id) AS active_courses
+            FROM learning_behavior lb
+            WHERE lb.user_id = #{userId}
+              AND lb.create_time >= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+            GROUP BY day
+            ORDER BY day
+            """)
+    List<ProgressDailyPointDTO> listDailyProgress(@Param("userId") Long userId,
+            @Param("days") Integer days);
 
     // 聚合用户课程分数
     // 计算公式：基础分值 * 衰减系数(业务层计算)
