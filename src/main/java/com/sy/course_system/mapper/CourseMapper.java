@@ -14,6 +14,7 @@ import com.sy.course_system.dto.course.CourseQueryDTO;
 import com.sy.course_system.dto.course.CourseTempDTO;
 import com.sy.course_system.entity.Course;
 import com.sy.course_system.entity.Knowledge;
+import com.sy.course_system.entity.Tag;
 
 @Mapper
 public interface CourseMapper extends BaseMapper<Course> {
@@ -21,6 +22,8 @@ public interface CourseMapper extends BaseMapper<Course> {
 
     void insertCourseCategoryRelations(@Param("id") Long id, @Param("categoryIds") List<Integer> categoryIds);
 
+    void insertCourseTagRelations(@Param("id") Long id, @Param("tagMap") Map<Integer, Tag> tagMap);
+    
     Map<Long, Integer> countStudyByCourseIds(@Param("courseIds") List<Long> courseIds);
 
     Map<Long, Integer> countProgressByCourseIds(@Param("courseIds") List<Long> courseIds);
@@ -54,6 +57,8 @@ public interface CourseMapper extends BaseMapper<Course> {
             WHERE ckp.kp_id = #{kpId} AND c.status = 1
             """)
     List<Course> selectCoursesByKnowledgePointId(@Param("kpId") Long kpId);
+
+    int updateCourseStatusByBatchIds(@Param("courseIds") List<Long> courseIds, @Param("status") Integer status);
 
     
 }

@@ -11,8 +11,8 @@ public interface CourseNodeRepository extends Neo4jRepository<CourseNode, Long> 
     
     @Query("""
             MERGE (c:Course {id: $courseId})
-            ON CREATE SET c.name = $courseName
+            ON CREATE SET c.title = $title
             """)
-    void createCourse(Long courseId, String courseName);
+    void createCourse(Long courseId, String title);
     
 }

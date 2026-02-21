@@ -102,6 +102,7 @@
         ) tag ON tag.course_id = c.id
 
         <where>
+            AND c.status = 1
             <!-- 课程标题模糊查询 -->
             <if test="dto.keyword != null and dto.keyword != ''">
                 AND c.title LIKE CONCAT('%', #{dto.keyword}, '%')
@@ -127,6 +128,7 @@
         FROM course c
         LEFT JOIN course_category_relation cc ON c.id = cc.course_id
         <where>
+            AND c.status = 1
             <!-- 课程标题模糊查询 -->
             <if test="dto.keyword != null and dto.keyword != ''">
                 AND c.title LIKE CONCAT('%', #{dto.keyword}, '%')
@@ -152,4 +154,25 @@
             #{id}
         </foreach>
     </select>
+
+    <!-- insertCourseTagRelations --> 
+
+    <insert id="insertCourseTagRelations">
+        INSERT INTO course_tag (course_id, tag_id, tag_name)
+        VALUES
+        <foreach collection="tagMap" item="tag" index="tagId" separator=",">
+            (#{id}, #{tagId}, #{tag.name})
+        </foreach>
+    </insert>
+
+    <!-- updateCourseStatusByBatchIds --> 
+
+    <update id="updateCourseStatusByBatchIds">
+        UPDATE course
+        SET status = #{status}
+        WHERE id IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </update>
 </mapper>

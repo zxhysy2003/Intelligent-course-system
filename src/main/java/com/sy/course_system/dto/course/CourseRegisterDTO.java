@@ -8,7 +8,8 @@ public class CourseRegisterDTO {
     private String coverUrl;
     private Integer difficulty;
     private Integer duration; // 课程时长，单位：分钟
-    private List<Integer> categoryIds;
+    private Integer categoryId; // 课程分类ID
+    private List<Integer> tagIds; // 课程标签ID列表
     
     public String getTitle() {
         return title;
@@ -40,12 +41,21 @@ public class CourseRegisterDTO {
     public void setDuration(Integer duration) {
         this.duration = duration;
     }
-    public List<Integer> getCategoryIds() {
-        return categoryIds;
+    public Integer getCategoryId() {
+        return categoryId;
     }
-    public void setCategoryIds(List<Integer> categoryIds) {
-        this.categoryIds = categoryIds;
+    public void setCategoryId(Integer categoryId) {
+        this.categoryId = categoryId;
     }
+    public List<Integer> getTagIds() {
+        return tagIds;
+    }
+    public void setTagIds(List<Integer> tagIds) {
+        this.tagIds = tagIds;
+    }
+
+    
+    
 
     
 }

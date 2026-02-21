@@ -1,5 +1,6 @@
 package com.sy.course_system.service.impl;
 
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -22,16 +23,19 @@ import com.sy.course_system.dto.course.CourseTempDTO;
 import com.sy.course_system.dto.course.CourseUpdateDTO;
 import com.sy.course_system.entity.Course;
 import com.sy.course_system.entity.Knowledge;
+import com.sy.course_system.entity.Tag;
 import com.sy.course_system.mapper.CourseMapper;
 import com.sy.course_system.mapper.mapperStruct.CourseMapperStruct;
 import com.sy.course_system.repository.CourseNodeRepository;
 import com.sy.course_system.service.CourseService;
+import com.sy.course_system.service.CourseTagService;
 import com.sy.course_system.service.LearningAnalysisService;
 import com.sy.course_system.service.VideoService;
 import com.sy.course_system.vo.CourseAdminVO;
 import com.sy.course_system.vo.CourseDetailVO;
 import com.sy.course_system.vo.CourseVO;
 import com.sy.course_system.vo.KnowledgeVO;
+
 
 @Service
 public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> implements CourseService {
@@ -43,6 +47,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
     @Autowired
     private VideoService videoService;
+
+    @Autowired
+    private CourseTagService courseTagService;
 
     // ===== 前台课程池 =====
     @Override
@@ -124,16 +131,23 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
             return -1; // 课程已存在
         }
 
+        if (registerDTO.getCategoryId() == null || registerDTO.getTagIds() == null || registerDTO.getTagIds().isEmpty()) {
+            throw new IllegalArgumentException("categoryId or tagIds is empty");
+        }
+
+        Map<Integer, Tag> tagMap = courseTagService.getTagMapByIds(registerDTO.getTagIds());
+        if (tagMap == null || tagMap.isEmpty()) {
+            throw new IllegalArgumentException("Invalid tagIds");
+        }
+
         Course course = CourseMapperStruct.INSTANCE.toEntity(registerDTO);
 
         this.save(course);
 
-        if (registerDTO.getCategoryIds() == null || registerDTO.getCategoryIds().isEmpty()) {
-            return null;
-        }
         // 关联课程分类
-        baseMapper.insertCourseCategoryRelations(course.getId(), registerDTO.getCategoryIds());
-
+        baseMapper.insertCourseCategoryRelations(course.getId(), Collections.singletonList(registerDTO.getCategoryId()));
+        // 关联课程标签
+        baseMapper.insertCourseTagRelations(course.getId(), tagMap);
         // 创建课程知识图谱根节点
         courseNodeRepository.createCourse(course.getId(), course.getTitle());
 
@@ -161,9 +175,13 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     }
 
     @Override
-    public boolean delete(Long courseId) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'delete'");
+    public boolean removeCourses(List<Long> courseIds) {
+        if (courseIds == null || courseIds.isEmpty()) {
+            return false;
+        }
+        // 逻辑删除课程
+        int result = baseMapper.updateCourseStatusByBatchIds(courseIds, CourseStatus.OFFLINE.getCode());
+        return result > 0;
     }
 
     @Override

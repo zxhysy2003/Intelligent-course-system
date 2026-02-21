@@ -36,3 +36,8 @@ mybatis-plus:
 recommend:
   service:
     url: http://localhost:8000
+
+logging:
+  level:
+    org.springframework.transaction: DEBUG
+    org.springframework.jdbc.datasource.DataSourceTransactionManager: DEBUG

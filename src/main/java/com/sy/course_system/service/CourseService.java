@@ -51,7 +51,7 @@ public interface CourseService {
     boolean changeStatus(Long courseId, CourseStatus status);
 
     // ===== 课程删除（逻辑删除）=====
-    boolean delete(Long courseId);
+    boolean removeCourses(List<Long> courseIds);
 
     // ===== 课程-知识点 关联绑定 =====
     boolean bindKnowledgePoints(Long courseId, List<Long> knowledgePointIds);

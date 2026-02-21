@@ -199,8 +199,16 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
                     WHERE ALL(n IN nodes(p)[1..] WHERE
                         coalesce( [(u)-[m:MASTERED]->(n) | m.score][0], 0.0 ) < $threshold
                     )
-                    RETURN [n IN reverse(nodes(p)) | {id:n.id, name:n.name, difficulty:n.difficulty}] AS path
-                    ORDER BY length(p), pre.difficulty
+                    WITH reverse(nodes(p)) AS nodes
+                    WITH collect(nodes) AS nodePaths
+                    UNWIND nodePaths AS nodes
+                    WITH nodes, nodePaths
+                    WHERE NOT any(other IN nodePaths WHERE
+                        size(other) > size(nodes)
+                        AND all(i IN range(0, size(nodes) - 1) WHERE nodes[i].id = other[i].id)
+                    )
+                    RETURN [n IN nodes | {id:n.id, name:n.name, difficulty:n.difficulty}] AS path
+                    ORDER BY size(nodes), nodes[0].difficulty
                     LIMIT $limit
                 """;
 
