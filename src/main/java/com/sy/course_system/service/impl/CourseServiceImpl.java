@@ -36,6 +36,7 @@ import com.sy.course_system.service.CourseTagService;
 import com.sy.course_system.service.LearningAnalysisService;
 import com.sy.course_system.service.VideoService;
 import com.sy.course_system.vo.CourseDetailVO;
+import com.sy.course_system.vo.CourseUpdateVO;
 import com.sy.course_system.vo.CourseVO;
 import com.sy.course_system.vo.KnowledgeVO;
 
@@ -259,9 +260,14 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         if (courses == null || courses.isEmpty()) {
             return -1; // 课程不存在
         }
-        // 2. 逻辑删除课程
-        Integer result = baseMapper.updateCourseStatusByBatchIds(courseIds, CourseStatus.OFFLINE.getCode());
-        
+        // 2. 物理删除课程
+        Integer result = this.removeByIds(courseIds) ? courseIds.size() : 0;
+        // 3. 批量删除 MySQL 关联关系
+        baseMapper.deleteCourseCategoryRelationsByCourseIds(courseIds); // 删除课程分类关联
+        baseMapper.deleteCourseTagRelationsByCourseIds(courseIds); // 删除课程标签关联
+        baseMapper.deleteCourseKnowledgePointRelationsByCourseIds(courseIds); // 删除课程知识点关联
+        // 4. 批量删除 Neo4j 课程节点和关系
+        courseNodeRepository.deleteCourseGraphs(courseIds);
         return result;
     }
 
@@ -332,6 +338,35 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         }
         course.setDuration(durationSeconds);
         return this.updateById(course);
+    }
+
+    @Override
+    public CourseUpdateVO getCourseDetailForAdmin(Long courseId) {
+        Course course = this.getById(courseId);
+        if (course == null) {
+            return null;
+        }
+        
+        List<Long> tagIds = baseMapper.selectTagIdsByCourseId(courseId);
+        List<TagOptionDTO> tags = tagMapper.listEnabledTagOptionsByIds(tagIds);
+        List<Long> kpIds = baseMapper.selectKnowledgePointIdsByCourseId(courseId);
+        List<KnowledgePointOptionDTO> knowledgePoints = knowledgePointMapper.listEnabledKnowledgePointOptionsByIds(kpIds);
+
+        CourseRegisterOptionsDTO options = new CourseRegisterOptionsDTO();
+        options.setTags(tags);
+        options.setKnowledgePoints(knowledgePoints);
+
+        CourseUpdateVO vo = new CourseUpdateVO();
+        vo.setId(course.getId());
+        vo.setTitle(course.getTitle());
+        vo.setDescription(course.getDescription());
+        vo.setCoverUrl(course.getCoverUrl());
+        vo.setDifficulty(course.getDifficulty());
+        vo.setDuration(course.getDuration());
+        vo.setCategoryId(baseMapper.selectCategoryIdByCourseId(courseId));
+        vo.setOptions(options);
+        return vo;
+        
     }
 
 

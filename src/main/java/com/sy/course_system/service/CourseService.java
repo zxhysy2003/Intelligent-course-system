@@ -9,6 +9,7 @@ import com.sy.course_system.dto.course.CourseQueryDTO;
 import com.sy.course_system.dto.course.CourseRegisterDTO;
 import com.sy.course_system.dto.course.CourseUpdateDTO;
 import com.sy.course_system.vo.CourseDetailVO;
+import com.sy.course_system.vo.CourseUpdateVO;
 import com.sy.course_system.vo.CourseVO;
 import com.sy.course_system.vo.KnowledgeVO;
 
@@ -50,9 +51,12 @@ public interface CourseService {
     // ===== 课程删除（逻辑删除）=====
     Integer removeCourses(List<Long> courseIds);
 
+    // ===== 课程上下架 =====
     Boolean updateCourseStatus(Long courseId, Integer status);
 
+    // ===== 课程时长更新 =====
     Boolean updateCourseDuration(Long courseId, Integer durationSeconds);
 
+    CourseUpdateVO getCourseDetailForAdmin(Long courseId);
 
 }

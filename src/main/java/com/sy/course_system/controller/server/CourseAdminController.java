@@ -23,6 +23,7 @@ import com.sy.course_system.enums.CourseStatus;
 import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.VideoService;
 import com.sy.course_system.vo.CourseDetailVO;
+import com.sy.course_system.vo.CourseUpdateVO;
 
 @RestController
 @RequestMapping("admin/course")
@@ -124,6 +125,34 @@ public class CourseAdminController {
         }
     }
 
-    
+    @GetMapping("/detail/{courseId}")
+    public Result<CourseUpdateVO> getCourseDetail(@PathVariable Long courseId) {
+        CourseUpdateVO courseUpdateVO = courseService.getCourseDetailForAdmin(courseId);
+        if (courseUpdateVO == null) {
+            return Result.error(404, "课程不存在");
+        }
+        return Result.success(courseUpdateVO);
+    }
+
+    /**
+    * 课程上下架
+    * @param courseId 课程 ID
+    * @param status 目标状态（0=草稿，1=上线，2=下架）
+    * @return 操作结果，成功返回提示信息，失败返回对应错误信息
+    */
+    @PutMapping("/status/{courseId}")
+    public Result<String> updateCourseStatus(@PathVariable Long courseId, @RequestParam Integer status) {
+        try {
+            boolean updated = courseService.updateCourseStatus(courseId, status);
+            if (!updated) {
+                return Result.error(404, "课程不存在");
+            }
+            return Result.success("操作成功");
+        } catch (IllegalArgumentException ex) {
+            return Result.error(400, ex.getMessage());
+        } catch (RuntimeException ex) {
+            return Result.error(500, "操作失败");
+        }
+    }
 
 }

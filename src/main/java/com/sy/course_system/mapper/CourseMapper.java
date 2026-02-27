@@ -92,5 +92,25 @@ public interface CourseMapper extends BaseMapper<Course> {
     void deleteCourseTagRelations(@Param("courseId") Long courseId);
 
     void deleteCourseKnowledgePointRelations(@Param("courseId") Long courseId);
+
+        void deleteCourseCategoryRelationsByCourseIds(@Param("courseIds") List<Long> courseIds);
+
+        void deleteCourseTagRelationsByCourseIds(@Param("courseIds") List<Long> courseIds);
+
+        void deleteCourseKnowledgePointRelationsByCourseIds(@Param("courseIds") List<Long> courseIds);
+
+    @Select("""
+            SELECT tag_id
+            FROM course_tag
+            WHERE course_id = #{courseId}
+            """)
+    List<Long> selectTagIdsByCourseId(@Param("courseId") Long courseId);
+
+    @Select("""
+            SELECT category_id
+            FROM course_category_relation
+            WHERE course_id = #{courseId}
+            """)
+    Integer selectCategoryIdByCourseId(@Param("courseId") Long courseId);
     
 }

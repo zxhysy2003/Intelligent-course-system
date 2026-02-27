@@ -185,4 +185,28 @@
         DELETE FROM course_knowledge_point
         WHERE course_id = #{courseId}
     </delete>
+
+    <delete id="deleteCourseCategoryRelationsByCourseIds">
+        DELETE FROM course_category_relation
+        WHERE course_id IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+    <delete id="deleteCourseTagRelationsByCourseIds">
+        DELETE FROM course_tag
+        WHERE course_id IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+    <delete id="deleteCourseKnowledgePointRelationsByCourseIds">
+        DELETE FROM course_knowledge_point
+        WHERE course_id IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
 </mapper>

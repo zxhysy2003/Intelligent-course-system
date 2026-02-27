@@ -19,4 +19,6 @@ public interface TagMapper extends BaseMapper<Tag> {
             ORDER BY type, name
             """)
     List<TagOptionDTO> listEnabledTagOptions();
+
+    List<TagOptionDTO> listEnabledTagOptionsByIds(List<Long> tagIds);
 }

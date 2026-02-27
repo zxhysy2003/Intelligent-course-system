@@ -39,4 +39,16 @@ public interface CourseNodeRepository extends Neo4jRepository<CourseNode, Long> 
             """)
     void clearKnowledgePoints(Long courseId);
     
+    @Query("""
+            MATCH (c:Course {id: $courseId})
+            DETACH DELETE c
+            """)
+    void deleteCourseGraph(Long courseId);
+
+    @Query("""
+            UNWIND $courseIds AS courseId
+            MATCH (c:Course {id: courseId})
+            DETACH DELETE c
+            """)
+    void deleteCourseGraphs(List<Long> courseIds);
 }
