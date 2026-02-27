@@ -12,6 +12,7 @@ import com.sy.course_system.vo.CourseVO;
 import com.sy.course_system.vo.KnowledgeVO;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -36,6 +37,9 @@ public class CourseController {
 
     @Autowired
     private UserCourseService userCourseService;
+
+    @Value("${app.video.base-url}")
+    private String videoBaseUrl;
 
     // 根据课程id获取课程详情
     @GetMapping("/{courseId}")
@@ -96,12 +100,20 @@ public class CourseController {
     // 获取课程视频地址
     @GetMapping("/video/{courseId}")
     public Result<String> getCourseVideo(@PathVariable Long courseId) {
-        // 拼接完整视频URL
         String videoPath = courseService.getCourseVideoPath(courseId);
         if (videoPath == null || videoPath.isEmpty()) {
             return Result.error(404, "课程视频未找到。");
         }
-        String videoUrl = "http://localhost:8080/" + videoPath + ".mp4";
+        String normalized = videoPath;
+        if (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        String videoUrl;
+        if (normalized.contains(".")) {
+            videoUrl = videoBaseUrl + "/videos/" + normalized;
+        } else {
+            videoUrl = videoBaseUrl + "/videos/" + normalized + ".mp4";
+        }
         return Result.success(videoUrl);
     }
 

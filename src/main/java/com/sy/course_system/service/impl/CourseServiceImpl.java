@@ -16,22 +16,25 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sy.course_system.common.PageResult;
 import com.sy.course_system.common.UserContext;
-import com.sy.course_system.dto.course.CourseAdminQueryDTO;
+import com.sy.course_system.dto.course.CourseRegisterOptionsDTO;
 import com.sy.course_system.dto.course.CourseQueryDTO;
 import com.sy.course_system.dto.course.CourseRegisterDTO;
 import com.sy.course_system.dto.course.CourseTempDTO;
 import com.sy.course_system.dto.course.CourseUpdateDTO;
+import com.sy.course_system.dto.course.KnowledgePointOptionDTO;
+import com.sy.course_system.dto.course.TagOptionDTO;
 import com.sy.course_system.entity.Course;
 import com.sy.course_system.entity.Knowledge;
 import com.sy.course_system.entity.Tag;
 import com.sy.course_system.mapper.CourseMapper;
+import com.sy.course_system.mapper.KnowledgePointMapper;
+import com.sy.course_system.mapper.TagMapper;
 import com.sy.course_system.mapper.mapperStruct.CourseMapperStruct;
 import com.sy.course_system.repository.CourseNodeRepository;
 import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.CourseTagService;
 import com.sy.course_system.service.LearningAnalysisService;
 import com.sy.course_system.service.VideoService;
-import com.sy.course_system.vo.CourseAdminVO;
 import com.sy.course_system.vo.CourseDetailVO;
 import com.sy.course_system.vo.CourseVO;
 import com.sy.course_system.vo.KnowledgeVO;
@@ -50,6 +53,23 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
     @Autowired
     private CourseTagService courseTagService;
+
+    @Autowired
+    private TagMapper tagMapper;
+    
+    @Autowired
+    private KnowledgePointMapper knowledgePointMapper;
+
+    @Override
+    public CourseRegisterOptionsDTO getRegisterOptions() {
+        List<TagOptionDTO> tags = tagMapper.listEnabledTagOptions();
+        List<KnowledgePointOptionDTO> knowledgePoints = knowledgePointMapper.listEnabledKnowledgePointOptions();
+
+        CourseRegisterOptionsDTO dto = new CourseRegisterOptionsDTO();
+        dto.setTags(tags);
+        dto.setKnowledgePoints(knowledgePoints);
+        return dto;
+    }
 
     // ===== 前台课程池 =====
     @Override
@@ -121,18 +141,23 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
     // ===== 后台课程管理 =====
 
+    /**
+     * 课程注册
+     * @param registerDTO 注册信息，包含课程的相关信息
+     * @return 返回注册结果，成功返回提示信息，失败返回对应错误信息
+     */
     @Override
     @Transactional(transactionManager = "transactionManager")
-    public Integer register(CourseRegisterDTO registerDTO) {
+    public Long register(CourseRegisterDTO registerDTO) {
         QueryWrapper<Course> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("title", registerDTO.getTitle());
 
         if (baseMapper.selectOne(queryWrapper) != null) {
-            return -1; // 课程已存在
+            return -1L; // 课程已存在
         }
 
-        if (registerDTO.getCategoryId() == null || registerDTO.getTagIds() == null || registerDTO.getTagIds().isEmpty()) {
-            throw new IllegalArgumentException("categoryId or tagIds is empty");
+        if (registerDTO.getCategoryId() == null || registerDTO.getTagIds() == null || registerDTO.getTagIds().isEmpty() || registerDTO.getKnowledgePointIds() == null || registerDTO.getKnowledgePointIds().isEmpty()) {
+            throw new IllegalArgumentException("categoryId or tagIds or kpIds is empty");
         }
 
         Map<Integer, Tag> tagMap = courseTagService.getTagMapByIds(registerDTO.getTagIds());
@@ -141,6 +166,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         }
 
         Course course = CourseMapperStruct.INSTANCE.toEntity(registerDTO);
+        course.setStatus(CourseStatus.DRAFT.getCode()); // 默认草稿状态,待上传完视频后再上线
 
         this.save(course);
 
@@ -148,46 +174,95 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         baseMapper.insertCourseCategoryRelations(course.getId(), Collections.singletonList(registerDTO.getCategoryId()));
         // 关联课程标签
         baseMapper.insertCourseTagRelations(course.getId(), tagMap);
+        // 关联课程知识点
+        baseMapper.insertCourseKnowledgePointRelations(course.getId(), registerDTO.getKnowledgePointIds());
         // 创建课程知识图谱根节点
         courseNodeRepository.createCourse(course.getId(), course.getTitle());
+        // 知识图谱关联课程知识点
+        courseNodeRepository.bindKnowledgePoints(course.getId(), registerDTO.getKnowledgePointIds());
 
-        return 1;
+        return course.getId(); // 注册成功，返回课程ID
     }
 
 
 
     @Override
-    public PageResult<CourseAdminVO> pageForAdmin(CourseAdminQueryDTO queryDTO) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'pageForAdmin'");
-    }
-
-    @Override
+    @Transactional(transactionManager = "transactionManager")
     public boolean update(CourseUpdateDTO updateDTO) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'update'");
-    }
+        if (updateDTO == null || updateDTO.getId() == null) {
+            throw new IllegalArgumentException("courseId is required");
+        }
+        if (updateDTO.getCategoryId() == null
+                || updateDTO.getTagIds() == null || updateDTO.getTagIds().isEmpty()
+                || updateDTO.getKnowledgePointIds() == null || updateDTO.getKnowledgePointIds().isEmpty()) {
+            throw new IllegalArgumentException("categoryId or tagIds or kpIds is empty");
+        }
 
-    @Override
-    public boolean changeStatus(Long courseId, CourseStatus status) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'changeStatus'");
-    }
-
-    @Override
-    public boolean removeCourses(List<Long> courseIds) {
-        if (courseIds == null || courseIds.isEmpty()) {
+        Course course = this.getById(updateDTO.getId());
+        if (course == null) {
             return false;
         }
-        // 逻辑删除课程
-        int result = baseMapper.updateCourseStatusByBatchIds(courseIds, CourseStatus.OFFLINE.getCode());
-        return result > 0;
+
+        // 1. 更新课程基本信息
+        if (updateDTO.getTitle() != null && !updateDTO.getTitle().isBlank()) {
+            course.setTitle(updateDTO.getTitle());
+        }
+        if (updateDTO.getDescription() != null) {
+            course.setDescription(updateDTO.getDescription());
+        }
+        if (updateDTO.getCoverUrl() != null) {
+            course.setCoverUrl(updateDTO.getCoverUrl());
+        }
+        if (updateDTO.getDifficulty() != null) {
+            course.setDifficulty(updateDTO.getDifficulty());
+        }
+        if (updateDTO.getDuration() != null) {
+            course.setDuration(updateDTO.getDuration());
+        }
+        this.updateById(course);
+
+        // 2. 重建 MySQL 关联关系
+        Map<Integer, Tag> tagMap = courseTagService.getTagMapByIds(updateDTO.getTagIds());
+        if (tagMap == null || tagMap.isEmpty()) {
+            throw new IllegalArgumentException("Invalid tagIds");
+        }
+        baseMapper.deleteCourseCategoryRelations(course.getId());
+        baseMapper.deleteCourseTagRelations(course.getId());
+        baseMapper.deleteCourseKnowledgePointRelations(course.getId());
+
+        baseMapper.insertCourseCategoryRelations(course.getId(), Collections.singletonList(updateDTO.getCategoryId()));
+        baseMapper.insertCourseTagRelations(course.getId(), tagMap);
+        baseMapper.insertCourseKnowledgePointRelations(course.getId(), updateDTO.getKnowledgePointIds());
+
+        // 3. 同步 Neo4j 课程信息和知识点关系
+        courseNodeRepository.upsertCourseTitle(course.getId(), course.getTitle());
+        courseNodeRepository.clearKnowledgePoints(course.getId());
+        courseNodeRepository.bindKnowledgePoints(course.getId(), updateDTO.getKnowledgePointIds());
+
+        return true;
     }
 
+
+    /**
+     * 课程删除（逻辑删除）
+     * @param courseIds 课程ID列表
+     * @return 返回删除结果，成功返回提示信息，失败返回对应错误信息
+     */
     @Override
-    public boolean bindKnowledgePoints(Long courseId, List<Long> knowledgePointIds) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'bindKnowledgePoints'");
+    @Transactional(transactionManager = "transactionManager")
+    public Integer removeCourses(List<Long> courseIds) {
+        if (courseIds == null || courseIds.isEmpty()) {
+            return 0;
+        }
+        // 1. 查询课程是否存在
+        List<Course> courses = this.listByIds(courseIds);
+        if (courses == null || courses.isEmpty()) {
+            return -1; // 课程不存在
+        }
+        // 2. 逻辑删除课程
+        Integer result = baseMapper.updateCourseStatusByBatchIds(courseIds, CourseStatus.OFFLINE.getCode());
+        
+        return result;
     }
 
     @Override
@@ -237,6 +312,26 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
                 })
                 .collect(Collectors.toList());
         
+    }
+
+    @Override
+    public Boolean updateCourseStatus(Long courseId, Integer status) {
+        Course course = this.getById(courseId);
+        if (course == null) {
+            return false; // 课程不存在
+        }
+        course.setStatus(status);
+        return this.updateById(course);
+    }
+
+    @Override
+    public Boolean updateCourseDuration(Long courseId, Integer durationSeconds) {
+        Course course = this.getById(courseId);
+        if (course == null) {
+            return false; // 课程不存在
+        }
+        course.setDuration(durationSeconds);
+        return this.updateById(course);
     }
 
 

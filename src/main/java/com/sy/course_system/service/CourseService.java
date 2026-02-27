@@ -4,19 +4,20 @@ import java.util.List;
 import java.util.Map;
 
 import com.sy.course_system.common.PageResult;
-import com.sy.course_system.dto.course.CourseAdminQueryDTO;
+import com.sy.course_system.dto.course.CourseRegisterOptionsDTO;
 import com.sy.course_system.dto.course.CourseQueryDTO;
 import com.sy.course_system.dto.course.CourseRegisterDTO;
 import com.sy.course_system.dto.course.CourseUpdateDTO;
-import com.sy.course_system.enums.CourseStatus;
-import com.sy.course_system.vo.CourseAdminVO;
 import com.sy.course_system.vo.CourseDetailVO;
 import com.sy.course_system.vo.CourseVO;
 import com.sy.course_system.vo.KnowledgeVO;
 
 public interface CourseService {
     // ===== 课程注册 =====
-    Integer register(CourseRegisterDTO registerDTO);
+    Long register(CourseRegisterDTO registerDTO);
+
+    // ===== 课程注册下拉选项 =====
+    CourseRegisterOptionsDTO getRegisterOptions();
 
     // ===== 课程-知识点 关联查询 =====
     List<Long> getKnowledgePointIdsByCourseId(Long courseId);
@@ -42,18 +43,16 @@ public interface CourseService {
     // ===============================================================
 
     // ===== 后台课程管理 =====
-    PageResult<CourseAdminVO> pageForAdmin(CourseAdminQueryDTO queryDTO);
 
      // ===== 课程修改 =====
     boolean update(CourseUpdateDTO updateDTO);
 
-     // ===== 课程上下架 =====
-    boolean changeStatus(Long courseId, CourseStatus status);
-
     // ===== 课程删除（逻辑删除）=====
-    boolean removeCourses(List<Long> courseIds);
+    Integer removeCourses(List<Long> courseIds);
 
-    // ===== 课程-知识点 关联绑定 =====
-    boolean bindKnowledgePoints(Long courseId, List<Long> knowledgePointIds);
+    Boolean updateCourseStatus(Long courseId, Integer status);
+
+    Boolean updateCourseDuration(Long courseId, Integer durationSeconds);
+
 
 }

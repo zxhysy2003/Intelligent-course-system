@@ -14,6 +14,7 @@ public class CourseTempDTO {
     private Boolean enrolled;
     private Integer progress;
     private LocalDateTime lastTime;
+    private Integer status;
 
     public Long getId() {
         return id;
@@ -101,5 +102,13 @@ public class CourseTempDTO {
 
     public void setLastTime(LocalDateTime lastTime) {
         this.lastTime = lastTime;
+    }
+
+    public Integer getStatus() {
+        return status;
+    }
+
+    public void setStatus(Integer status) {
+        this.status = status;
     }
 }

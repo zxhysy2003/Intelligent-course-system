@@ -7,9 +7,10 @@ public class CourseRegisterDTO {
     private String description;
     private String coverUrl;
     private Integer difficulty;
-    private Integer duration; // 课程时长，单位：分钟
+    private Integer duration; // 课程时长，单位：秒数
     private Integer categoryId; // 课程分类ID
     private List<Integer> tagIds; // 课程标签ID列表
+    private List<Long> knowledgePointIds; // 知识点ID列表
     
     public String getTitle() {
         return title;
@@ -53,9 +54,11 @@ public class CourseRegisterDTO {
     public void setTagIds(List<Integer> tagIds) {
         this.tagIds = tagIds;
     }
-
-    
-    
-
+    public List<Long> getKnowledgePointIds() {
+        return knowledgePointIds;
+    }
+    public void setKnowledgePointIds(List<Long> knowledgePointIds) {
+        this.knowledgePointIds = knowledgePointIds;
+    }
     
 }

@@ -12,30 +12,6 @@
         </foreach>
     </insert>
 
-    <!-- countStudyByCourseIds --> 
-
-    <select id="countStudyByCourseIds">
-        SELECT course_id AS courseId,
-        COUNT(DISTINCT user_id) AS studyCount
-        FROM user_course_relation
-        WHERE course_id IN
-        <foreach collection="courseIds" item="courseId" open="(" separator="," close=")">
-            #{courseId}
-        </foreach>
-        GROUP BY course_id
-    </select>
-
-    <!-- countProgressByCourseIds --> 
-
-    <select id="countProgressByCourseIds">
-        SELECT course_id AS courseId,
-        progress
-        FROM user_course_relation
-        WHERE course_id IN
-        <foreach collection="courseIds" item="courseId" open="(" separator="," close=")">
-            #{courseId}
-        </foreach>
-    </select>
 
     <!-- selectCoursePage --> 
 
@@ -69,7 +45,8 @@
                 LIMIT 1
             ), 0) AS progress,
 
-            c.update_time AS lastTime
+            c.update_time AS lastTime,
+            c.status
 
         FROM course c
 
@@ -102,7 +79,6 @@
         ) tag ON tag.course_id = c.id
 
         <where>
-            AND c.status = 1
             <!-- 课程标题模糊查询 -->
             <if test="dto.keyword != null and dto.keyword != ''">
                 AND c.title LIKE CONCAT('%', #{dto.keyword}, '%')
@@ -117,6 +93,11 @@
             <if test="dto.difficulty != null">
                 AND c.difficulty = #{dto.difficulty}
             </if>
+
+            <!-- 上架状态过滤 -->
+            <if test="dto.status != null">
+                AND c.status = #{dto.status}
+            </if>
         </where>
         ORDER BY c.id DESC
     </select>
@@ -128,7 +109,7 @@
         FROM course c
         LEFT JOIN course_category_relation cc ON c.id = cc.course_id
         <where>
-            AND c.status = 1
+            <!-- AND c.status = 1 -->
             <!-- 课程标题模糊查询 -->
             <if test="dto.keyword != null and dto.keyword != ''">
                 AND c.title LIKE CONCAT('%', #{dto.keyword}, '%')
@@ -140,6 +121,10 @@
             <!-- 难度过滤 -->
             <if test="dto.difficulty != null">
                 AND c.difficulty = #{dto.difficulty}
+            </if>
+            <!-- 上架状态过滤 -->
+            <if test="dto.status != null">
+                AND c.status = #{dto.status}
             </if>
         </where>
     </select>    
@@ -175,4 +160,29 @@
             #{id}
         </foreach>
     </update>
+
+    <!-- insertCourseKnowledgePointRelations --> 
+
+    <insert id="insertCourseKnowledgePointRelations">
+        INSERT INTO course_knowledge_point (course_id, kp_id)
+        VALUES
+        <foreach collection="knowledgePointIds" item="kpId" separator=",">
+            (#{courseId}, #{kpId})
+        </foreach>
+    </insert>
+
+    <delete id="deleteCourseCategoryRelations">
+        DELETE FROM course_category_relation
+        WHERE course_id = #{courseId}
+    </delete>
+
+    <delete id="deleteCourseTagRelations">
+        DELETE FROM course_tag
+        WHERE course_id = #{courseId}
+    </delete>
+
+    <delete id="deleteCourseKnowledgePointRelations">
+        DELETE FROM course_knowledge_point
+        WHERE course_id = #{courseId}
+    </delete>
 </mapper>

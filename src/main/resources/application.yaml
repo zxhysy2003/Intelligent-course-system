@@ -1,9 +1,21 @@
 server:
   port: 8080
 
+app:
+  name: course-system
+  upload:
+    video-dir: /Users/shiyang/Desktop/graduate_design/course_videos
+  video:
+    base-url: http://localhost:8080
+    ffprobe-path: /opt/homebrew/bin/ffprobe
+
 spring:
   application:
     name: course-system
+  servlet:
+    multipart:
+      max-file-size: 500MB
+      max-request-size: 500MB
   datasource:
     url: jdbc:mysql://localhost:3306/course_db?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: dev

@@ -3,12 +3,15 @@ package com.sy.course_system.entity;
 import java.time.LocalDateTime;
 
 import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
 @TableName("category")
 public class Category {
     
+    @TableId(value = "id", type = IdType.AUTO)
     private Long id;
     private String name; // 类别名称，如：后端开发、前端开发等
     private String description; // 类别描述

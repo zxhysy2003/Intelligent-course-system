@@ -92,14 +92,14 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
         }
         // 1. 批量获取所有课程的热度值
         Map<Long, Double> courseHotMap = batchGetCourseHotness(courses);
-        if (CollectionUtils.isEmpty(courseHotMap)) {
-            return courses;
+        // 2. 回填热度值并排序
+        
+        for (CourseVO course : courses) {
+            course.setHotScore(courseHotMap.getOrDefault(course.getId(), 0.0));
         }
 
-        // 2. 根据热度值对课程进行降序排序
-        courses.sort(Comparator.comparingDouble(
-            course -> -courseHotMap.getOrDefault(course.getId(), 0.0)
-        ));
+        // 3. 根据热度值对课程进行降序排序
+        courses.sort(Comparator.comparing(CourseVO::getHotScore).reversed());
         return courses;
     }
 

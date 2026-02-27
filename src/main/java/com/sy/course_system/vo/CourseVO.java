@@ -16,6 +16,7 @@ public class CourseVO {
     private Boolean enrolled;
     private Integer progress;
     private LocalDateTime lastTime;
+    private Integer status; // 上架状态：0-草稿，1-上线，2-下架
 
     // ===== 推荐 & 排序相关 =====
     private Double score;        // 推荐评分 / 协同过滤预测值
@@ -107,6 +108,14 @@ public class CourseVO {
 
     public void setLastTime(LocalDateTime lastTime) {
         this.lastTime = lastTime;
+    }
+
+    public Integer getStatus() {
+        return status;
+    }
+
+    public void setStatus(Integer status) {
+        this.status = status;
     }
 
     public Double getScore() {

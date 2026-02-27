@@ -17,6 +17,8 @@ public class CourseQueryDTO {
 
     private Integer difficulty;
 
+    private Integer status; // 课程状态：0-草稿，1-上线，2-下线
+
     public Integer getPage() {
         return page;
     }
@@ -63,5 +65,13 @@ public class CourseQueryDTO {
 
     public void setDifficulty(Integer difficulty) {
         this.difficulty = difficulty;
+    }
+
+    public Integer getStatus() {
+        return status;
+    }
+
+    public void setStatus(Integer status) {
+        this.status = status;
     }
 }
