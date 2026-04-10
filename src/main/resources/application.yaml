@@ -3,11 +3,13 @@ server:
 
 app:
   name: course-system
+  cors:
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://127.0.0.1:5173,http://192.168.*:5173}
   upload:
-    video-dir: /Users/shiyang/Desktop/graduate_design/course_videos
+    video-dir: ${VIDEO_DIR:/Users/shiyang/Desktop/graduate_design/course_videos}
   video:
-    base-url: http://localhost:8080
-    ffprobe-path: /opt/homebrew/bin/ffprobe
+    base-url: ${VIDEO_BASE_URL:http://localhost:8080}
+    ffprobe-path: ${FFPROBE_PATH:/opt/homebrew/bin/ffprobe}
 
 spring:
   application:
@@ -17,15 +19,15 @@ spring:
       max-file-size: 500MB
       max-request-size: 500MB
   datasource:
-    url: jdbc:mysql://localhost:3306/course_db?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-    username: dev
-    password: dev123
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:course_db}?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:dev}
+    password: ${DB_PASSWORD:dev123}
     driver-class-name: com.mysql.cj.jdbc.Driver
   data:
     redis:
-      host: localhost
-      port: 6379
-      password: redis123
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redis123}
       jedis:
         pool:
           max-active: 10
@@ -33,10 +35,10 @@ spring:
           min-idle: 1
           max-wait: 3000
   neo4j:
-    uri: bolt://localhost:7687
+    uri: ${NEO4J_URI:bolt://localhost:7687}
     authentication:
-      username: neo4j
-      password: neo4j123
+      username: ${NEO4J_USERNAME:neo4j}
+      password: ${NEO4J_PASSWORD:neo4j123}
   
 mybatis-plus:
   mapper-locations: classpath:/mapper/*.xml
@@ -47,7 +49,7 @@ mybatis-plus:
 
 recommend:
   service:
-    url: http://localhost:8000
+    url: ${RECOMMEND_SERVICE_URL:http://localhost:8000}
 
 logging:
   level:

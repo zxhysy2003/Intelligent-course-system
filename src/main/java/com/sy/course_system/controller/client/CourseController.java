@@ -12,7 +12,6 @@ import com.sy.course_system.vo.CourseVO;
 import com.sy.course_system.vo.KnowledgeVO;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -37,9 +36,6 @@ public class CourseController {
 
     @Autowired
     private UserCourseService userCourseService;
-
-    @Value("${app.video.base-url}")
-    private String videoBaseUrl;
 
     // 根据课程id获取课程详情
     @GetMapping("/{courseId}")
@@ -110,9 +106,9 @@ public class CourseController {
         }
         String videoUrl;
         if (normalized.contains(".")) {
-            videoUrl = videoBaseUrl + "/videos/" + normalized;
+            videoUrl = "/videos/" + normalized;
         } else {
-            videoUrl = videoBaseUrl + "/videos/" + normalized + ".mp4";
+            videoUrl = "/videos/" + normalized + ".mp4";
         }
         return Result.success(videoUrl);
     }

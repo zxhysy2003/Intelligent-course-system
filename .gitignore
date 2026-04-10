@@ -36,3 +36,6 @@ build/
 src/test/
 src/main/resources/static/
 src/main/java/com/sy/course_system/controller/server/BackfillController.java
+.codex
+src/main/resources/application-dev.yaml
+src/main/resources/application-prod.yaml
