@@ -57,6 +57,13 @@ public interface LearningBehaviorMapper extends BaseMapper<LearningBehavior> {
             """)
     List<UserCourseBaseScoreDTO> listUserCourseBaseScores();
 
+    @Select("""
+                SELECT COUNT(*)
+                FROM learning_behavior
+                WHERE user_id = #{userId}
+            """)
+    Long countByUserId(@Param("userId") Long userId);
+
     // 获取单个用户单个课程的基础分数
     @Select("""
                 SELECT
