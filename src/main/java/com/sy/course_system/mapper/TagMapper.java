@@ -3,6 +3,7 @@ package com.sy.course_system.mapper;
 import java.util.List;
 
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
@@ -20,5 +21,9 @@ public interface TagMapper extends BaseMapper<Tag> {
             """)
     List<TagOptionDTO> listEnabledTagOptions();
 
-    List<TagOptionDTO> listEnabledTagOptionsByIds(List<Long> tagIds);
+    List<TagOptionDTO> listEnabledTagOptionsByIds(@Param("tagIds") List<Long> tagIds);
+
+    List<TagOptionDTO> listEnabledOnboardingTagOptions();
+
+    List<Tag> selectOnboardingTagsByIds(@Param("tagIds") List<Long> tagIds);
 }

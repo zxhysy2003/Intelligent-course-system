@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.sy.course_system.mapper.UserInterestTagMapper">
+
+    <delete id="deleteByUserIdAndSource">
+        DELETE FROM user_interest_tag
+        WHERE user_id = #{userId}
+          AND source = #{source}
+    </delete>
+
+    <insert id="batchInsert">
+        INSERT INTO user_interest_tag (user_id, tag_id, weight, source)
+        VALUES
+        <foreach collection="rows" item="row" separator=",">
+            (#{row.userId}, #{row.tagId}, #{row.weight}, #{row.source})
+        </foreach>
+    </insert>
+
+    <select id="selectTagIdsByUserIdAndSource" resultType="java.lang.Long">
+        SELECT tag_id
+        FROM user_interest_tag
+        WHERE user_id = #{userId}
+          AND source = #{source}
+        ORDER BY id
+    </select>
+</mapper>

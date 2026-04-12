@@ -11,7 +11,7 @@
  Target Server Version : 80044 (8.0.44)
  File Encoding         : 65001
 
- Date: 10/04/2026 13:35:17
+ Date: 12/04/2026 11:55:59
 */
 
 SET NAMES utf8mb4;
@@ -26,7 +26,7 @@ CREATE TABLE `behavior_weight`  (
   `weight` double NOT NULL COMMENT '权重值',
   PRIMARY KEY (`behavior_type`) USING BTREE,
   INDEX `idx_behavior_type`(`behavior_type` ASC) USING BTREE,
-  CONSTRAINT `chk_weight_positive` CHECK (`weight` >= 0)
+  CONSTRAINT `chk_behavior_weight_positive` CHECK (`weight` >= 0)
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '行为权重配置表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
@@ -320,36 +320,36 @@ CREATE TABLE `learning_behavior`  (
 -- ----------------------------
 -- Records of learning_behavior
 -- ----------------------------
-INSERT INTO `learning_behavior` VALUES (2017481972795961347, 2, 1, 'VIEW', 0, '2026-01-20 20:00:10');
-INSERT INTO `learning_behavior` VALUES (2017481972795961348, 2, 1, 'STUDY', 180, '2026-01-20 20:10:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961349, 2, 1, 'STUDY', 240, '2026-01-28 21:00:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961350, 2, 1, 'STUDY', 180, '2026-02-03 21:10:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961351, 2, 1, 'FAVORITE', 0, '2026-01-20 20:05:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961352, 2, 3, 'VIEW', 0, '2026-01-25 19:30:10');
-INSERT INTO `learning_behavior` VALUES (2017481972795961353, 2, 3, 'STUDY', 120, '2026-01-25 19:40:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961354, 2, 3, 'STUDY', 200, '2026-02-02 22:15:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961355, 2, 4, 'VIEW', 0, '2026-01-30 22:40:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961356, 2, 4, 'STUDY', 110, '2026-01-30 23:00:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961357, 3, 6, 'VIEW', 0, '2026-02-04 09:00:10');
-INSERT INTO `learning_behavior` VALUES (2017481972795961358, 3, 6, 'STUDY', 70, '2026-02-04 09:20:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961359, 3, 6, 'FAVORITE', 0, '2026-02-04 09:05:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961360, 3, 7, 'FAVORITE', 0, '2026-02-03 12:00:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961361, 3, 1, 'VIEW', 0, '2026-02-01 18:00:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961362, 3, 1, 'STUDY', 30, '2026-02-01 18:05:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961363, 4, 8, 'VIEW', 0, '2026-01-20 09:00:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961364, 4, 8, 'STUDY', 300, '2026-01-20 09:30:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961365, 4, 8, 'STUDY', 405, '2026-01-28 21:35:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961366, 4, 8, 'FINISH', 0, '2026-01-28 21:40:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961367, 4, 8, 'FAVORITE', 0, '2026-01-20 09:05:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961368, 4, 9, 'VIEW', 0, '2026-01-23 10:00:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961369, 4, 9, 'STUDY', 705, '2026-01-31 20:05:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961370, 4, 9, 'FINISH', 0, '2026-01-31 20:10:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961371, 4, 5, 'VIEW', 0, '2026-02-01 08:00:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961372, 4, 5, 'STUDY', 200, '2026-02-01 08:40:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961373, 4, 5, 'STUDY', 220, '2026-02-02 08:30:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961374, 5, 11, 'VIEW', 0, '2026-02-03 13:50:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961375, 5, 11, 'STUDY', 15, '2026-02-03 14:00:00');
-INSERT INTO `learning_behavior` VALUES (2017481972795961376, 5, 12, 'VIEW', 0, '2026-02-02 16:00:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961347, 2, 1, 'VIEW', 0, '2026-03-20 20:00:10');
+INSERT INTO `learning_behavior` VALUES (2017481972795961348, 2, 1, 'STUDY', 180, '2026-03-20 20:10:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961349, 2, 1, 'STUDY', 240, '2026-03-28 21:00:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961350, 2, 1, 'STUDY', 180, '2026-04-03 21:10:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961351, 2, 1, 'FAVORITE', 0, '2026-03-20 20:05:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961352, 2, 3, 'VIEW', 0, '2026-03-25 19:30:10');
+INSERT INTO `learning_behavior` VALUES (2017481972795961353, 2, 3, 'STUDY', 120, '2026-03-25 19:40:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961354, 2, 3, 'STUDY', 200, '2026-04-02 22:15:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961355, 2, 4, 'VIEW', 0, '2026-03-30 22:40:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961356, 2, 4, 'STUDY', 110, '2026-03-30 23:00:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961357, 3, 6, 'VIEW', 0, '2026-04-04 09:00:10');
+INSERT INTO `learning_behavior` VALUES (2017481972795961358, 3, 6, 'STUDY', 70, '2026-04-04 09:20:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961359, 3, 6, 'FAVORITE', 0, '2026-04-04 09:05:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961360, 3, 7, 'FAVORITE', 0, '2026-04-03 12:00:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961361, 3, 1, 'VIEW', 0, '2026-04-01 18:00:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961362, 3, 1, 'STUDY', 30, '2026-04-01 18:05:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961363, 4, 8, 'VIEW', 0, '2026-03-20 09:00:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961364, 4, 8, 'STUDY', 300, '2026-03-20 09:30:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961365, 4, 8, 'STUDY', 405, '2026-03-28 21:35:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961366, 4, 8, 'FINISH', 0, '2026-03-28 21:40:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961367, 4, 8, 'FAVORITE', 0, '2026-03-20 09:05:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961368, 4, 9, 'VIEW', 0, '2026-03-23 10:00:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961369, 4, 9, 'STUDY', 705, '2026-03-31 20:05:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961370, 4, 9, 'FINISH', 0, '2026-03-31 20:10:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961371, 4, 5, 'VIEW', 0, '2026-04-01 08:00:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961372, 4, 5, 'STUDY', 200, '2026-04-01 08:40:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961373, 4, 5, 'STUDY', 220, '2026-04-02 08:30:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961374, 5, 11, 'VIEW', 0, '2026-04-03 13:50:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961375, 5, 11, 'STUDY', 15, '2026-04-03 14:00:00');
+INSERT INTO `learning_behavior` VALUES (2017481972795961376, 5, 12, 'VIEW', 0, '2026-04-02 16:00:00');
 
 -- ----------------------------
 -- Table structure for tag
@@ -440,17 +440,65 @@ CREATE TABLE `user_course_relation`  (
 -- ----------------------------
 -- Records of user_course_relation
 -- ----------------------------
-INSERT INTO `user_course_relation` VALUES (2017589199745622018, 2, 1, 85, 600, 1, '2026-02-03 21:10:00', NULL, 1, '2026-01-20 20:00:00', '2026-02-03 21:10:00', 600);
-INSERT INTO `user_course_relation` VALUES (2017589199745622019, 2, 3, 45, 320, 1, '2026-02-02 22:15:00', NULL, 0, '2026-01-25 19:30:00', '2026-02-02 22:15:00', 320);
-INSERT INTO `user_course_relation` VALUES (2017589199745622020, 2, 4, 15, 110, 1, '2026-01-30 23:00:00', NULL, 0, '2026-01-30 22:40:00', '2026-01-30 23:00:00', 110);
-INSERT INTO `user_course_relation` VALUES (2017589199745622021, 3, 6, 10, 70, 1, '2026-02-04 09:20:00', NULL, 1, '2026-02-04 09:00:00', '2026-02-04 09:20:00', 70);
-INSERT INTO `user_course_relation` VALUES (2017589199745622022, 3, 7, 0, 0, 0, NULL, NULL, 1, '2026-02-03 12:00:00', '2026-02-03 12:00:00', 0);
-INSERT INTO `user_course_relation` VALUES (2017589199745622023, 3, 1, 5, 30, 1, '2026-02-01 18:05:00', NULL, 0, '2026-02-01 18:00:00', '2026-02-01 18:05:00', 30);
-INSERT INTO `user_course_relation` VALUES (2017589199745622024, 4, 8, 100, 705, 2, '2026-01-28 21:40:00', '2026-01-28 21:40:00', 1, '2026-01-20 09:00:00', '2026-01-28 21:40:00', 705);
-INSERT INTO `user_course_relation` VALUES (2017589199745622025, 4, 9, 100, 705, 2, '2026-01-31 20:10:00', '2026-01-31 20:10:00', 0, '2026-01-23 10:00:00', '2026-01-31 20:10:00', 705);
-INSERT INTO `user_course_relation` VALUES (2017589199745622026, 4, 5, 60, 420, 1, '2026-02-02 08:30:00', NULL, 0, '2026-02-01 08:00:00', '2026-02-02 08:30:00', 420);
-INSERT INTO `user_course_relation` VALUES (2017589199745622027, 5, 11, 2, 15, 1, '2026-02-03 14:00:00', NULL, 0, '2026-02-03 13:50:00', '2026-02-03 14:00:00', 15);
-INSERT INTO `user_course_relation` VALUES (2017589199745622028, 5, 12, 0, 0, 0, NULL, NULL, 0, '2026-02-02 16:00:00', '2026-02-02 16:00:00', 0);
+INSERT INTO `user_course_relation` VALUES (2017589199745622018, 2, 1, 85, 600, 1, '2026-04-03 21:10:00', NULL, 1, '2026-03-20 20:00:00', '2026-04-11 15:30:36', 600);
+INSERT INTO `user_course_relation` VALUES (2017589199745622019, 2, 3, 45, 320, 1, '2026-04-02 22:15:00', NULL, 0, '2026-03-25 19:30:00', '2026-04-11 15:30:40', 320);
+INSERT INTO `user_course_relation` VALUES (2017589199745622020, 2, 4, 15, 110, 1, '2026-03-30 23:00:00', NULL, 0, '2026-03-30 22:40:00', '2026-04-11 15:30:45', 110);
+INSERT INTO `user_course_relation` VALUES (2017589199745622021, 3, 6, 10, 70, 1, '2026-04-04 09:20:00', NULL, 1, '2026-04-04 09:00:00', '2026-04-11 15:30:48', 70);
+INSERT INTO `user_course_relation` VALUES (2017589199745622022, 3, 7, 0, 0, 0, NULL, NULL, 1, '2026-04-03 12:00:00', '2026-04-11 15:30:51', 0);
+INSERT INTO `user_course_relation` VALUES (2017589199745622023, 3, 1, 5, 30, 1, '2026-04-01 18:05:00', NULL, 0, '2026-04-01 18:00:00', '2026-04-11 15:30:53', 30);
+INSERT INTO `user_course_relation` VALUES (2017589199745622024, 4, 8, 100, 705, 2, '2026-03-28 21:40:00', '2026-03-28 21:40:00', 1, '2026-03-20 09:00:00', '2026-04-11 15:30:56', 705);
+INSERT INTO `user_course_relation` VALUES (2017589199745622025, 4, 9, 100, 705, 2, '2026-03-31 20:10:00', '2026-03-31 20:10:00', 0, '2026-03-23 10:00:00', '2026-04-11 15:31:00', 705);
+INSERT INTO `user_course_relation` VALUES (2017589199745622026, 4, 5, 60, 420, 1, '2026-04-02 08:30:00', NULL, 0, '2026-04-01 08:00:00', '2026-04-11 15:31:02', 420);
+INSERT INTO `user_course_relation` VALUES (2017589199745622027, 5, 11, 2, 15, 1, '2026-04-03 14:00:00', NULL, 0, '2026-04-03 13:50:00', '2026-04-11 15:31:04', 15);
+INSERT INTO `user_course_relation` VALUES (2017589199745622028, 5, 12, 0, 0, 0, NULL, NULL, 0, '2026-04-02 16:00:00', '2026-04-11 15:31:11', 0);
+
+-- ----------------------------
+-- Table structure for user_interest_tag
+-- ----------------------------
+DROP TABLE IF EXISTS `user_interest_tag`;
+CREATE TABLE `user_interest_tag`  (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `user_id` bigint NOT NULL COMMENT '用户ID',
+  `tag_id` bigint NOT NULL COMMENT '标签ID，关联tag表',
+  `weight` double NOT NULL DEFAULT 1 COMMENT '兴趣权重',
+  `source` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'INIT' COMMENT '来源：INIT-初始化选择 BEHAVIOR-行为推断',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_user_tag`(`user_id` ASC, `tag_id` ASC) USING BTREE,
+  INDEX `idx_user_id`(`user_id` ASC) USING BTREE,
+  INDEX `idx_tag_id`(`tag_id` ASC) USING BTREE,
+  INDEX `idx_source`(`source` ASC) USING BTREE,
+  CONSTRAINT `chk_interest_tag_weight_positive` CHECK (`weight` >= 0)
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户兴趣标签表' ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Records of user_interest_tag
+-- ----------------------------
+
+-- ----------------------------
+-- Table structure for user_onboarding_profile
+-- ----------------------------
+DROP TABLE IF EXISTS `user_onboarding_profile`;
+CREATE TABLE `user_onboarding_profile`  (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `user_id` bigint NOT NULL COMMENT '用户ID',
+  `current_level` tinyint NOT NULL COMMENT '当前基础：1-零基础 2-入门 3-有基础',
+  `learning_goal` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '学习目标：JOB/PROJECT/FOUNDATION/EXAM',
+  `onboarding_status` tinyint NOT NULL DEFAULT 1 COMMENT '是否完成初始化：0-未完成 1-已完成',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_user_id`(`user_id` ASC) USING BTREE,
+  INDEX `idx_current_level`(`current_level` ASC) USING BTREE,
+  INDEX `idx_learning_goal`(`learning_goal` ASC) USING BTREE,
+  CONSTRAINT `chk_current_level` CHECK (`current_level` in (1,2,3)),
+  CONSTRAINT `chk_onboarding_status` CHECK (`onboarding_status` in (0,1))
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户冷启动初始化画像表' ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Records of user_onboarding_profile
+-- ----------------------------
 
 -- ----------------------------
 -- Table structure for video

@@ -14,4 +14,23 @@
         AND status = 1
         ORDER BY type, name
     </select>
+
+    <select id="listEnabledOnboardingTagOptions" resultType="com.sy.course_system.dto.course.TagOptionDTO">
+        SELECT id, name, type
+        FROM tag
+        WHERE status = 1
+          AND type IN ('TECH', 'FIELD', 'THEORY')
+        ORDER BY type, name
+    </select>
+
+    <select id="selectOnboardingTagsByIds" resultType="com.sy.course_system.entity.Tag">
+        SELECT id, name, type, status, create_time, update_time
+        FROM tag
+        WHERE id IN
+        <foreach collection="tagIds" item="tagId" open="(" separator="," close=")">
+            #{tagId}
+        </foreach>
+        AND type IN ('TECH', 'FIELD', 'THEORY')
+        ORDER BY id
+    </select>
 </mapper>
