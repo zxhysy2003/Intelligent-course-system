@@ -209,4 +209,20 @@
             #{id}
         </foreach>
     </delete>
+
+    <select id="selectPublishedCoursesWithTagsForColdStart" resultType="com.sy.course_system.dto.coldstart.ColdStartCourseCandidateDTO">
+        SELECT
+            c.id AS courseId,
+            c.title,
+            c.cover_url AS coverUrl,
+            c.difficulty,
+            t.id AS tagId,
+            t.name AS tagName,
+            t.type AS tagType
+        FROM course c
+        LEFT JOIN course_tag ct ON c.id = ct.course_id
+        LEFT JOIN tag t ON ct.tag_id = t.id AND t.status = 1
+        WHERE c.status = 1
+        ORDER BY c.id DESC, t.id
+    </select>
 </mapper>

@@ -53,5 +53,5 @@ recommend:
 
 logging:
   level:
-    org.springframework.transaction: DEBUG
-    org.springframework.jdbc.datasource.DataSourceTransactionManager: DEBUG
+    "[org.springframework.transaction]": DEBUG
+    "[org.springframework.jdbc.datasource.DataSourceTransactionManager]": DEBUG
