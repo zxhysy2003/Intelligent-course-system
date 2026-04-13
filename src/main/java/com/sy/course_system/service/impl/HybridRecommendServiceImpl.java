@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.neo4j.core.Neo4jClient;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -20,12 +22,17 @@ import com.sy.course_system.dto.recommend.RecommendItemDTO;
 import com.sy.course_system.dto.recommend.RecommendResponseDTO;
 import com.sy.course_system.graph.node.KnowledgeNode;
 import com.sy.course_system.repository.CourseGraphRepository;
+import com.sy.course_system.service.ColdStartRecommendService;
+import com.sy.course_system.service.ColdStartSupportService;
 import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.HybridRecommendService;
 import com.sy.course_system.service.RecommendService;
+import com.sy.course_system.vo.ColdStartRecommendItemVO;
 
 @Service
 public class HybridRecommendServiceImpl implements HybridRecommendService {
+
+    private static final Logger log = LoggerFactory.getLogger(HybridRecommendServiceImpl.class);
 
     @Autowired
     private RecommendService recommendService;
@@ -39,9 +46,14 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     private RedisTemplate<String, Object> redisTemplate;
     @Autowired
     private ObjectMapper objectMapper;
+    @Autowired
+    private ColdStartSupportService coldStartSupportService;
+    @Autowired
+    private ColdStartRecommendService coldStartRecommendService;
 
     // 可以缓存用户推荐结果，提升性能
     private static final String RECOMMEND_COURSE_KEY = "recommend:user:";
+    private static final int COLD_START_LIMIT = 10;
 
     // 候选池大小（避免Neo4j压力）
     private static final int CANDIDATE_POOL_SIZE = 20;
@@ -61,6 +73,12 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
      */
     @Override
     public HybridRecommendResponseDTO recommend(Long userId) {
+        if (coldStartSupportService.isColdStartUser(userId)) {
+            log.info("User {} hit cold-start recommendation branch", userId);
+            List<ColdStartRecommendItemVO> coldStartItems = coldStartRecommendService.recommend(userId, COLD_START_LIMIT);
+            return buildColdStartResponse(userId, coldStartItems);
+        }
+
         String cacheKey = RECOMMEND_COURSE_KEY + userId;
 
         // 0. 先查缓存
@@ -130,6 +148,27 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
         // 8.缓存结果
         redisTemplate.opsForValue().set(cacheKey, result);
         return result;
+    }
+
+    private HybridRecommendResponseDTO buildColdStartResponse(Long userId, List<ColdStartRecommendItemVO> coldStartItems) {
+        List<HybridRecommendItemDTO> items = coldStartItems == null ? List.of() : coldStartItems.stream()
+                .map(this::toHybridRecommendItem)
+                .toList();
+        return new HybridRecommendResponseDTO(userId, items);
+    }
+
+    private HybridRecommendItemDTO toHybridRecommendItem(ColdStartRecommendItemVO item) {
+        HybridRecommendItemDTO dto = new HybridRecommendItemDTO();
+        dto.setCourseId(item.getCourseId());
+        dto.setTitle(item.getTitle());
+        dto.setCoverUrl(item.getCoverUrl());
+        dto.setDifficulty(item.getDifficulty());
+        dto.setFinalScore(item.getScore());
+        dto.setReason(item.getReason());
+        dto.setKnowledgePoints(List.of());
+        dto.setMissingPrerequisitesMastery(List.of());
+        dto.setLearningPaths(List.of());
+        return dto;
     }
 
     /**

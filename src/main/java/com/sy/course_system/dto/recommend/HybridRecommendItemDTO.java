@@ -5,9 +5,12 @@ import java.util.List;
 public class HybridRecommendItemDTO {
     private Long courseId;
     private String title;
+    private String coverUrl;
+    private Integer difficulty;
     private Double cfScore; // 协同过滤分数
     private Double readiness; // 课程准备度
     private Double finalScore; // 融合后分数
+    private String reason;
 
     // 图谱解释： 课程知识点
     private List<KnowledgeBriefDTO> knowledgePoints;
@@ -49,6 +52,22 @@ public class HybridRecommendItemDTO {
         this.title = title;
     }
 
+    public String getCoverUrl() {
+        return coverUrl;
+    }
+
+    public void setCoverUrl(String coverUrl) {
+        this.coverUrl = coverUrl;
+    }
+
+    public Integer getDifficulty() {
+        return difficulty;
+    }
+
+    public void setDifficulty(Integer difficulty) {
+        this.difficulty = difficulty;
+    }
+
     public Double getCfScore() {
         return cfScore;
     }
@@ -71,6 +90,14 @@ public class HybridRecommendItemDTO {
 
     public void setReadiness(Double readiness) {
         this.readiness = readiness;
+    }
+
+    public String getReason() {
+        return reason;
+    }
+
+    public void setReason(String reason) {
+        this.reason = reason;
     }
 
     public List<KnowledgeBriefDTO> getKnowledgePoints() {
