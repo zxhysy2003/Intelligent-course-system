@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.sy.course_system.common.Result;
 import com.sy.course_system.common.UserContext;
 import com.sy.course_system.dto.recommend.HybridRecommendResponseDTO;
 import com.sy.course_system.service.HybridRecommendService;
@@ -17,8 +18,8 @@ public class RecommendController {
     private HybridRecommendService hybridRecommendService;
 
     @GetMapping("/hybrid")
-    public HybridRecommendResponseDTO hybridRecommend() {
+    public Result<HybridRecommendResponseDTO> hybridRecommend() {
         Long userId = UserContext.getUserId();
-        return hybridRecommendService.recommend(userId);
+        return Result.success(hybridRecommendService.recommend(userId));
     }
 }

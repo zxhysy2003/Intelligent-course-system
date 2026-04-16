@@ -5,6 +5,7 @@ import java.util.Objects;
 import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +27,7 @@ import com.sy.course_system.vo.OnboardingStatusVO;
 public class OnboardingServiceImpl implements OnboardingService {
 
     private static final String INIT_SOURCE = "INIT";
+    private static final String COLD_START_RECOMMEND_KEY = "recommend:cold:user:";
     private static final Set<Integer> ALLOWED_LEVELS = Set.of(1, 2, 3);
     private static final Set<String> ALLOWED_GOALS = Set.of("JOB", "PROJECT", "FOUNDATION", "EXAM");
 
@@ -35,6 +37,8 @@ public class OnboardingServiceImpl implements OnboardingService {
     private UserOnboardingProfileMapper userOnboardingProfileMapper;
     @Autowired
     private UserInterestTagMapper userInterestTagMapper;
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
 
     @Override
     public OnboardingOptionsVO getOptions() {
@@ -98,6 +102,8 @@ public class OnboardingServiceImpl implements OnboardingService {
                 })
                 .toList();
         userInterestTagMapper.batchInsert(rows);
+
+        redisTemplate.delete(COLD_START_RECOMMEND_KEY + userId);
     }
 
     @Override
