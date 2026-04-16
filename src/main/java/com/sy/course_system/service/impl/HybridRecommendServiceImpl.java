@@ -4,6 +4,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -63,10 +64,24 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     @Autowired
     private ColdStartRecommendService coldStartRecommendService;
 
-    // Redis 键前缀：最终 key 形如 recommend:user:{userId}
+    // 常规推荐缓存 Key 前缀，完整 key 形如 recommend:user:{userId}
     private static final String RECOMMEND_COURSE_KEY = "recommend:user:";
+    // 冷启动推荐缓存 Key 前缀，与常规推荐缓存隔离
     private static final String RECOMMEND_COLD_START_KEY = "recommend:cold:user:";
+    // 常规推荐构建锁 Key 前缀，用于缓存未命中时的并发回源保护
+    private static final String RECOMMEND_COURSE_LOCK_KEY = "recommend:lock:user:";
+    // 冷启动推荐构建锁 Key 前缀，避免与常规推荐抢同一把锁
+    private static final String RECOMMEND_COLD_START_LOCK_KEY = "recommend:cold:lock:user:";
+    // 冷启动推荐缓存过期时间（分钟）
     private static final long COLD_START_CACHE_TTL_MINUTES = 10L;
+    // 常规推荐缓存过期时间（分钟）
+    private static final long RECOMMEND_CACHE_TTL_MINUTES = 30L;
+    // 缓存构建锁过期时间（秒），防止异常导致锁长期不释放
+    private static final long CACHE_BUILD_LOCK_TTL_SECONDS = 20L;
+    // 未获取到构建锁时的缓存重试次数
+    private static final int CACHE_WAIT_RETRY_TIMES = 3;
+    // 每次重试前的等待时间（毫秒）
+    private static final long CACHE_WAIT_MILLIS = 80L;
 
     // 冷启动返回条数：控制初始曝光规模，避免冷启动阶段结果过多
     private static final int COLD_START_LIMIT = 10;
@@ -98,69 +113,43 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
      */
     @Override
     public HybridRecommendResponseDTO recommend(Long userId) {
-        // 冷启动分支：
-        // - 不依赖用户历史行为，直接使用冷启动策略产生推荐。
-        // - 然后复用 enrichGraphInfo，保证冷启动与非冷启动返回字段结构一致。
         if (coldStartSupportService.isColdStartUser(userId)) {
             String coldCacheKey = RECOMMEND_COLD_START_KEY + userId;
-            Object coldCached = redisTemplate.opsForValue().get(coldCacheKey);
-            if (coldCached != null) {
-                if (coldCached instanceof HybridRecommendResponseDTO dto) {
-                    return dto;
-                }
-                HybridRecommendResponseDTO dto = objectMapper.convertValue(coldCached, HybridRecommendResponseDTO.class);
-                if (dto != null) {
-                    return dto;
-                }
-            }
-
-            log.info("User {} hit cold-start recommendation branch", userId);
-            List<ColdStartRecommendItemVO> coldStartItems = coldStartRecommendService.recommend(userId,
-                    COLD_START_LIMIT);
-            List<HybridRecommendItemDTO> hybridItems = toColdStartHybridItems(coldStartItems);
-            enrichGraphInfo(userId, hybridItems, null);
-            HybridRecommendResponseDTO coldResult = new HybridRecommendResponseDTO(userId, hybridItems);
-            redisTemplate.opsForValue().set(coldCacheKey, coldResult, COLD_START_CACHE_TTL_MINUTES, TimeUnit.MINUTES);
-            return coldResult;
+            String coldLockKey = RECOMMEND_COLD_START_LOCK_KEY + userId;
+            return getOrBuildWithCache(coldCacheKey, coldLockKey, COLD_START_CACHE_TTL_MINUTES,
+                    () -> buildColdStartResponse(userId));
         }
+
+        // 用户转为非冷启动后，及时清理冷启动结果缓存，避免堆积无效 key。
+        redisTemplate.delete(RECOMMEND_COLD_START_KEY + userId);
 
         String cacheKey = RECOMMEND_COURSE_KEY + userId;
+        String lockKey = RECOMMEND_COURSE_LOCK_KEY + userId;
+        return getOrBuildWithCache(cacheKey, lockKey, RECOMMEND_CACHE_TTL_MINUTES,
+                () -> buildRegularResponse(userId));
+    }
 
-        // 0) 缓存优先：命中则直接返回，降低 CF/Neo4j 计算压力与接口时延。
-        Object cached = redisTemplate.opsForValue().get(cacheKey);
-        if (cached != null) {
-            if (cached instanceof HybridRecommendResponseDTO dto) {
-                return dto;
-            }
-            // 兼容 Redis 反序列化为 Map 的情况（例如序列化策略变更/跨环境读写）。
-            HybridRecommendResponseDTO dto = objectMapper.convertValue(cached, HybridRecommendResponseDTO.class);
-            if (dto != null) {
-                return dto;
-            }
-        }
+    private HybridRecommendResponseDTO buildColdStartResponse(Long userId) {
+        log.info("User {} hit cold-start recommendation branch", userId);
+        List<ColdStartRecommendItemVO> coldStartItems = coldStartRecommendService.recommend(userId,
+                COLD_START_LIMIT);
+        List<HybridRecommendItemDTO> hybridItems = toColdStartHybridItems(coldStartItems);
+        enrichGraphInfo(userId, hybridItems, null);
+        return new HybridRecommendResponseDTO(userId, hybridItems);
+    }
 
-        // 1) 调用 CF 推荐服务。
-        // 这里假设 recommendService.recommend(userId) 返回非 null，items 可能为空。
+    private HybridRecommendResponseDTO buildRegularResponse(Long userId) {
         RecommendResponseDTO cfResp = recommendService.recommend(userId);
-
-        List<RecommendItemDTO> items = cfResp.getItems();
+        List<RecommendItemDTO> items = cfResp == null ? List.of() : cfResp.getItems();
         if (items == null || items.isEmpty()) {
-            // CF 无候选时返回空列表，同时写缓存避免短时间内重复计算。
-            HybridRecommendResponseDTO empty = new HybridRecommendResponseDTO(userId, List.of());
-            redisTemplate.opsForValue().set(cacheKey, empty);
-            return empty;
+            return new HybridRecommendResponseDTO(userId, List.of());
         }
 
-        // 2) 取 topN 候选池。
-        // 目的：将“重计算”的图谱环节限制在更小集合中，避免对长尾候选做不必要计算。
         List<RecommendItemDTO> topCourses = items.stream()
                 .sorted(Comparator.comparing(RecommendItemDTO::getScore).reversed())
                 .limit(CANDIDATE_POOL_SIZE)
                 .collect(Collectors.toList());
 
-        // 3) 计算 CF 归一化参数。
-        // 归一化公式：cfNorm = (cfScore - min) / (max - min + eps)
-        // eps 避免 max == min 时分母为 0。
         double min = topCourses.stream()
                 .mapToDouble(RecommendItemDTO::getScore)
                 .min()
@@ -171,8 +160,6 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
                 .orElse(1.0);
         double eps = 1e-9;
 
-        // 4) 批量计算 readiness 与缺失先修信息。
-        // 这里通过 courseIds 一次性查询，避免逐课查询造成 N+1 调用。
         List<Long> courseIds = topCourses.stream()
                 .map(RecommendItemDTO::getCourseId)
                 .collect(Collectors.toList());
@@ -181,12 +168,8 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
 
         Map<Long, CourseReadinessDTO> readinessMap = readinessList.stream()
                 .collect(Collectors.toMap(CourseReadinessDTO::getCourseId, r -> r, (a, b) -> a));
-
-        // 5) 批量查询课程标题，避免在流中逐条查库。
         Map<Long, String> courseTitleMap = courseService.getCourseTitleMapByIds(courseIds);
 
-        // 6) 构建融合结果并按 finalScore 排序。
-        // 当前默认不启用 readiness 过滤，保留策略开关位置以便后续 AB 或运营调参。
         List<HybridRecommendItemDTO> hybridItems = topCourses.stream()
                 .map(item -> buildHybridBaseItem(item, min, max, eps, courseTitleMap, readinessMap))
                 // 过滤可学习性不足的课程
@@ -194,14 +177,112 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
                 // READINESS_THRESHOLD)
                 .sorted(Comparator.comparing(HybridRecommendItemDTO::getFinalScore).reversed())
                 .collect(Collectors.toList());
-
-        // 7) 统一补全图谱解释字段（知识点、缺失先修、学习路径）。
         enrichGraphInfo(userId, hybridItems, readinessMap);
+        return new HybridRecommendResponseDTO(userId, hybridItems);
+    }
 
-        // 8) 组装响应并写缓存。
-        HybridRecommendResponseDTO result = new HybridRecommendResponseDTO(userId, hybridItems);
-        redisTemplate.opsForValue().set(cacheKey, result);
-        return result;
+    /**
+     * 通用缓存模板：先读缓存，未命中时通过短锁防击穿后回源构建并写缓存。
+     *
+     * 行为约定：
+     * 1) 命中缓存直接返回；
+     * 2) 未拿到锁时短暂轮询等待缓存，尽量复用其他线程刚写入的结果；
+     * 3) 等待失败后执行一次回源兜底，避免请求超时；
+     * 4) 持锁线程在 finally 中释放锁，避免死锁。
+     */
+    private HybridRecommendResponseDTO getOrBuildWithCache(String cacheKey, String lockKey, long ttlMinutes,
+            Supplier<HybridRecommendResponseDTO> builder) {
+        HybridRecommendResponseDTO cached = readCache(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+
+        boolean locked = tryAcquireBuildLock(lockKey);
+        if (!locked) {
+            HybridRecommendResponseDTO waited = waitForCache(cacheKey);
+            if (waited != null) {
+                return waited;
+            }
+
+            HybridRecommendResponseDTO fallback = builder.get();
+            writeCache(cacheKey, fallback, ttlMinutes);
+            return fallback;
+        }
+
+        try {
+            HybridRecommendResponseDTO doubleChecked = readCache(cacheKey);
+            if (doubleChecked != null) {
+                return doubleChecked;
+            }
+
+            HybridRecommendResponseDTO result = builder.get();
+            writeCache(cacheKey, result, ttlMinutes);
+            return result;
+        } finally {
+            releaseBuildLock(lockKey);
+        }
+    }
+
+    /**
+     * 读取缓存并兼容 Map 反序列化场景。
+     */
+    private HybridRecommendResponseDTO readCache(String cacheKey) {
+        Object cached = redisTemplate.opsForValue().get(cacheKey);
+        if (cached == null) {
+            return null;
+        }
+        if (cached instanceof HybridRecommendResponseDTO dto) {
+            return dto;
+        }
+        return objectMapper.convertValue(cached, HybridRecommendResponseDTO.class);
+    }
+
+    /**
+     * 写入缓存，统一使用分钟级 TTL。
+     */
+    private void writeCache(String cacheKey, HybridRecommendResponseDTO value, long ttlMinutes) {
+        redisTemplate.opsForValue().set(cacheKey, value, ttlMinutes, TimeUnit.MINUTES);
+    }
+
+    /**
+     * 获取构建锁（短 TTL），用于降低缓存击穿时的并发回源。
+     */
+    private boolean tryAcquireBuildLock(String lockKey) {
+        Boolean ok = redisTemplate.opsForValue().setIfAbsent(lockKey, "1", CACHE_BUILD_LOCK_TTL_SECONDS,
+                TimeUnit.SECONDS);
+        return Boolean.TRUE.equals(ok);
+    }
+
+    /**
+     * 释放构建锁。
+     */
+    private void releaseBuildLock(String lockKey) {
+        redisTemplate.delete(lockKey);
+    }
+
+    /**
+     * 在未拿到锁时短暂等待缓存填充，减少重复回源。
+     */
+    private HybridRecommendResponseDTO waitForCache(String cacheKey) {
+        for (int i = 0; i < CACHE_WAIT_RETRY_TIMES; i++) {
+            sleepQuietly(CACHE_WAIT_MILLIS);
+            HybridRecommendResponseDTO waited = readCache(cacheKey);
+            if (waited != null) {
+                return waited;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 受控睡眠，保留中断标记，避免吞掉线程中断信号。
+     */
+    private void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**
