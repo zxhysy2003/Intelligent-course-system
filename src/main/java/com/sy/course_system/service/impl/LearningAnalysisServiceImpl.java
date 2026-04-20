@@ -19,7 +19,6 @@ import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
-import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import com.sy.course_system.dto.AbilityDimensionScoreDTO;
 import com.sy.course_system.dto.AbilityRadarDTO;
 import com.sy.course_system.dto.ProgressChartDTO;
@@ -47,15 +46,14 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
     @Autowired
     private KnowledgeRepository knowledgeRepository;
 
-
     private static final String HOT_COURSE_KEY = "course:hot";
     private static final DateTimeFormatter DAY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-
     /**
      * 增加课程热度
+     * 
      * @param courseId 课程ID
-     * @param score 热度分值（可按学习行为加权）
+     * @param score    热度分值（可按学习行为加权）
      */
     @Override
     public void increaseCourseHot(Long courseId, double score) {
@@ -93,7 +91,7 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
         // 1. 批量获取所有课程的热度值
         Map<Long, Double> courseHotMap = batchGetCourseHotness(courses);
         // 2. 回填热度值并排序
-        
+
         for (CourseVO course : courses) {
             course.setHotScore(courseHotMap.getOrDefault(course.getId(), 0.0));
         }
@@ -108,7 +106,7 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
         List<Long> courseIds = courses.stream()
                 .map(CourseVO::getId)
                 .collect(Collectors.toList());
-        
+
         // 批量获取热度值（使用 SessionCallback 与 opsForZSet().score）
         List<Object> results = stringRedisTemplate.executePipelined(new SessionCallback<Object>() {
             @Override
@@ -210,6 +208,4 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
         return dto;
     }
 
-
-    
 }

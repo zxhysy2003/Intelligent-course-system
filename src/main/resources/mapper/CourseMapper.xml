@@ -225,4 +225,77 @@
         WHERE c.status = 1
         ORDER BY c.id DESC, t.id
     </select>
+
+    <!--
+      新课冷启动（常规推荐增强）第一阶段：
+      1) 仅查询 course 主表，避免多表 join 对线上查询造成压力；
+      2) 发布时间优先 publish_time，历史课程回退到 create_time；
+      3) 候选课程按发布时间倒序，保证“更近上线”优先进入候选池。
+    -->
+    <select id="selectOnlineNewCourseBaseCandidates" resultType="com.sy.course_system.dto.recommend.NewCourseBaseCandidateDTO">
+        SELECT
+            c.id AS courseId,
+            c.title,
+            c.cover_url AS coverUrl,
+            c.difficulty,
+            c.duration,
+            COALESCE(c.publish_time, c.create_time) AS publishTime
+        FROM course c
+        WHERE c.status = 1
+          AND COALESCE(c.publish_time, c.create_time) &gt;= #{publishedAfter}
+        ORDER BY COALESCE(c.publish_time, c.create_time) DESC, c.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <!--
+      新课冷启动第二阶段：按 courseIds 回补标签信息。
+      该查询只返回结构化标签行（courseId/tagId/tagName），
+      在 Service 层聚合，便于后续调整匹配和解释策略。
+    -->
+    <select id="selectCourseTagRowsByCourseIds" resultType="com.sy.course_system.dto.recommend.NewCourseTagRowDTO">
+        SELECT
+            ct.course_id AS courseId,
+            t.id AS tagId,
+            t.name AS tagName
+        FROM course_tag ct
+        JOIN tag t ON t.id = ct.tag_id
+        WHERE t.status = 1
+          AND ct.course_id IN
+          <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+              #{id}
+          </foreach>
+        ORDER BY ct.course_id, t.id
+    </select>
+
+    <!--
+      新课冷启动第二阶段：按课程统计知识点数量。
+      用于质量门槛与质量得分计算。
+    -->
+    <select id="selectCourseKpCountsByCourseIds" resultType="com.sy.course_system.dto.recommend.NewCourseStatDTO">
+        SELECT
+            ckp.course_id AS courseId,
+            COUNT(*) AS countValue
+        FROM course_knowledge_point ckp
+        WHERE ckp.course_id IN
+          <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+              #{id}
+          </foreach>
+        GROUP BY ckp.course_id
+    </select>
+
+    <!--
+      新课冷启动第二阶段：按课程统计学习人数。
+      用于限制“已不新”的课程进入新课候选池。
+    -->
+    <select id="selectCourseLearnerCountsByCourseIds" resultType="com.sy.course_system.dto.recommend.NewCourseStatDTO">
+        SELECT
+            ucr.course_id AS courseId,
+            COUNT(DISTINCT ucr.user_id) AS countValue
+        FROM user_course_relation ucr
+        WHERE ucr.course_id IN
+          <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+              #{id}
+          </foreach>
+        GROUP BY ucr.course_id
+    </select>
 </mapper>

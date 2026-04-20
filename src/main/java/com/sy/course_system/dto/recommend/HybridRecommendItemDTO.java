@@ -2,6 +2,16 @@ package com.sy.course_system.dto.recommend;
 
 import java.util.List;
 
+/**
+ * 混合推荐返回项。
+ *
+ * 该 DTO 同时服务于：
+ * 1) 常规 CF+KG 推荐；
+ * 2) 用户冷启动推荐；
+ * 3) 新课冷启动补充推荐。
+ *
+ * 通过 `recommendSource` 与 `isNewCourse` 区分来源，确保前端与埋点可识别推荐路径。
+ */
 public class HybridRecommendItemDTO {
     private Long courseId;
     private String title;
@@ -11,6 +21,10 @@ public class HybridRecommendItemDTO {
     private Double readiness; // 课程准备度
     private Double finalScore; // 融合后分数
     private String reason;
+    // 推荐来源：如 CF / COLD_START_USER / COLD_START_COURSE
+    private String recommendSource;
+    // 是否由“新课冷启动”策略注入
+    private Boolean isNewCourse;
 
     // 图谱解释： 课程知识点
     private List<KnowledgeBriefDTO> knowledgePoints;
@@ -98,6 +112,22 @@ public class HybridRecommendItemDTO {
 
     public void setReason(String reason) {
         this.reason = reason;
+    }
+
+    public String getRecommendSource() {
+        return recommendSource;
+    }
+
+    public void setRecommendSource(String recommendSource) {
+        this.recommendSource = recommendSource;
+    }
+
+    public Boolean getIsNewCourse() {
+        return isNewCourse;
+    }
+
+    public void setIsNewCourse(Boolean isNewCourse) {
+        this.isNewCourse = isNewCourse;
     }
 
     public List<KnowledgeBriefDTO> getKnowledgePoints() {

@@ -4,14 +4,14 @@
  Source Server         : macos_course_db
  Source Server Type    : MySQL
  Source Server Version : 80044 (8.0.44)
- Source Host           : 192.168.3.94:3306
+ Source Host           : 192.168.3.123:3306
  Source Schema         : course_db
 
  Target Server Type    : MySQL
  Target Server Version : 80044 (8.0.44)
  File Encoding         : 65001
 
- Date: 12/04/2026 11:55:59
+ Date: 17/04/2026 15:15:40
 */
 
 SET NAMES utf8mb4;
@@ -72,27 +72,30 @@ CREATE TABLE `course`  (
   `status` tinyint NULL DEFAULT 1 COMMENT '状态：0-草稿 1-上线 2-下线',
   `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
   `update_time` datetime NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  -- 新课冷启动使用：记录课程“首次上线时间”，用于14天等时间窗判断
+  `publish_time` datetime NULL DEFAULT NULL COMMENT '首次上线时间',
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `idx_course_status`(`status` ASC) USING BTREE,
   INDEX `idx_course_difficulty`(`difficulty` ASC) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 15 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '课程表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 15 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '课程表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of course
 -- ----------------------------
-INSERT INTO `course` VALUES (1, 'Java 基础入门', '从零开始学习 Java 语法与面向对象思想', 'https://images.unsplash.com/photo-1518770660439-4636190af475', 1, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16');
-INSERT INTO `course` VALUES (2, 'Java 面向对象进阶', '深入理解 Java 面向对象设计思想与实践', 'https://images.unsplash.com/photo-1504639725590-34d0984388bd', 2, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16');
-INSERT INTO `course` VALUES (3, 'Spring Boot 从入门到实战', '基于 Spring Boot 构建企业级后端应用', 'https://images.unsplash.com/photo-1555949963-aa79dcee981c', 2, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16');
-INSERT INTO `course` VALUES (4, 'MySQL 数据库基础', '学习关系型数据库的基本原理与 SQL 编程', 'https://images.unsplash.com/photo-1544383835-bda2bc66a55d', 1, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16');
-INSERT INTO `course` VALUES (5, 'MySQL 性能优化实战', '掌握索引、执行计划与 SQL 调优技巧', 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31', 3, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16');
-INSERT INTO `course` VALUES (6, 'Vue.js 前端开发基础', '使用 Vue.js 构建现代前端应用', 'https://images.unsplash.com/photo-1555066931-4365d14bab8c', 1, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16');
-INSERT INTO `course` VALUES (7, 'Vue + Spring Boot 前后端分离实战', '实现完整的前后端分离项目', 'https://miro.medium.com/v2/resize:fit:1100/format:webp/0*ZHRCr9IY5RNmcJi-.png', 2, 705, 1, '2026-01-02 14:15:15', '2026-04-02 22:00:36');
-INSERT INTO `course` VALUES (8, 'Python 数据分析入门', '利用 Python 进行数据分析与可视化', 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5', 1, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16');
-INSERT INTO `course` VALUES (9, '推荐系统原理与实战', '协同过滤与内容推荐算法详解', 'https://images.unsplash.com/photo-1534759846116-5799c33ce22a', 3, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16');
-INSERT INTO `course` VALUES (10, 'Redis 核心原理与应用', '深入理解 Redis 数据结构与缓存设计', 'https://images.unsplash.com/photo-1544197150-b99a580bb7a8', 2, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16');
-INSERT INTO `course` VALUES (11, '操作系统原理', '计算机操作系统的基本概念与实现机制', 'https://images.unsplash.com/photo-1517433456452-f9633a875f6f', 2, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16');
-INSERT INTO `course` VALUES (12, '计算机网络基础', '深入理解 TCP/IP 协议与网络通信', 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d', 1, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16');
-INSERT INTO `course` VALUES (14, 'test2', '测试使用。。。', 'https://www.economist.com/cdn-cgi/image/width=1424,quality=80,format=auto/content-assets/images/20260228_LDP001.jpg', 1, 705, 1, '2026-02-27 14:45:07', '2026-02-27 14:47:48');
+-- 历史数据中 publish_time 与最近一次上线时间对齐，避免旧课程被误判为“全新课程”
+INSERT INTO `course` VALUES (1, 'Java 基础入门', '从零开始学习 Java 语法与面向对象思想', 'https://images.unsplash.com/photo-1518770660439-4636190af475', 1, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16', '2026-01-31 15:13:16');
+INSERT INTO `course` VALUES (2, 'Java 面向对象进阶', '深入理解 Java 面向对象设计思想与实践', 'https://images.unsplash.com/photo-1504639725590-34d0984388bd', 2, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16', '2026-01-31 15:13:16');
+INSERT INTO `course` VALUES (3, 'Spring Boot 从入门到实战', '基于 Spring Boot 构建企业级后端应用', 'https://images.unsplash.com/photo-1555949963-aa79dcee981c', 2, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16', '2026-01-31 15:13:16');
+INSERT INTO `course` VALUES (4, 'MySQL 数据库基础', '学习关系型数据库的基本原理与 SQL 编程', 'https://images.unsplash.com/photo-1544383835-bda2bc66a55d', 1, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16', '2026-01-31 15:13:16');
+INSERT INTO `course` VALUES (5, 'MySQL 性能优化实战', '掌握索引、执行计划与 SQL 调优技巧', 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31', 3, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16', '2026-01-31 15:13:16');
+INSERT INTO `course` VALUES (6, 'Vue.js 前端开发基础', '使用 Vue.js 构建现代前端应用', 'https://images.unsplash.com/photo-1555066931-4365d14bab8c', 1, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16', '2026-01-31 15:13:16');
+INSERT INTO `course` VALUES (7, 'Vue + Spring Boot 前后端分离实战', '实现完整的前后端分离项目', 'https://miro.medium.com/v2/resize:fit:1100/format:webp/0*ZHRCr9IY5RNmcJi-.png', 2, 705, 1, '2026-01-02 14:15:15', '2026-04-02 22:00:36', '2026-04-02 22:00:36');
+INSERT INTO `course` VALUES (8, 'Python 数据分析入门', '利用 Python 进行数据分析与可视化', 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5', 1, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16', '2026-01-31 15:13:16');
+INSERT INTO `course` VALUES (9, '推荐系统原理与实战', '协同过滤与内容推荐算法详解', 'https://images.unsplash.com/photo-1534759846116-5799c33ce22a', 3, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16', '2026-01-31 15:13:16');
+INSERT INTO `course` VALUES (10, 'Redis 核心原理与应用', '深入理解 Redis 数据结构与缓存设计', 'https://images.unsplash.com/photo-1544197150-b99a580bb7a8', 2, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16', '2026-01-31 15:13:16');
+INSERT INTO `course` VALUES (11, '操作系统原理', '计算机操作系统的基本概念与实现机制', 'https://images.unsplash.com/photo-1517433456452-f9633a875f6f', 2, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16', '2026-01-31 15:13:16');
+INSERT INTO `course` VALUES (12, '计算机网络基础', '深入理解 TCP/IP 协议与网络通信', 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d', 1, 705, 1, '2026-01-02 14:15:15', '2026-01-31 15:13:16', '2026-01-31 15:13:16');
+INSERT INTO `course` VALUES (14, 'test2', '测试使用。。。', 'https://www.economist.com/cdn-cgi/image/width=1424,quality=80,format=auto/content-assets/images/20260228_LDP001.jpg', 1, 705, 1, '2026-02-27 14:45:07', '2026-02-27 14:47:48', '2026-02-27 14:47:48');
 
 -- ----------------------------
 -- Table structure for course_category_relation
@@ -470,11 +473,14 @@ CREATE TABLE `user_interest_tag`  (
   INDEX `idx_tag_id`(`tag_id` ASC) USING BTREE,
   INDEX `idx_source`(`source` ASC) USING BTREE,
   CONSTRAINT `chk_interest_tag_weight_positive` CHECK (`weight` >= 0)
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户兴趣标签表' ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 4 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户兴趣标签表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of user_interest_tag
 -- ----------------------------
+INSERT INTO `user_interest_tag` VALUES (1, 6, 1, 1, 'INIT', '2026-04-12 16:09:21', '2026-04-12 16:09:21');
+INSERT INTO `user_interest_tag` VALUES (2, 6, 2, 1, 'INIT', '2026-04-12 16:09:21', '2026-04-12 16:09:21');
+INSERT INTO `user_interest_tag` VALUES (3, 6, 7, 1, 'INIT', '2026-04-12 16:09:21', '2026-04-12 16:09:21');
 
 -- ----------------------------
 -- Table structure for user_onboarding_profile
@@ -494,11 +500,12 @@ CREATE TABLE `user_onboarding_profile`  (
   INDEX `idx_learning_goal`(`learning_goal` ASC) USING BTREE,
   CONSTRAINT `chk_current_level` CHECK (`current_level` in (1,2,3)),
   CONSTRAINT `chk_onboarding_status` CHECK (`onboarding_status` in (0,1))
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户冷启动初始化画像表' ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 2 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户冷启动初始化画像表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of user_onboarding_profile
 -- ----------------------------
+INSERT INTO `user_onboarding_profile` VALUES (1, 6, 1, 'PROJECT', 1, '2026-04-12 16:09:21', '2026-04-12 16:09:21');
 
 -- ----------------------------
 -- Table structure for video

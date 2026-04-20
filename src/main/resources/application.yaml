@@ -50,6 +50,38 @@ mybatis-plus:
 recommend:
   service:
     url: ${RECOMMEND_SERVICE_URL:http://localhost:8000}
+  # 新课冷启动（常规推荐增强）配置
+  # 目标：在不影响用户冷启动主分支的前提下，为常规推荐补充可控比例的新课曝光
+  new-course:
+    # 总开关：关闭后不做新课候选查询与注入
+    enabled: ${RECOMMEND_NEW_COURSE_ENABLED:true}
+    # 新课时间窗（单位：天），与 publish_time 配合使用
+    window-days: ${RECOMMEND_NEW_COURSE_WINDOW_DAYS:14}
+    # 新课候选池大小（服务层还会结合 limit 再做截断）
+    candidate-limit: ${RECOMMEND_NEW_COURSE_CANDIDATE_LIMIT:80}
+    # 新课人数上限：超过该值通常视为已进入常规课程阶段
+    max-learners: ${RECOMMEND_NEW_COURSE_MAX_LEARNERS:20}
+    # 单次最多注入的新课条数
+    inject-limit: ${RECOMMEND_NEW_COURSE_INJECT_LIMIT:3}
+    # 新课最大曝光占比，防止挤占 CF 主链路结果
+    max-exposure-ratio: ${RECOMMEND_NEW_COURSE_MAX_EXPOSURE_RATIO:0.30}
+    # 质量门槛：标签数 / 知识点数 / 时长下限
+    min-tag-count: ${RECOMMEND_NEW_COURSE_MIN_TAG_COUNT:1}
+    min-kp-count: ${RECOMMEND_NEW_COURSE_MIN_KP_COUNT:1}
+    min-duration-seconds: ${RECOMMEND_NEW_COURSE_MIN_DURATION_SECONDS:300}
+    # 评分权重：tagMatch + freshness + quality + readiness(可选补充)
+    # 当前权重分布用于在“相关性优先”的前提下，为新课提供适度曝光并控制质量风险：
+    # 1) tag-weight 最高（0.45），因为标签匹配是新课与用户兴趣对齐的主信号；
+    # 2) freshness-weight 次高（0.30），用于保证新发布课程在冷启动阶段获得可控曝光；
+    # 3) quality-weight（0.20）作为质量兜底，避免仅因“新”而推送信息不足或完成度较低的课程；
+    # 4) readiness-weight（0.05）仅作补充校正，避免先修条件对整体新课曝光产生过强抑制。
+    # 如需针对课程类型做差异化调权，建议通过后续策略版本或独立配置项管理，而不是在此保留未完成说明。
+    tag-weight: ${RECOMMEND_NEW_COURSE_TAG_WEIGHT:0.45}
+    freshness-weight: ${RECOMMEND_NEW_COURSE_FRESHNESS_WEIGHT:0.30}
+    quality-weight: ${RECOMMEND_NEW_COURSE_QUALITY_WEIGHT:0.20}
+    readiness-weight: ${RECOMMEND_NEW_COURSE_READINESS_WEIGHT:0.05}
+    # readiness 批量计算时使用的先修掌握阈值
+    readiness-threshold: ${RECOMMEND_NEW_COURSE_READINESS_THRESHOLD:0.7}
 
 logging:
   level:

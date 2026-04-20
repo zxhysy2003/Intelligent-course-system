@@ -1,5 +1,6 @@
 package com.sy.course_system.mapper;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -12,6 +13,9 @@ import com.sy.course_system.dto.coldstart.ColdStartCourseCandidateDTO;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sy.course_system.dto.course.CourseQueryDTO;
 import com.sy.course_system.dto.course.CourseTempDTO;
+import com.sy.course_system.dto.recommend.NewCourseBaseCandidateDTO;
+import com.sy.course_system.dto.recommend.NewCourseStatDTO;
+import com.sy.course_system.dto.recommend.NewCourseTagRowDTO;
 import com.sy.course_system.entity.Course;
 import com.sy.course_system.entity.Knowledge;
 import com.sy.course_system.entity.Tag;
@@ -113,6 +117,35 @@ public interface CourseMapper extends BaseMapper<Course> {
                         """)
         Integer selectCategoryIdByCourseId(@Param("courseId") Long courseId);
 
+        /**
+         * 冷启动（用户侧）使用的课程与标签明细查询。
+         */
         List<ColdStartCourseCandidateDTO> selectPublishedCoursesWithTagsForColdStart();
+
+        /**
+         * 新课冷启动第一阶段：查询时间窗口内的课程基础信息。
+         *
+         * 说明：
+         * - 仅查 course 主表，避免大范围多表 join；
+         * - 发布时间优先 publish_time，兼容历史数据回退到 create_time。
+         */
+        List<NewCourseBaseCandidateDTO> selectOnlineNewCourseBaseCandidates(
+                        @Param("publishedAfter") LocalDateTime publishedAfter,
+                        @Param("limit") Integer limit);
+
+        /**
+         * 新课冷启动第二阶段：按课程批量查询标签行。
+         */
+        List<NewCourseTagRowDTO> selectCourseTagRowsByCourseIds(@Param("courseIds") List<Long> courseIds);
+
+        /**
+         * 新课冷启动第二阶段：按课程批量统计知识点数量。
+         */
+        List<NewCourseStatDTO> selectCourseKpCountsByCourseIds(@Param("courseIds") List<Long> courseIds);
+
+        /**
+         * 新课冷启动第二阶段：按课程批量统计学习人数。
+         */
+        List<NewCourseStatDTO> selectCourseLearnerCountsByCourseIds(@Param("courseIds") List<Long> courseIds);
 
 }

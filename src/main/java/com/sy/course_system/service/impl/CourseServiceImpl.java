@@ -1,5 +1,6 @@
 package com.sy.course_system.service.impl;
 
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -40,7 +41,6 @@ import com.sy.course_system.vo.CourseUpdateVO;
 import com.sy.course_system.vo.CourseVO;
 import com.sy.course_system.vo.KnowledgeVO;
 
-
 @Service
 public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> implements CourseService {
     @Autowired
@@ -57,7 +57,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
     @Autowired
     private TagMapper tagMapper;
-    
+
     @Autowired
     private KnowledgePointMapper knowledgePointMapper;
 
@@ -78,7 +78,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         // 1.分页参数
         int page = dto.getPage() != null && dto.getPage() > 0 ? dto.getPage() : 1;
         int pageSize = dto.getPageSize() != null && dto.getPageSize() > 0 ? dto.getPageSize() : 9;
-        
+
         // 2.构建分页对象
         Page<CourseTempDTO> pageParam = new Page<>(page, pageSize);
 
@@ -94,35 +94,33 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         // 5.返回分页结果
         return PageResult.of(coursePage.getTotal(), page, pageSize, courses);
 
-
     }
 
     private List<CourseVO> convertToVO(List<CourseTempDTO> courseTempList, CourseQueryDTO dto) {
         List<CourseVO> courses = courseTempList.stream()
                 .map(CourseMapperStruct.INSTANCE::tempToVO)
                 .collect(Collectors.toList());
-    
+
         Integer sortBy = dto.getSortBy();
-        
+
         // 热度排序特殊处理
         if (CourseOrderType.HOT.getCode().equals(sortBy)) {
             return learningAnalysisService.sortCoursesByHotness(courses);
         }
-        
+
         // 定义排序规则映射
         Map<Integer, Comparator<CourseVO>> sortStrategies = Map.of(
-            CourseOrderType.DEFAULT.getCode(), Comparator.comparing(CourseVO::getLearners).reversed(),
-            CourseOrderType.DIFFICULTY.getCode(), Comparator.comparing(CourseVO::getDifficulty),
-            CourseOrderType.PROGRESS.getCode(), Comparator.comparing(CourseVO::getProgress).reversed(),
-            CourseOrderType.NEW.getCode(), Comparator.comparing(CourseVO::getLastTime).reversed(),
-            CourseOrderType.SCORE.getCode(), Comparator.comparing(CourseVO::getScore).reversed()
-        );
-        
+                CourseOrderType.DEFAULT.getCode(), Comparator.comparing(CourseVO::getLearners).reversed(),
+                CourseOrderType.DIFFICULTY.getCode(), Comparator.comparing(CourseVO::getDifficulty),
+                CourseOrderType.PROGRESS.getCode(), Comparator.comparing(CourseVO::getProgress).reversed(),
+                CourseOrderType.NEW.getCode(), Comparator.comparing(CourseVO::getLastTime).reversed(),
+                CourseOrderType.SCORE.getCode(), Comparator.comparing(CourseVO::getScore).reversed());
+
         Comparator<CourseVO> comparator = sortStrategies.get(sortBy);
         if (comparator != null) {
             courses.sort(comparator);
         }
-        
+
         return courses;
     }
 
@@ -144,6 +142,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
     /**
      * 课程注册
+     * 
      * @param registerDTO 注册信息，包含课程的相关信息
      * @return 返回注册结果，成功返回提示信息，失败返回对应错误信息
      */
@@ -157,7 +156,8 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
             return -1L; // 课程已存在
         }
 
-        if (registerDTO.getCategoryId() == null || registerDTO.getTagIds() == null || registerDTO.getTagIds().isEmpty() || registerDTO.getKnowledgePointIds() == null || registerDTO.getKnowledgePointIds().isEmpty()) {
+        if (registerDTO.getCategoryId() == null || registerDTO.getTagIds() == null || registerDTO.getTagIds().isEmpty()
+                || registerDTO.getKnowledgePointIds() == null || registerDTO.getKnowledgePointIds().isEmpty()) {
             throw new IllegalArgumentException("categoryId or tagIds or kpIds is empty");
         }
 
@@ -172,7 +172,8 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         this.save(course);
 
         // 关联课程分类
-        baseMapper.insertCourseCategoryRelations(course.getId(), Collections.singletonList(registerDTO.getCategoryId()));
+        baseMapper.insertCourseCategoryRelations(course.getId(),
+                Collections.singletonList(registerDTO.getCategoryId()));
         // 关联课程标签
         baseMapper.insertCourseTagRelations(course.getId(), tagMap);
         // 关联课程知识点
@@ -184,8 +185,6 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
         return course.getId(); // 注册成功，返回课程ID
     }
-
-
 
     @Override
     @Transactional(transactionManager = "transactionManager")
@@ -243,9 +242,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         return true;
     }
 
-
     /**
      * 课程删除（逻辑删除）
+     * 
      * @param courseIds 课程ID列表
      * @return 返回删除结果，成功返回提示信息，失败返回对应错误信息
      */
@@ -317,16 +316,29 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
                     return vo;
                 })
                 .collect(Collectors.toList());
-        
+
     }
 
+    /**
+     * 更新课程状态。
+     *
+     * 新课冷启动依赖 publishTime 判断“是否新课”，因此在课程首次上线时写入 publishTime。
+     * 这里采用“仅首次写入”策略：后续反复上下线不重置该时间，保证新课窗口语义稳定。
+     */
     @Override
     public Boolean updateCourseStatus(Long courseId, Integer status) {
         Course course = this.getById(courseId);
         if (course == null) {
             return false; // 课程不存在
         }
+        Integer oldStatus = course.getStatus();
         course.setStatus(status);
+        // 仅在“首次转为上线”且 publishTime 为空时写入，避免历史上线时间被覆盖。
+        if (CourseStatus.ONLINE.getCode() == status
+                && (oldStatus == null || oldStatus != CourseStatus.ONLINE.getCode())
+                && course.getPublishTime() == null) {
+            course.setPublishTime(LocalDateTime.now());
+        }
         return this.updateById(course);
     }
 
@@ -346,11 +358,12 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         if (course == null) {
             return null;
         }
-        
+
         List<Long> tagIds = baseMapper.selectTagIdsByCourseId(courseId);
         List<TagOptionDTO> tags = tagMapper.listEnabledTagOptionsByIds(tagIds);
         List<Long> kpIds = baseMapper.selectKnowledgePointIdsByCourseId(courseId);
-        List<KnowledgePointOptionDTO> knowledgePoints = knowledgePointMapper.listEnabledKnowledgePointOptionsByIds(kpIds);
+        List<KnowledgePointOptionDTO> knowledgePoints = knowledgePointMapper
+                .listEnabledKnowledgePointOptionsByIds(kpIds);
 
         CourseRegisterOptionsDTO options = new CourseRegisterOptionsDTO();
         options.setTags(tags);
@@ -366,8 +379,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         vo.setCategoryId(baseMapper.selectCategoryIdByCourseId(courseId));
         vo.setOptions(options);
         return vo;
-        
-    }
 
+    }
 
 }
