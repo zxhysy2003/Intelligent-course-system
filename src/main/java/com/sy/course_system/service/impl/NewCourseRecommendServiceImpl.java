@@ -20,8 +20,11 @@ import com.sy.course_system.dto.recommend.HybridRecommendItemDTO;
 import com.sy.course_system.dto.recommend.NewCourseBaseCandidateDTO;
 import com.sy.course_system.dto.recommend.NewCourseStatDTO;
 import com.sy.course_system.dto.recommend.NewCourseTagRowDTO;
+import com.sy.course_system.entity.UserOnboardingProfile;
 import com.sy.course_system.mapper.CourseMapper;
 import com.sy.course_system.mapper.UserInterestTagMapper;
+import com.sy.course_system.mapper.UserOnboardingProfileMapper;
+import com.sy.course_system.recommend.support.LearningGoalRuleSupport;
 import com.sy.course_system.repository.CourseGraphRepository;
 import com.sy.course_system.service.NewCourseRecommendService;
 
@@ -48,11 +51,14 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
     private static final int MIN_LIMIT = 1;
     private static final int MAX_LIMIT = 50;
     private static final int DEFAULT_LIMIT = 10;
+    private static final double LEARNING_GOAL_BONUS = 0.05;
 
     @Autowired
     private CourseMapper courseMapper;
     @Autowired
     private UserInterestTagMapper userInterestTagMapper;
+    @Autowired
+    private UserOnboardingProfileMapper userOnboardingProfileMapper;
     @Autowired
     private CourseGraphRepository courseGraphRepository;
 
@@ -132,6 +138,10 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
 
         Set<Long> userTagIds = new LinkedHashSet<>(
                 safeList(userInterestTagMapper.selectTagIdsByUserIdAndSource(userId, INIT_SOURCE)));
+        // 常规推荐里的新课候选也会受到 onboarding learningGoal 影响，但这里只做“分数接近时的轻量偏置”，
+        // 不把 learningGoal 当成硬过滤条件，避免新课池被压缩成单一类型课程。
+        UserOnboardingProfile profile = userOnboardingProfileMapper.selectByUserId(userId);
+        String learningGoal = profile == null ? null : profile.getLearningGoal();
         Map<Long, Double> readinessMap = loadReadinessMap(userId, courseIds);
 
         List<ScoredNewCourse> scoredCourses = new ArrayList<>();
@@ -166,6 +176,14 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
             double quality = calcQuality(kpCount, duration);
             double readiness = readinessMap.getOrDefault(courseId, 1.0);
             double score = calcScore(tagMatch, freshness, quality, readiness);
+            boolean goalFit = LearningGoalRuleSupport.isGoalFit(
+                    learningGoal,
+                    base.getDifficulty(),
+                    base.getTitle(),
+                    extractTagNames(tagRows));
+            if (goalFit) {
+                score = Math.min(1.0, score + LEARNING_GOAL_BONUS);
+            }
 
             HybridRecommendItemDTO item = new HybridRecommendItemDTO();
             item.setCourseId(courseId);
@@ -174,7 +192,7 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
             item.setDifficulty(base.getDifficulty());
             item.setReadiness(readiness);
             item.setFinalScore(score);
-            item.setReason(buildReason(daysSincePublish, matchedTagNames, readiness, quality));
+            item.setReason(buildReason(daysSincePublish, matchedTagNames, readiness, quality, goalFit, learningGoal));
             item.setRecommendSource(SOURCE_COLD_START_COURSE);
             item.setIsNewCourse(Boolean.TRUE);
             scoredCourses.add(new ScoredNewCourse(item, base.getPublishTime()));
@@ -359,7 +377,12 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
     /**
      * 构建推荐原因文案，保证每个新课候选具备可解释信息。
      */
-    private String buildReason(long daysSincePublish, List<String> matchedTagNames, double readiness, double quality) {
+    private String buildReason(long daysSincePublish,
+            List<String> matchedTagNames,
+            double readiness,
+            double quality,
+            boolean goalFit,
+            String learningGoal) {
         List<String> parts = new ArrayList<>();
         parts.add("新课冷启动：上线" + daysSincePublish + "天");
         if (matchedTagNames != null && !matchedTagNames.isEmpty()) {
@@ -369,7 +392,18 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
         if (quality >= 0.7) {
             parts.add("内容信息较完整");
         }
+        if (goalFit) {
+            parts.add("符合当前学习目标（" + LearningGoalRuleSupport.goalLabel(learningGoal) + "）");
+        }
         return String.join("；", parts);
+    }
+
+    private List<String> extractTagNames(List<NewCourseTagRowDTO> tagRows) {
+        // 共享 helper 只接受最小领域输入（tagNames），这里做一次 DTO -> 纯字符串列表的适配，
+        // 避免 LearningGoalRuleSupport 反向依赖推荐链路内部的 DTO 类型。
+        return safeList(tagRows).stream()
+                .map(NewCourseTagRowDTO::getTagName)
+                .toList();
     }
 
     /**

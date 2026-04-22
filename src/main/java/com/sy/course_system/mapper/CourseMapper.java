@@ -70,6 +70,16 @@ public interface CourseMapper extends BaseMapper<Course> {
         List<Course> selectCourseNamesByIds(@Param("courseIds") List<Long> courseIds);
 
         /**
+         * 按课程 id 获取推荐结果需要的课程摘要信息。
+         */
+        List<Course> selectRecommendCourseSummariesByIds(@Param("courseIds") List<Long> courseIds);
+
+        /**
+         * 按课程 id 获取热门兜底所需的在线课程摘要信息。
+         */
+        List<Course> selectOnlineRecommendCourseSummariesByIds(@Param("courseIds") List<Long> courseIds);
+
+        /**
          * 获取与知识点关联的有效课程列表。
          */
         @Select("""

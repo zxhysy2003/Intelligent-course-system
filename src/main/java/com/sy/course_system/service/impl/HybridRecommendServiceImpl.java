@@ -27,12 +27,14 @@ import com.sy.course_system.dto.recommend.KnowledgeBriefDTO;
 import com.sy.course_system.dto.recommend.KnowledgeMasteryDTO;
 import com.sy.course_system.dto.recommend.RecommendItemDTO;
 import com.sy.course_system.dto.recommend.RecommendResponseDTO;
+import com.sy.course_system.entity.Course;
 import com.sy.course_system.graph.node.KnowledgeNode;
 import com.sy.course_system.repository.CourseGraphRepository;
 import com.sy.course_system.service.ColdStartRecommendService;
 import com.sy.course_system.service.ColdStartSupportService;
 import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.HybridRecommendService;
+import com.sy.course_system.service.LearningAnalysisService;
 import com.sy.course_system.service.NewCourseRecommendService;
 import com.sy.course_system.service.RecommendService;
 import com.sy.course_system.vo.ColdStartRecommendItemVO;
@@ -71,6 +73,8 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     private ColdStartRecommendService coldStartRecommendService;
     @Autowired
     private NewCourseRecommendService newCourseRecommendService;
+    @Autowired
+    private LearningAnalysisService learningAnalysisService;
 
     // 常规推荐缓存 Key 前缀，完整 key 形如 recommend:user:{userId}
     private static final String RECOMMEND_COURSE_KEY = "recommend:user:";
@@ -93,6 +97,12 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
 
     // 冷启动返回条数：控制初始曝光规模，避免冷启动阶段结果过多
     private static final int COLD_START_LIMIT = 10;
+    // 热门课程兜底返回上限
+    private static final int HOT_FALLBACK_LIMIT = 10;
+    // 热门兜底每轮扫描的热榜区间大小
+    private static final int HOT_FALLBACK_SCAN_BATCH_SIZE = HOT_FALLBACK_LIMIT;
+    // 热门兜底最多扫描的热榜课程数，避免在极端脏数据下无限查询
+    private static final int HOT_FALLBACK_MAX_SCAN_COUNT = 100;
     // 常规推荐为空时，新课兜底返回上限
     private static final int NEW_COURSE_FALLBACK_LIMIT = 10;
     // 常规推荐阶段查询的新课候选上限
@@ -116,6 +126,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
 
     private static final String SOURCE_CF = "CF";
     private static final String SOURCE_USER_COLD_START = "COLD_START_USER";
+    private static final String SOURCE_HOT_FALLBACK = "HOT_FALLBACK";
 
     @Value("${recommend.new-course.enabled:true}")
     private boolean newCourseRecommendEnabled;
@@ -185,6 +196,9 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
             List<HybridRecommendItemDTO> fallback = newCourseCandidates.stream()
                     .limit(NEW_COURSE_FALLBACK_LIMIT)
                     .collect(Collectors.toList());
+            if (fallback.isEmpty()) {
+                fallback = buildHotFallbackItems();
+            }
             enrichGraphInfo(userId, fallback, null);
             return new HybridRecommendResponseDTO(userId, fallback);
         }
@@ -212,10 +226,10 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
 
         Map<Long, CourseReadinessDTO> readinessMap = readinessList.stream()
                 .collect(Collectors.toMap(CourseReadinessDTO::getCourseId, r -> r, (a, b) -> a));
-        Map<Long, String> courseTitleMap = courseService.getCourseTitleMapByIds(courseIds);
+        Map<Long, Course> courseSummaryMap = courseService.getRecommendCourseSummaryMapByIds(courseIds);
 
         List<HybridRecommendItemDTO> hybridItems = topCourses.stream()
-                .map(item -> buildHybridBaseItem(item, min, max, eps, courseTitleMap, readinessMap))
+                .map(item -> buildHybridBaseItem(item, min, max, eps, courseSummaryMap, readinessMap))
                 // 过滤可学习性不足的课程
                 // .filter(dto -> dto.getReadiness() == null || dto.getReadiness() >=
                 // READINESS_THRESHOLD)
@@ -376,12 +390,14 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
      * - readiness：课程可学习性，默认值 1.0（缺少图谱数据时不惩罚）。
      */
     private HybridRecommendItemDTO buildHybridBaseItem(RecommendItemDTO item, double min, double max, double eps,
-            Map<Long, String> courseTitleMap, Map<Long, CourseReadinessDTO> readinessMap) {
+            Map<Long, Course> courseSummaryMap, Map<Long, CourseReadinessDTO> readinessMap) {
         Long courseId = item.getCourseId();
-        String title = courseTitleMap.get(courseId);
+        Course course = courseSummaryMap.get(courseId);
         Double cfScore = item.getScore();
 
-        // 基于 readiness 计算融合分
+        // 排序层允许对缺失图谱数据使用 1.0 兜底，避免“没有 readiness 数据”的课程被系统性压低。
+        // 但 explain 层不会直接复用这个兜底值，而是只根据 readinessDTO 的真实值生成 reason，
+        // 防止把“未知”误说成“当前可直接学习”。
         CourseReadinessDTO readinessDTO = readinessMap.get(courseId);
         double readiness = (readinessDTO == null || readinessDTO.getReadiness() == null) ? 1.0
                 : readinessDTO.getReadiness();
@@ -390,13 +406,87 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
 
         HybridRecommendItemDTO dto = new HybridRecommendItemDTO();
         dto.setCourseId(courseId);
-        dto.setTitle(title);
+        dto.setTitle(course == null ? null : course.getTitle());
+        dto.setCoverUrl(course == null ? null : course.getCoverUrl());
+        dto.setDifficulty(course == null ? null : course.getDifficulty());
         dto.setCfScore(cfScore);
         dto.setReadiness(readiness);
         dto.setFinalScore(finalScore);
+        dto.setReason(buildCfReason(readinessDTO));
         dto.setRecommendSource(SOURCE_CF);
         dto.setIsNewCourse(Boolean.FALSE);
         return dto;
+    }
+
+    /**
+     * 构建 CF 场景文案。
+     *
+     * 关键约束：
+     * - 这里只看“真实图谱 readiness”；
+     * - 如果图谱缺失，文案保持通用推荐说明，不根据排序兜底值 1.0 推断“可直接学习”；
+     * - 这样可以同时兼顾排序稳定性和解释语义准确性。
+     */
+    private String buildCfReason(CourseReadinessDTO readinessDTO) {
+        if (readinessDTO == null || readinessDTO.getReadiness() == null) {
+            return "根据你的学习行为推荐";
+        }
+        if (readinessDTO.getReadiness() >= PREREQUISITE_THRESHOLD) {
+            return "根据你的学习行为推荐；当前可直接学习";
+        }
+        return "根据你的学习行为推荐；建议先补齐先修知识";
+    }
+
+    /**
+     * 构建热门课程兜底结果。
+     *
+     * 读取策略不是“固定取前 10 个 raw hot ids”，而是分批向后扫描：
+     * 1) 从 Redis 热榜读取一段区间；
+     * 2) 在 SQL 侧按在线状态过滤课程摘要；
+     * 3) 过滤后如果数量不足，则继续扫描下一段；
+     * 4) 直到补满、Redis 无更多数据、或达到扫描上限。
+     *
+     * 这样可以兼容历史热榜里仍残留的无效 courseId，而不要求先执行一次全量清理任务。
+     */
+    private List<HybridRecommendItemDTO> buildHotFallbackItems() {
+        List<HybridRecommendItemDTO> results = new ArrayList<>();
+        Set<Long> addedCourseIds = new LinkedHashSet<>();
+        int scannedCount = 0;
+        while (results.size() < HOT_FALLBACK_LIMIT && scannedCount < HOT_FALLBACK_MAX_SCAN_COUNT) {
+            int batchSize = Math.min(HOT_FALLBACK_SCAN_BATCH_SIZE, HOT_FALLBACK_MAX_SCAN_COUNT - scannedCount);
+            List<Long> hotCourseIds = learningAnalysisService.getHotCoursesByRange(scannedCount, batchSize);
+            if (hotCourseIds == null || hotCourseIds.isEmpty()) {
+                break;
+            }
+
+            Map<Long, Course> courseSummaryMap = courseService.getOnlineRecommendCourseSummaryMapByIds(hotCourseIds);
+            for (Long courseId : hotCourseIds) {
+                if (courseId == null || !addedCourseIds.add(courseId)) {
+                    continue;
+                }
+                Course course = courseSummaryMap.get(courseId);
+                if (course == null) {
+                    continue;
+                }
+                HybridRecommendItemDTO item = new HybridRecommendItemDTO();
+                item.setCourseId(courseId);
+                item.setTitle(course.getTitle());
+                item.setCoverUrl(course.getCoverUrl());
+                item.setDifficulty(course.getDifficulty());
+                item.setCfScore(null);
+                item.setFinalScore(0.0);
+                item.setReason("热门课程兜底：近期较多同学在学");
+                item.setRecommendSource(SOURCE_HOT_FALLBACK);
+                item.setIsNewCourse(Boolean.FALSE);
+                results.add(item);
+                if (results.size() >= HOT_FALLBACK_LIMIT) {
+                    break;
+                }
+            }
+            // scannedCount 按“已扫描的热榜成员数”推进，而不是按“已返回结果数”推进，
+            // 这样下一轮才能真正越过本轮被过滤掉的脏数据，继续向后补齐在线课程。
+            scannedCount += hotCourseIds.size();
+        }
+        return results;
     }
 
     /**

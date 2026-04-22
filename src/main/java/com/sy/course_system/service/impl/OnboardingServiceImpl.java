@@ -28,6 +28,7 @@ public class OnboardingServiceImpl implements OnboardingService {
 
     private static final String INIT_SOURCE = "INIT";
     private static final String COLD_START_RECOMMEND_KEY = "recommend:cold:user:";
+    private static final String REGULAR_RECOMMEND_KEY = "recommend:user:";
     private static final Set<Integer> ALLOWED_LEVELS = Set.of(1, 2, 3);
     private static final Set<String> ALLOWED_GOALS = Set.of("JOB", "PROJECT", "FOUNDATION", "EXAM");
 
@@ -103,7 +104,11 @@ public class OnboardingServiceImpl implements OnboardingService {
                 .toList();
         userInterestTagMapper.batchInsert(rows);
 
+        // onboarding 不只影响用户冷启动推荐，也会影响常规推荐里的新课 goal bonus。
+        // 这里统一粗粒度删除两类缓存，而不是尝试判断“用户当前到底走哪条推荐链路”，
+        // 这样可以确保 learningGoal / INIT 标签变更后下一次请求立即生效。
         redisTemplate.delete(COLD_START_RECOMMEND_KEY + userId);
+        redisTemplate.delete(REGULAR_RECOMMEND_KEY + userId);
     }
 
     @Override

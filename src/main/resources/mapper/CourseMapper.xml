@@ -140,6 +140,35 @@
         </foreach>
     </select>
 
+    <!-- 推荐卡片摘要查询：只取标题/封面/难度等轻量字段，避免主推荐链路为了展示信息回表查完整课程。 -->
+    <select id="selectRecommendCourseSummariesByIds" resultType="com.sy.course_system.entity.Course">
+        SELECT
+            id,
+            title,
+            cover_url AS coverUrl,
+            difficulty
+        FROM course
+        WHERE id IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <!-- 热门兜底专用：读取侧再次限制 status=1，确保 Redis 热榜残留脏数据时也不会返回下线课程。 -->
+    <select id="selectOnlineRecommendCourseSummariesByIds" resultType="com.sy.course_system.entity.Course">
+        SELECT
+            id,
+            title,
+            cover_url AS coverUrl,
+            difficulty
+        FROM course
+        WHERE status = 1
+          AND id IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
     <!-- insertCourseTagRelations --> 
 
     <insert id="insertCourseTagRelations">

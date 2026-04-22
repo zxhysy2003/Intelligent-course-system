@@ -3,10 +3,13 @@ package com.sy.course_system.service.impl;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.sy.course_system.enums.CourseOrderType;
 import com.sy.course_system.enums.CourseStatus;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,6 +46,8 @@ import com.sy.course_system.vo.KnowledgeVO;
 
 @Service
 public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> implements CourseService {
+    private static final Logger log = LoggerFactory.getLogger(CourseServiceImpl.class);
+
     @Autowired
     private CourseNodeRepository courseNodeRepository;
 
@@ -267,6 +272,15 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         baseMapper.deleteCourseKnowledgePointRelationsByCourseIds(courseIds); // 删除课程知识点关联
         // 4. 批量删除 Neo4j 课程节点和关系
         courseNodeRepository.deleteCourseGraphs(courseIds);
+        if (result > 0) {
+            try {
+                // 删除主流程已经成功后，热榜清理只做告警，不再把“附属索引清理失败”升级成接口失败。
+                // 否则会出现“课程其实已经删掉，但接口对外仍返回 500”的错位。
+                learningAnalysisService.removeCourseHotBatch(courseIds);
+            } catch (RuntimeException ex) {
+                log.warn("删除课程后清理热榜失败，courseIds={}", courseIds, ex);
+            }
+        }
         return result;
     }
 
@@ -296,6 +310,40 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         for (Course course : courses) {
             if (course != null && course.getId() != null) {
                 result.put(course.getId(), course.getTitle());
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public Map<Long, Course> getRecommendCourseSummaryMapByIds(List<Long> courseIds) {
+        Map<Long, Course> result = new HashMap<>();
+        // 这里返回 Map 而不是保留 List，是为了让推荐服务在按原始 courseIds 顺序组装结果时能 O(1) 取摘要。
+        // IN 查询本身不保证结果顺序，真正的展示顺序仍由上层按照候选列表自行重建。
+        List<Course> courses = baseMapper.selectRecommendCourseSummariesByIds(courseIds);
+        if (courses == null || courses.isEmpty()) {
+            return result;
+        }
+        for (Course course : courses) {
+            if (course != null && course.getId() != null) {
+                result.put(course.getId(), course);
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public Map<Long, Course> getOnlineRecommendCourseSummaryMapByIds(List<Long> courseIds) {
+        Map<Long, Course> result = new HashMap<>();
+        // 热门兜底使用独立的“在线摘要”查询，是读取侧的最后一道保护：
+        // 即使 Redis 热榜里还残留历史脏 id，也不会把下线课程重新返回给前台。
+        List<Course> courses = baseMapper.selectOnlineRecommendCourseSummariesByIds(courseIds);
+        if (courses == null || courses.isEmpty()) {
+            return result;
+        }
+        for (Course course : courses) {
+            if (course != null && course.getId() != null) {
+                result.put(course.getId(), course);
             }
         }
         return result;
@@ -339,7 +387,17 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
                 && course.getPublishTime() == null) {
             course.setPublishTime(LocalDateTime.now());
         }
-        return this.updateById(course);
+        boolean updated = this.updateById(course);
+        if (updated && status != null && status != CourseStatus.ONLINE.getCode()) {
+            try {
+                // 课程状态更新属于主业务，热榜清理属于推荐侧附属动作。
+                // 这里仅记录告警，避免在 Redis 短暂异常时把“状态已更新成功”的请求误报为失败。
+                learningAnalysisService.removeCourseHot(courseId);
+            } catch (RuntimeException ex) {
+                log.warn("更新课程状态后清理热榜失败，courseId={}, status={}", courseId, status, ex);
+            }
+        }
+        return updated;
     }
 
     @Override

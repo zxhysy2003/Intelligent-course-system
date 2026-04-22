@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Select;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.sy.course_system.dto.ProgressDailyPointDTO;
+import com.sy.course_system.dto.recommend.ColdStartSignalDTO;
 import com.sy.course_system.dto.recommend.UserCourseBaseScoreDTO;
 import com.sy.course_system.entity.LearningBehavior;
 
@@ -63,6 +64,22 @@ public interface LearningBehaviorMapper extends BaseMapper<LearningBehavior> {
                 WHERE user_id = #{userId}
             """)
     Long countByUserId(@Param("userId") Long userId);
+
+    @Select("""
+                SELECT
+                    COUNT(CASE WHEN behavior_type IN ('STUDY', 'FAVORITE', 'FINISH') THEN 1 END) AS effectiveBehaviorCount,
+                    COUNT(DISTINCT CASE WHEN behavior_type IN ('STUDY', 'FINISH') THEN course_id END) AS studiedCourseCount,
+                    COALESCE(SUM(CASE WHEN behavior_type = 'STUDY' THEN duration ELSE 0 END), 0) AS totalStudySeconds,
+                    COALESCE(SUM(CASE WHEN behavior_type = 'FINISH' THEN 1 ELSE 0 END), 0) AS finishCount
+                FROM learning_behavior
+                WHERE user_id = #{userId}
+            """)
+    // 冷启动联合信号聚合：
+    // - effectiveBehaviorCount 刻意排除 VIEW，避免浏览噪声高估用户成熟度；
+    // - studiedCourseCount 只统计 STUDY/FINISH 覆盖的不同课程数，用于近似用户偏好广度；
+    // - totalStudySeconds 只累计 STUDY 时长，不让 FAVORITE/VIEW 对学习深度产生误导；
+    // - finishCount 单独暴露，是因为“一次完课”通常比若干浅层行为更能说明用户已脱离冷启动。
+    ColdStartSignalDTO selectColdStartSignal(@Param("userId") Long userId);
 
     // 获取单个用户单个课程的基础分数
     @Select("""
