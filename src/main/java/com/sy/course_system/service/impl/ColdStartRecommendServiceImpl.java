@@ -338,7 +338,7 @@ public class ColdStartRecommendServiceImpl implements ColdStartRecommendService 
         // - 若直接放宽到“原理”等更广泛词表，会扩大这条弱加分的覆盖面，改变现有冷启动排序。
         boolean introByTitle = course.title != null
                 && !course.title.isBlank()
-                && ("入门".equals(course.title) || course.title.contains("入门") || course.title.contains("基础"));
+                && (course.title.contains("入门") || course.title.contains("基础"));
         return introByTag || introByTitle;
     }
 
