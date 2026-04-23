@@ -17,10 +17,11 @@ import com.sy.course_system.vo.CourseVO;
 public interface CourseMapperStruct {
     CourseMapperStruct INSTANCE = Mappers.getMapper(CourseMapperStruct.class);
 
-    @Mapping(target = "status", expression = "java(com.sy.course_system.enums.CourseStatus.DRAFT.getCode())") 
+    @Mapping(target = "status", expression = "java(com.sy.course_system.enums.CourseStatus.DRAFT.getCode())")
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "createTime", ignore = true)
     @Mapping(target = "updateTime", ignore = true)
+    @Mapping(target = "publishTime", ignore = true)
     Course toEntity(CourseRegisterDTO dto);
 
     @Mapping(target = "tagList", expression = "java(tempDTO.getTags() != null ? java.util.Arrays.asList(tempDTO.getTags().split(\",\")) : null)")

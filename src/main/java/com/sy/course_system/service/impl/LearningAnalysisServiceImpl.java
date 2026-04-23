@@ -8,6 +8,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -19,7 +20,6 @@ import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
-import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import com.sy.course_system.dto.AbilityDimensionScoreDTO;
 import com.sy.course_system.dto.AbilityRadarDTO;
 import com.sy.course_system.dto.ProgressChartDTO;
@@ -47,19 +47,44 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
     @Autowired
     private KnowledgeRepository knowledgeRepository;
 
-
     private static final String HOT_COURSE_KEY = "course:hot";
     private static final DateTimeFormatter DAY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-
     /**
      * 增加课程热度
+     * 
      * @param courseId 课程ID
-     * @param score 热度分值（可按学习行为加权）
+     * @param score    热度分值（可按学习行为加权）
      */
     @Override
     public void increaseCourseHot(Long courseId, double score) {
         redisTemplate.opsForZSet().incrementScore(HOT_COURSE_KEY, courseId, score);
+    }
+
+    @Override
+    public void removeCourseHot(Long courseId) {
+        if (courseId == null) {
+            return;
+        }
+        // 这里只做“尽力清理”：
+        // - Redis 热榜属于推荐侧附属索引，不应反向决定主业务成败；
+        // - 读取链路仍会在 SQL 侧再次校验课程状态，避免 Redis 中的残留脏数据直接暴露给用户。
+        redisTemplate.opsForZSet().remove(HOT_COURSE_KEY, courseId);
+    }
+
+    @Override
+    public void removeCourseHotBatch(List<Long> courseIds) {
+        if (courseIds == null || courseIds.isEmpty()) {
+            return;
+        }
+        Object[] members = courseIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toArray();
+        if (members.length == 0) {
+            return;
+        }
+        redisTemplate.opsForZSet().remove(HOT_COURSE_KEY, members);
     }
 
     /**
@@ -67,9 +92,25 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
      */
     @Override
     public List<Long> getHotCourses(Integer topN) {
-        // 1.从redis sorted set中获取热度最高的 TopN 个课程ID
+        if (topN == null || topN <= 0) {
+            return Collections.emptyList();
+        }
+        return getHotCoursesByRange(0, topN);
+    }
+
+    /**
+     * 按热度区间读取课程 ID。
+     *
+     * 该方法主要服务于“热门兜底扫描补满”策略：调用方会分批向后扫描 Redis 热榜，
+     * 这样即使前面的 hot ids 中夹杂已下线课程，也还能继续拿到后面的在线热门课。
+     */
+    @Override
+    public List<Long> getHotCoursesByRange(int startInclusive, int limit) {
+        if (startInclusive < 0 || limit <= 0) {
+            return Collections.emptyList();
+        }
         Set<Object> courseIdSet = redisTemplate.opsForZSet()
-                .reverseRange(HOT_COURSE_KEY, 0, topN - 1);
+                .reverseRange(HOT_COURSE_KEY, startInclusive, startInclusive + limit - 1L);
         if (courseIdSet == null || courseIdSet.isEmpty()) {
             return Collections.emptyList();
         }
@@ -93,7 +134,7 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
         // 1. 批量获取所有课程的热度值
         Map<Long, Double> courseHotMap = batchGetCourseHotness(courses);
         // 2. 回填热度值并排序
-        
+
         for (CourseVO course : courses) {
             course.setHotScore(courseHotMap.getOrDefault(course.getId(), 0.0));
         }
@@ -108,7 +149,7 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
         List<Long> courseIds = courses.stream()
                 .map(CourseVO::getId)
                 .collect(Collectors.toList());
-        
+
         // 批量获取热度值（使用 SessionCallback 与 opsForZSet().score）
         List<Object> results = stringRedisTemplate.executePipelined(new SessionCallback<Object>() {
             @Override
@@ -210,6 +251,4 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
         return dto;
     }
 
-
-    
 }

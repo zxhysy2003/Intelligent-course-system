@@ -1,8 +1,12 @@
 package com.sy.course_system.service.impl;
 
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -10,6 +14,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.neo4j.core.Neo4jClient;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -22,12 +27,15 @@ import com.sy.course_system.dto.recommend.KnowledgeBriefDTO;
 import com.sy.course_system.dto.recommend.KnowledgeMasteryDTO;
 import com.sy.course_system.dto.recommend.RecommendItemDTO;
 import com.sy.course_system.dto.recommend.RecommendResponseDTO;
+import com.sy.course_system.entity.Course;
 import com.sy.course_system.graph.node.KnowledgeNode;
 import com.sy.course_system.repository.CourseGraphRepository;
 import com.sy.course_system.service.ColdStartRecommendService;
 import com.sy.course_system.service.ColdStartSupportService;
 import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.HybridRecommendService;
+import com.sy.course_system.service.LearningAnalysisService;
+import com.sy.course_system.service.NewCourseRecommendService;
 import com.sy.course_system.service.RecommendService;
 import com.sy.course_system.vo.ColdStartRecommendItemVO;
 
@@ -63,6 +71,10 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     private ColdStartSupportService coldStartSupportService;
     @Autowired
     private ColdStartRecommendService coldStartRecommendService;
+    @Autowired
+    private NewCourseRecommendService newCourseRecommendService;
+    @Autowired
+    private LearningAnalysisService learningAnalysisService;
 
     // 常规推荐缓存 Key 前缀，完整 key 形如 recommend:user:{userId}
     private static final String RECOMMEND_COURSE_KEY = "recommend:user:";
@@ -85,6 +97,19 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
 
     // 冷启动返回条数：控制初始曝光规模，避免冷启动阶段结果过多
     private static final int COLD_START_LIMIT = 10;
+    // 热门课程兜底返回上限
+    private static final int HOT_FALLBACK_LIMIT = 10;
+    // 热门兜底每轮扫描的热榜区间大小
+    private static final int HOT_FALLBACK_SCAN_BATCH_SIZE = HOT_FALLBACK_LIMIT;
+    // 热门兜底最多扫描的热榜课程数，避免在极端脏数据下无限查询
+    private static final int HOT_FALLBACK_MAX_SCAN_COUNT = 100;
+    // 常规推荐为空时，新课兜底返回上限
+    private static final int NEW_COURSE_FALLBACK_LIMIT = 10;
+    // 常规推荐阶段查询的新课候选上限
+    private static final int NEW_COURSE_CANDIDATE_LIMIT = 30;
+    // 新课插槽位置（0-based）：选择第 3、8、13 位，分别覆盖结果列表的前段、中段和后段，
+    // 在保证新课有稳定曝光的同时，避免将新课过度集中在列表顶部而影响常规推荐体验。
+    private static final int[] NEW_COURSE_INJECT_SLOTS = new int[] { 2, 7, 12 };
 
     // CF 候选池上限：先截断再做图谱计算，减少 Neo4j 批量查询压力
     private static final int CANDIDATE_POOL_SIZE = 20;
@@ -98,6 +123,17 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     // 可学习性过滤阈值（当前过滤逻辑暂未启用，保留用于策略开关）
     @SuppressWarnings("unused")
     private static final double READINESS_THRESHOLD = 0.4;
+
+    private static final String SOURCE_CF = "CF";
+    private static final String SOURCE_USER_COLD_START = "COLD_START_USER";
+    private static final String SOURCE_HOT_FALLBACK = "HOT_FALLBACK";
+
+    @Value("${recommend.new-course.enabled:true}")
+    private boolean newCourseRecommendEnabled;
+    @Value("${recommend.new-course.inject-limit:3}")
+    private int newCourseInjectLimit;
+    @Value("${recommend.new-course.max-exposure-ratio:0.30}")
+    private double newCourseMaxExposureRatio;
 
     /**
      * 融合推荐主入口。
@@ -133,16 +169,38 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
         log.info("User {} hit cold-start recommendation branch", userId);
         List<ColdStartRecommendItemVO> coldStartItems = coldStartRecommendService.recommend(userId,
                 COLD_START_LIMIT);
+        // 冷启动结果统一转为 HybridRecommendItemDTO，后续走同一套图谱补全逻辑，减少分支差异。
         List<HybridRecommendItemDTO> hybridItems = toColdStartHybridItems(coldStartItems);
         enrichGraphInfo(userId, hybridItems, null);
         return new HybridRecommendResponseDTO(userId, hybridItems);
     }
 
+    /**
+     * 非冷启动用户主流程：CF 主链路 + 新课候选增强。
+     *
+     * 执行要点：
+     * 1) 先拿 CF 结果作为主排序依据；
+     * 2) 并行准备新课候选（仅在开关开启时）；
+     * 3) CF 为空时使用新课候选兜底；
+     * 4) CF 不为空时按曝光上限将新课插入固定槽位；
+     * 5) 最后统一做图谱字段补全，确保返回结构一致。
+     */
     private HybridRecommendResponseDTO buildRegularResponse(Long userId) {
         RecommendResponseDTO cfResp = recommendService.recommend(userId);
         List<RecommendItemDTO> items = cfResp == null ? List.of() : cfResp.getItems();
+        List<HybridRecommendItemDTO> newCourseCandidates = newCourseRecommendEnabled
+                ? newCourseRecommendService.recommendForRegularUser(userId, NEW_COURSE_CANDIDATE_LIMIT)
+                : List.of();
         if (items == null || items.isEmpty()) {
-            return new HybridRecommendResponseDTO(userId, List.of());
+            // CF 无数据时不直接返回空列表，优先使用新课候选保证结果可用。
+            List<HybridRecommendItemDTO> fallback = newCourseCandidates.stream()
+                    .limit(NEW_COURSE_FALLBACK_LIMIT)
+                    .collect(Collectors.toList());
+            if (fallback.isEmpty()) {
+                fallback = buildHotFallbackItems();
+            }
+            enrichGraphInfo(userId, fallback, null);
+            return new HybridRecommendResponseDTO(userId, fallback);
         }
 
         List<RecommendItemDTO> topCourses = items.stream()
@@ -168,17 +226,22 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
 
         Map<Long, CourseReadinessDTO> readinessMap = readinessList.stream()
                 .collect(Collectors.toMap(CourseReadinessDTO::getCourseId, r -> r, (a, b) -> a));
-        Map<Long, String> courseTitleMap = courseService.getCourseTitleMapByIds(courseIds);
+        Map<Long, Course> courseSummaryMap = courseService.getRecommendCourseSummaryMapByIds(courseIds);
 
         List<HybridRecommendItemDTO> hybridItems = topCourses.stream()
-                .map(item -> buildHybridBaseItem(item, min, max, eps, courseTitleMap, readinessMap))
+                .map(item -> buildHybridBaseItem(item, min, max, eps, courseSummaryMap, readinessMap))
                 // 过滤可学习性不足的课程
                 // .filter(dto -> dto.getReadiness() == null || dto.getReadiness() >=
                 // READINESS_THRESHOLD)
                 .sorted(Comparator.comparing(HybridRecommendItemDTO::getFinalScore).reversed())
                 .collect(Collectors.toList());
-        enrichGraphInfo(userId, hybridItems, readinessMap);
-        return new HybridRecommendResponseDTO(userId, hybridItems);
+
+        // 新课注入数量由“绝对上限 + 暴光比例上限”共同约束，避免挤占原有个性化结果。
+        int injectLimit = calculateNewCourseInjectLimit(hybridItems.size());
+        List<HybridRecommendItemDTO> mergedItems = mergeWithNewCourseCandidates(hybridItems, newCourseCandidates,
+                injectLimit);
+        enrichGraphInfo(userId, mergedItems, readinessMap);
+        return new HybridRecommendResponseDTO(userId, mergedItems);
     }
 
     /**
@@ -312,6 +375,8 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
         dto.setDifficulty(item.getDifficulty());
         dto.setFinalScore(item.getScore());
         dto.setReason(item.getReason());
+        dto.setRecommendSource(SOURCE_USER_COLD_START);
+        dto.setIsNewCourse(Boolean.FALSE);
         return dto;
     }
 
@@ -325,12 +390,14 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
      * - readiness：课程可学习性，默认值 1.0（缺少图谱数据时不惩罚）。
      */
     private HybridRecommendItemDTO buildHybridBaseItem(RecommendItemDTO item, double min, double max, double eps,
-            Map<Long, String> courseTitleMap, Map<Long, CourseReadinessDTO> readinessMap) {
+            Map<Long, Course> courseSummaryMap, Map<Long, CourseReadinessDTO> readinessMap) {
         Long courseId = item.getCourseId();
-        String title = courseTitleMap.get(courseId);
+        Course course = courseSummaryMap.get(courseId);
         Double cfScore = item.getScore();
 
-        // 基于 readiness 计算融合分
+        // 排序层允许对缺失图谱数据使用 1.0 兜底，避免“没有 readiness 数据”的课程被系统性压低。
+        // 但 explain 层不会直接复用这个兜底值，而是只根据 readinessDTO 的真实值生成 reason，
+        // 防止把“未知”误说成“当前可直接学习”。
         CourseReadinessDTO readinessDTO = readinessMap.get(courseId);
         double readiness = (readinessDTO == null || readinessDTO.getReadiness() == null) ? 1.0
                 : readinessDTO.getReadiness();
@@ -339,11 +406,156 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
 
         HybridRecommendItemDTO dto = new HybridRecommendItemDTO();
         dto.setCourseId(courseId);
-        dto.setTitle(title);
+        dto.setTitle(course == null ? null : course.getTitle());
+        dto.setCoverUrl(course == null ? null : course.getCoverUrl());
+        dto.setDifficulty(course == null ? null : course.getDifficulty());
         dto.setCfScore(cfScore);
         dto.setReadiness(readiness);
         dto.setFinalScore(finalScore);
+        dto.setReason(buildCfReason(readinessDTO));
+        dto.setRecommendSource(SOURCE_CF);
+        dto.setIsNewCourse(Boolean.FALSE);
         return dto;
+    }
+
+    /**
+     * 构建 CF 场景文案。
+     *
+     * 关键约束：
+     * - 这里只看“真实图谱 readiness”；
+     * - 如果图谱缺失，文案保持通用推荐说明，不根据排序兜底值 1.0 推断“可直接学习”；
+     * - 这样可以同时兼顾排序稳定性和解释语义准确性。
+     */
+    private String buildCfReason(CourseReadinessDTO readinessDTO) {
+        if (readinessDTO == null || readinessDTO.getReadiness() == null) {
+            return "根据你的学习行为推荐";
+        }
+        if (readinessDTO.getReadiness() >= PREREQUISITE_THRESHOLD) {
+            return "根据你的学习行为推荐；当前可直接学习";
+        }
+        return "根据你的学习行为推荐；建议先补齐先修知识";
+    }
+
+    /**
+     * 构建热门课程兜底结果。
+     *
+     * 读取策略不是“固定取前 10 个 raw hot ids”，而是分批向后扫描：
+     * 1) 从 Redis 热榜读取一段区间；
+     * 2) 在 SQL 侧按在线状态过滤课程摘要；
+     * 3) 过滤后如果数量不足，则继续扫描下一段；
+     * 4) 直到补满、Redis 无更多数据、或达到扫描上限。
+     *
+     * 这样可以兼容历史热榜里仍残留的无效 courseId，而不要求先执行一次全量清理任务。
+     */
+    private List<HybridRecommendItemDTO> buildHotFallbackItems() {
+        List<HybridRecommendItemDTO> results = new ArrayList<>();
+        Set<Long> addedCourseIds = new LinkedHashSet<>();
+        int scannedCount = 0;
+        while (results.size() < HOT_FALLBACK_LIMIT && scannedCount < HOT_FALLBACK_MAX_SCAN_COUNT) {
+            int batchSize = Math.min(HOT_FALLBACK_SCAN_BATCH_SIZE, HOT_FALLBACK_MAX_SCAN_COUNT - scannedCount);
+            List<Long> hotCourseIds = learningAnalysisService.getHotCoursesByRange(scannedCount, batchSize);
+            if (hotCourseIds == null || hotCourseIds.isEmpty()) {
+                break;
+            }
+
+            Map<Long, Course> courseSummaryMap = courseService.getOnlineRecommendCourseSummaryMapByIds(hotCourseIds);
+            for (Long courseId : hotCourseIds) {
+                if (courseId == null || !addedCourseIds.add(courseId)) {
+                    continue;
+                }
+                Course course = courseSummaryMap.get(courseId);
+                if (course == null) {
+                    continue;
+                }
+                HybridRecommendItemDTO item = new HybridRecommendItemDTO();
+                item.setCourseId(courseId);
+                item.setTitle(course.getTitle());
+                item.setCoverUrl(course.getCoverUrl());
+                item.setDifficulty(course.getDifficulty());
+                item.setCfScore(null);
+                item.setFinalScore(0.0);
+                item.setReason("热门课程兜底：近期较多同学在学");
+                item.setRecommendSource(SOURCE_HOT_FALLBACK);
+                item.setIsNewCourse(Boolean.FALSE);
+                results.add(item);
+                if (results.size() >= HOT_FALLBACK_LIMIT) {
+                    break;
+                }
+            }
+            // scannedCount 按“已扫描的热榜成员数”推进，而不是按“已返回结果数”推进，
+            // 这样下一轮才能真正越过本轮被过滤掉的脏数据，继续向后补齐在线课程。
+            scannedCount += hotCourseIds.size();
+        }
+        return results;
+    }
+
+    /**
+     * 计算本次结果可注入的新课上限。
+     *
+     * 规则：
+     * - 受配置 `inject-limit` 限制；
+     * - 同时受 `max-exposure-ratio` 限制；
+     * - ratio > 0 但计算结果为 0 时，允许最少注入 1 条，避免配置有值但永远不生效。
+     */
+    private int calculateNewCourseInjectLimit(int regularItemSize) {
+        if (!newCourseRecommendEnabled) {
+            return 0;
+        }
+        int safeInjectLimit = Math.max(newCourseInjectLimit, 0);
+        if (safeInjectLimit == 0 || regularItemSize <= 0) {
+            return 0;
+        }
+        double safeExposureRatio = Math.max(newCourseMaxExposureRatio, 0.0);
+        int byRatio = (int) Math.floor(regularItemSize * safeExposureRatio);
+        if (byRatio <= 0 && safeExposureRatio > 0) {
+            byRatio = 1;
+        }
+        return Math.min(safeInjectLimit, byRatio);
+    }
+
+    /**
+     * 将新课候选插入常规推荐结果。
+     *
+     * 设计考虑：
+     * - 使用固定插槽保证新课稳定曝光位置；
+     * - 超出插槽后追加在尾部，避免复杂重排；
+     * - 按 courseId 去重，避免同一课程在 CF 与新课候选重复出现。
+     */
+    private List<HybridRecommendItemDTO> mergeWithNewCourseCandidates(List<HybridRecommendItemDTO> regularItems,
+            List<HybridRecommendItemDTO> newCourseCandidates, int injectLimit) {
+        if (regularItems == null || regularItems.isEmpty()) {
+            return regularItems == null ? List.of() : regularItems;
+        }
+        if (newCourseCandidates == null || newCourseCandidates.isEmpty() || injectLimit <= 0) {
+            return regularItems;
+        }
+
+        List<HybridRecommendItemDTO> merged = new ArrayList<>(regularItems);
+        Set<Long> seenCourseIds = merged.stream()
+                .map(HybridRecommendItemDTO::getCourseId)
+                .filter(id -> id != null)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        int injected = 0;
+        for (HybridRecommendItemDTO candidate : newCourseCandidates) {
+            Long courseId = candidate.getCourseId();
+            if (courseId == null || !seenCourseIds.add(courseId)) {
+                continue;
+            }
+            int targetIndex;
+            if (injected < NEW_COURSE_INJECT_SLOTS.length && NEW_COURSE_INJECT_SLOTS[injected] < merged.size()) {
+                // 优先使用预留插槽，仅在插槽位于当前列表内部时插入，避免与尾部追加逻辑重叠。
+                targetIndex = NEW_COURSE_INJECT_SLOTS[injected];
+            } else {
+                targetIndex = merged.size();
+            }
+            merged.add(targetIndex, candidate);
+            injected++;
+            if (injected >= injectLimit) {
+                break;
+            }
+        }
+        return merged;
     }
 
     /**
@@ -356,8 +568,8 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
      * 4) learningPaths：建议补齐路径（按先修关系展开）。
      *
      * 性能注意：
-     * - 非冷启动主流程可复用已算好的 readinessMap，避免重复查询。
-     * - 冷启动分支传 null 时，在本方法内按 courseIds 批量补查。
+     * - 非冷启动主流程可复用已算好的 readinessMap；若仅覆盖部分课程，会自动补查缺口。
+     * - 冷启动分支传 null 时，在本方法内按 courseIds 批量查询。
      */
     private void enrichGraphInfo(Long userId, List<HybridRecommendItemDTO> items,
             Map<Long, CourseReadinessDTO> readinessMap) {
@@ -374,13 +586,25 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
             return;
         }
 
-        // 允许上游复用 readinessMap；若未传入，则在这里统一批量查询一次。
-        Map<Long, CourseReadinessDTO> effectiveReadinessMap = readinessMap;
-        if (effectiveReadinessMap == null) {
-            List<CourseReadinessDTO> readinessList = courseGraphRepository.getCourseReadinessBatch(userId, courseIds,
+        // 允许上游复用 readinessMap。
+        // 若传入的是“部分 map”（例如仅覆盖 CF 候选），则补查缺失课程，避免新课注入后解释字段降级。
+        Map<Long, CourseReadinessDTO> effectiveReadinessMap = readinessMap == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(readinessMap);
+        List<Long> missingReadinessCourseIds = courseIds.stream()
+                .filter(id -> !effectiveReadinessMap.containsKey(id))
+                .toList();
+        if (!missingReadinessCourseIds.isEmpty()) {
+            List<CourseReadinessDTO> readinessList = courseGraphRepository.getCourseReadinessBatch(
+                    userId,
+                    missingReadinessCourseIds,
                     PREREQUISITE_THRESHOLD);
-            effectiveReadinessMap = readinessList.stream()
-                    .collect(Collectors.toMap(CourseReadinessDTO::getCourseId, r -> r, (a, b) -> a));
+            if (readinessList != null && !readinessList.isEmpty()) {
+                Map<Long, CourseReadinessDTO> fetchedReadinessMap = readinessList.stream()
+                        .filter(r -> r != null && r.getCourseId() != null)
+                        .collect(Collectors.toMap(CourseReadinessDTO::getCourseId, r -> r, (a, b) -> a));
+                effectiveReadinessMap.putAll(fetchedReadinessMap);
+            }
         }
 
         // 逐课程填充图谱解释信息。

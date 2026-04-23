@@ -8,6 +8,13 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
+/**
+ * 课程实体。
+ *
+ * 备注：
+ * - publishTime 表示“首次上线时间”，用于新课冷启动时间窗判断；
+ * - 该字段一旦写入，后续上下线切换不应反复覆盖，避免破坏“新课”语义。
+ */
 @TableName("course")
 public class Course {
     
@@ -23,6 +30,8 @@ public class Course {
     private LocalDateTime createTime;
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
+    // 首次从 DRAFT/OFFLINE 转为 ONLINE 的时间，不等同于最近更新时间
+    private LocalDateTime publishTime; // 课程首次上线时间
     
     public Long getId() {
         return id;
@@ -77,6 +86,12 @@ public class Course {
     }
     public void setUpdateTime(LocalDateTime updateTime) {
         this.updateTime = updateTime;
+    }
+    public LocalDateTime getPublishTime() {
+        return publishTime;
+    }
+    public void setPublishTime(LocalDateTime publishTime) {
+        this.publishTime = publishTime;
     }
     
 }

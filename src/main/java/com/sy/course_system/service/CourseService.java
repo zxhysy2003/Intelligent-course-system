@@ -8,6 +8,7 @@ import com.sy.course_system.dto.course.CourseRegisterOptionsDTO;
 import com.sy.course_system.dto.course.CourseQueryDTO;
 import com.sy.course_system.dto.course.CourseRegisterDTO;
 import com.sy.course_system.dto.course.CourseUpdateDTO;
+import com.sy.course_system.entity.Course;
 import com.sy.course_system.vo.CourseDetailVO;
 import com.sy.course_system.vo.CourseUpdateVO;
 import com.sy.course_system.vo.CourseVO;
@@ -40,6 +41,12 @@ public interface CourseService {
 
     // ===== 根据课程id列表获取课程标题列表 =====
     Map<Long, String> getCourseTitleMapByIds(List<Long> courseIds);
+
+    // ===== 根据课程id列表获取推荐场景所需的课程摘要 =====
+    Map<Long, Course> getRecommendCourseSummaryMapByIds(List<Long> courseIds);
+
+    // ===== 根据课程id列表获取热门兜底所需的在线课程摘要 =====
+    Map<Long, Course> getOnlineRecommendCourseSummaryMapByIds(List<Long> courseIds);
 
     // ===============================================================
 
