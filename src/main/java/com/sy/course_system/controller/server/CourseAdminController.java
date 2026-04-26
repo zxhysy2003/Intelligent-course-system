@@ -18,11 +18,11 @@ import com.sy.course_system.dto.course.CourseDeleteDTO;
 import com.sy.course_system.dto.course.CourseRegisterOptionsDTO;
 import com.sy.course_system.dto.course.CourseRegisterDTO;
 import com.sy.course_system.dto.course.CourseUpdateDTO;
-import com.sy.course_system.dto.course.CourseVideoUploadVO;
 import com.sy.course_system.enums.CourseStatus;
 import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.VideoService;
 import com.sy.course_system.vo.CourseDetailVO;
+import com.sy.course_system.vo.CourseVideoUploadVO;
 import com.sy.course_system.vo.CourseUpdateVO;
 
 @RestController

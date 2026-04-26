@@ -23,8 +23,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sy.course_system.dto.recommend.CourseReadinessDTO;
 import com.sy.course_system.dto.recommend.HybridRecommendItemDTO;
 import com.sy.course_system.dto.recommend.HybridRecommendResponseDTO;
-import com.sy.course_system.dto.recommend.KnowledgeBriefDTO;
-import com.sy.course_system.dto.recommend.KnowledgeMasteryDTO;
 import com.sy.course_system.dto.recommend.RecommendItemDTO;
 import com.sy.course_system.dto.recommend.RecommendResponseDTO;
 import com.sy.course_system.entity.Course;
@@ -38,6 +36,8 @@ import com.sy.course_system.service.LearningAnalysisService;
 import com.sy.course_system.service.NewCourseRecommendService;
 import com.sy.course_system.service.RecommendService;
 import com.sy.course_system.vo.ColdStartRecommendItemVO;
+import com.sy.course_system.vo.KnowledgeMasteryVO;
+import com.sy.course_system.vo.KnowledgeVO;
 
 /**
  * 混合推荐服务实现：将协同过滤（CF）结果与知识图谱（KG）信号融合，输出可解释推荐。
@@ -124,8 +124,25 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     @SuppressWarnings("unused")
     private static final double READINESS_THRESHOLD = 0.4;
 
+    // 展示分基线：统一把不同来源的推荐结果映射到 60~95 区间，便于前端稳定展示。
+    // 这里故意不映射到 0~100：
+    // - 过低分数容易被用户理解为“系统不推荐却硬塞给我”；
+    // - 过高分数又容易被误读成算法置信度接近百分百。
+    // 因此选择中高位区间，只表达“相对推荐度”，不表达概率含义。
+    private static final int RECOMMEND_SCORE_BASE = 60;
+    private static final int RECOMMEND_SCORE_SPAN = 35;
+    // 冷启动用户的 finalScore 是启发式原始分，分布不受 0~1 约束，
+    // 这里用指数压缩把它平滑映射到展示分区间，避免高分尾部过度拉开。
+    private static final double COLD_START_USER_SCORE_SCALE = 10.0;
+    // 热门兜底没有可复用的排序分，因此展示分按最终列表位置给一个稳定梯度：
+    // 第一条较高，之后逐项递减，但设置下限，避免尾部看起来“几乎不推荐”。
+    private static final double HOT_FALLBACK_NORMALIZED_BASE = 0.70;
+    private static final double HOT_FALLBACK_NORMALIZED_STEP = 0.03;
+    private static final double HOT_FALLBACK_NORMALIZED_MIN = 0.55;
+
     private static final String SOURCE_CF = "CF";
     private static final String SOURCE_USER_COLD_START = "COLD_START_USER";
+    private static final String SOURCE_COURSE_COLD_START = "COLD_START_COURSE";
     private static final String SOURCE_HOT_FALLBACK = "HOT_FALLBACK";
 
     @Value("${recommend.new-course.enabled:true}")
@@ -288,6 +305,18 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
 
     /**
      * 读取缓存并兼容 Map 反序列化场景。
+     *
+     * 这里读取后仍会再次执行一次展示分补齐，看起来像与 writeCache 重复，
+     * 但这是刻意保留的“读路径自修复”：
+     * 1) 兼容旧缓存：历史缓存里可能根本没有 recommendScore 字段；
+     * 2) 兼容反序列化：某些缓存序列化方式会把 DTO 还原成 Map，再转回对象；
+     * 3) 兼容规则演进：如果未来展示分公式调整，旧缓存也能在读取时即时按新规则补齐。
+     *
+     * 换句话说：
+     * - writeCache 负责保证“新写入的缓存”和“当前请求的即时返回值”已带展示分；
+     * - readCache 负责保证“任何历史缓存对象”在出缓存时都满足当前出参约定。
+     *
+     * 由于结果列表规模很小，这个补齐成本只是一次轻量遍历，优先保证语义稳定而不是省掉这点计算。
      */
     private HybridRecommendResponseDTO readCache(String cacheKey) {
         Object cached = redisTemplate.opsForValue().get(cacheKey);
@@ -295,15 +324,23 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
             return null;
         }
         if (cached instanceof HybridRecommendResponseDTO dto) {
+            fillRecommendScores(dto);
             return dto;
         }
-        return objectMapper.convertValue(cached, HybridRecommendResponseDTO.class);
+        HybridRecommendResponseDTO dto = objectMapper.convertValue(cached, HybridRecommendResponseDTO.class);
+        fillRecommendScores(dto);
+        return dto;
     }
 
     /**
      * 写入缓存，统一使用分钟级 TTL。
+     *
+     * 写入前先补齐 recommendScore，不只是为了缓存本身，更是为了保证：
+     * 当前这次 cache miss 触发的请求，在 writeCache 返回后直接把 result 返回给前端时，
+     * 结果对象已经具备完整展示字段，而不是依赖下次“从缓存读出来”时才补齐。
      */
     private void writeCache(String cacheKey, HybridRecommendResponseDTO value, long ttlMinutes) {
+        fillRecommendScores(value);
         redisTemplate.opsForValue().set(cacheKey, value, ttlMinutes, TimeUnit.MINUTES);
     }
 
@@ -346,6 +383,101 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    /**
+     * 为最终出参补齐统一展示分。
+     *
+     * 约定：
+     * - finalScore 继续只服务后端排序；
+     * - recommendScore 统一映射到 60~95，专供前端展示；
+     * - 即使缓存中是旧版本对象，也会在读取时即时补齐，无需手工清缓存。
+     */
+    private void fillRecommendScores(HybridRecommendResponseDTO response) {
+        if (response == null || response.getItems() == null || response.getItems().isEmpty()) {
+            return;
+        }
+        List<HybridRecommendItemDTO> items = response.getItems();
+        for (int i = 0; i < items.size(); i++) {
+            HybridRecommendItemDTO item = items.get(i);
+            if (item == null) {
+                continue;
+            }
+            item.setRecommendScore(toRecommendScore(item, i));
+        }
+    }
+
+    /**
+     * 把单条推荐结果换算成前端展示分。
+     *
+     * 处理流程分两步：
+     * 1) 先按来源把该条结果映射到 0~1 的 normalized 分；
+     * 2) 再统一映射到 60~95 整数区间。
+     *
+     * 这样做的目的，是把“不同推荐链路的内部打分公式”与“统一展示口径”解耦。
+     */
+    private int toRecommendScore(HybridRecommendItemDTO item, int index) {
+        double normalized = normalizeRecommendScore(item, index);
+        if (!Double.isFinite(normalized) || normalized < 0.0) {
+            normalized = 0.0;
+        } else if (normalized > 1.0) {
+            normalized = 1.0;
+        }
+        return (int) Math.round(RECOMMEND_SCORE_BASE + normalized * RECOMMEND_SCORE_SPAN);
+    }
+
+    /**
+     * 按推荐来源把内部分数压缩到统一的 0~1 区间。
+     *
+     * 各来源规则说明：
+     * - HOT_FALLBACK：热门兜底没有可比较的 finalScore，直接按最终位置给稳定梯度；
+     * - COLD_START_USER：冷启动使用启发式原始分，需要指数压缩；
+     * - CF / COLD_START_COURSE：这两类当前 finalScore 已按 0~1 设计，可直接裁剪；
+     * - 其他未知来源：走 clamp01 兜底，避免新增来源时直接把异常值暴露到前端。
+     *
+     * 这里不要把不同来源强行改写成相同语义，只做“展示口径统一”，不改变原有业务排序逻辑。
+     */
+    private double normalizeRecommendScore(HybridRecommendItemDTO item, int index) {
+        String source = item.getRecommendSource();
+        if (SOURCE_HOT_FALLBACK.equals(source)) {
+            return Math.max(HOT_FALLBACK_NORMALIZED_MIN,
+                    HOT_FALLBACK_NORMALIZED_BASE - index * HOT_FALLBACK_NORMALIZED_STEP);
+        }
+
+        double finalScore = safeFinalScore(item.getFinalScore());
+        if (SOURCE_USER_COLD_START.equals(source)) {
+            return 1.0 - Math.exp(-finalScore / COLD_START_USER_SCORE_SCALE);
+        }
+        if (SOURCE_CF.equals(source) || SOURCE_COURSE_COLD_START.equals(source)) {
+            return clamp01(finalScore);
+        }
+        return clamp01(finalScore);
+    }
+
+    /**
+     * 清洗 finalScore 输入。
+     *
+     * 展示分不应向前端暴露 null、NaN、Infinity 或负数；
+     * 这些情况统一降为 0，对应最终展示下限 60 分。
+     */
+    private double safeFinalScore(Double finalScore) {
+        if (finalScore == null || !Double.isFinite(finalScore) || finalScore < 0.0) {
+            return 0.0;
+        }
+        return finalScore;
+    }
+
+    /**
+     * 约束到 0~1 区间。
+     *
+     * 这里单独抽方法，是为了把“展示分归一化”与具体来源规则拆开，
+     * 避免后续修改来源分支时重复散落边界处理。
+     */
+    private double clamp01(double value) {
+        if (!Double.isFinite(value)) {
+            return 0.0;
+        }
+        return Math.max(0.0, Math.min(1.0, value));
     }
 
     /**
@@ -626,7 +758,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
             }
 
             // 缺失先修：用于提示“还差哪些知识点”。
-            List<KnowledgeMasteryDTO> missing = (readinessDTO == null || readinessDTO.getMissing() == null) ? List.of()
+            List<KnowledgeMasteryVO> missing = (readinessDTO == null || readinessDTO.getMissing() == null) ? List.of()
                     : readinessDTO.getMissing();
             item.setMissingPrerequisitesMastery(missing);
 
@@ -637,7 +769,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
             // 学习路径：用于展示“从当前水平到可学习该课程”的推荐补齐路径。
             List<List<KnowledgeNode>> paths = findLearningPathsRawViaClient(userId, courseId,
                     PREREQUISITE_THRESHOLD, 5);
-            List<List<KnowledgeBriefDTO>> pathDTOs = paths.stream()
+            List<List<KnowledgeVO>> pathDTOs = paths.stream()
                     .map(this::convertBrief)
                     .collect(Collectors.toList());
             item.setLearningPaths(pathDTOs);
@@ -645,16 +777,16 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     }
 
     /**
-     * 轻量知识点转换：KnowledgeNode -> KnowledgeBriefDTO。
+     * 轻量知识点转换：KnowledgeNode -> KnowledgeVO。
      *
      * 仅保留前端需要的 id/name/difficulty，避免将图数据库实体直接暴露到接口层。
      */
-    private List<KnowledgeBriefDTO> convertBrief(List<KnowledgeNode> nodes) {
+    private List<KnowledgeVO> convertBrief(List<KnowledgeNode> nodes) {
         if (nodes == null || nodes.isEmpty()) {
             return List.of();
         }
         return nodes.stream()
-                .map(k -> new KnowledgeBriefDTO(
+                .map(k -> new KnowledgeVO(
                         k.getId(),
                         k.getName(),
                         k.getDifficulty()))

@@ -1,16 +1,22 @@
-package com.sy.course_system.dto.recommend;
+package com.sy.course_system.vo;
 
-public class KnowledgeMasteryDTO {
+/**
+ * 推荐页展示用的先修掌握度信息。
+ *
+ * 该结构只保留前端真正需要的“还差多少”展示字段，
+ * 同时也被推荐链路内部复用，避免再维护一份字段完全一致的平行 DTO。
+ */
+public class KnowledgeMasteryVO {
     private Long id;
     private String name;
     private Integer difficulty;
     private Double have;
     private Double need;
-    
-    public KnowledgeMasteryDTO() {
+
+    public KnowledgeMasteryVO() {
     }
 
-    public KnowledgeMasteryDTO(Long id, String name, Integer difficulty, Double have, Double need) {
+    public KnowledgeMasteryVO(Long id, String name, Integer difficulty, Double have, Double need) {
         this.id = id;
         this.name = name;
         this.difficulty = difficulty;
@@ -57,6 +63,4 @@ public class KnowledgeMasteryDTO {
     public void setNeed(Double need) {
         this.need = need;
     }
-
-    
 }

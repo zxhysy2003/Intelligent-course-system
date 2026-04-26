@@ -1,5 +1,11 @@
-package com.sy.course_system.dto.course;
+package com.sy.course_system.vo;
 
+/**
+ * 课程视频上传结果。
+ *
+ * 这是标准响应视图对象，之前放在 dto/course 包下会模糊“入参 DTO / 出参 VO”的边界，
+ * 这里归位到 vo 包，减少命名和目录上的认知负担。
+ */
 public class CourseVideoUploadVO {
     private Long courseId;
     private String videoPath;
