@@ -33,7 +33,7 @@ import com.sy.course_system.entity.Tag;
 import com.sy.course_system.mapper.CourseMapper;
 import com.sy.course_system.mapper.KnowledgePointMapper;
 import com.sy.course_system.mapper.TagMapper;
-import com.sy.course_system.mapper.mapperStruct.CourseMapperStruct;
+import com.sy.course_system.converter.CourseMapperStruct;
 import com.sy.course_system.repository.CourseNodeRepository;
 import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.CourseTagService;
@@ -355,15 +355,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         if (knowledgePoints == null || knowledgePoints.isEmpty()) {
             return null;
         }
-        return knowledgePoints.stream()
-                .map(kp -> {
-                    KnowledgeVO vo = new KnowledgeVO();
-                    vo.setId(kp.getId());
-                    vo.setName(kp.getName());
-                    vo.setDifficulty(kp.getDifficulty());
-                    return vo;
-                })
-                .collect(Collectors.toList());
+        return CourseMapperStruct.INSTANCE.toKnowledgeVOs(knowledgePoints);
 
     }
 
@@ -427,13 +419,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         options.setTags(tags);
         options.setKnowledgePoints(knowledgePoints);
 
-        CourseUpdateVO vo = new CourseUpdateVO();
-        vo.setId(course.getId());
-        vo.setTitle(course.getTitle());
-        vo.setDescription(course.getDescription());
-        vo.setCoverUrl(course.getCoverUrl());
-        vo.setDifficulty(course.getDifficulty());
-        vo.setDuration(course.getDuration());
+        CourseUpdateVO vo = CourseMapperStruct.INSTANCE.toUpdateVO(course);
         vo.setCategoryId(baseMapper.selectCategoryIdByCourseId(courseId));
         vo.setOptions(options);
         return vo;

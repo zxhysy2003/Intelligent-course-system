@@ -15,6 +15,7 @@ import com.sy.course_system.entity.UserCourseRelation;
 import com.sy.course_system.enums.UserType;
 import com.sy.course_system.mapper.UserCourseRelationMapper;
 import com.sy.course_system.mapper.UserMapper;
+import com.sy.course_system.converter.UserMapperStruct;
 import com.sy.course_system.repository.UserNodeRepository;
 import com.sy.course_system.service.UserService;
 import com.sy.course_system.vo.UserDetailVO;
@@ -41,8 +42,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     @Override
     public List<UserVO> listUsers() {
         List<User> users = this.list();
-        List<UserVO> userVOs = users.stream().map(this::toUserVO).toList();
-        return userVOs;
+        return UserMapperStruct.INSTANCE.toUserVOs(users);
     }
 
     @Override
@@ -51,7 +51,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (user == null) {
             return null;
         }
-        return toUserVO(user);
+        return UserMapperStruct.INSTANCE.toUserVO(user);
     }
 
     @Override
@@ -63,13 +63,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (this.getOne(queryWrapper) != null) {
             return -1; // 用户名已存在
         }
-        User user = new User();
-        user.setUsername(registerDTO.getUsername());
-        user.setPassword(registerDTO.getPassword());
-        user.setEmail(registerDTO.getEmail());
-        user.setPhone(registerDTO.getPhone());
-        user.setRole(UserType.STUDENT.name());
-        user.setStatus(1);
+        User user = UserMapperStruct.INSTANCE.toEntity(registerDTO);
         this.save(user);
 
         Long userId = user.getId();
@@ -121,7 +115,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         queryWrapper.orderByDesc("id");
 
         Page<User> pageObj = this.page(new Page<>(page, pageSize), queryWrapper);
-        List<UserVO> records = pageObj.getRecords().stream().map(this::toUserVO).toList();
+        List<UserVO> records = UserMapperStruct.INSTANCE.toUserVOs(pageObj.getRecords());
         return PageResult.of(pageObj.getTotal(), page, pageSize, records);
     }
 
@@ -184,15 +178,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (user == null) {
             return null;
         }
-        UserDetailVO vo = new UserDetailVO();
-        vo.setId(user.getId());
-        vo.setUsername(user.getUsername());
-        vo.setNickname(user.getNickname());
-        vo.setEmail(user.getEmail());
-        vo.setPhone(user.getPhone());
-        vo.setRole(user.getRole());
-        vo.setStatus(user.getStatus());
-        return vo;
+        return UserMapperStruct.INSTANCE.toUserDetailVO(user);
     }
 
     @Override
@@ -238,16 +224,4 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         }
         return this.updateById(user);
     }
-
-    private UserVO toUserVO(User user) {
-        UserVO userVO = new UserVO();
-        userVO.setId(user.getId());
-        userVO.setUsername(user.getUsername());
-        userVO.setNickname(user.getNickname());
-        userVO.setEmail(user.getEmail());
-        userVO.setRole(user.getRole());
-        userVO.setStatus(user.getStatus());
-        return userVO;
-    }
-
 }

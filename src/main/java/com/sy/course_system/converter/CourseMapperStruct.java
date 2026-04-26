@@ -1,4 +1,4 @@
-package com.sy.course_system.mapper.mapperStruct;
+package com.sy.course_system.converter;
 
 import java.util.List;
 
@@ -10,8 +10,11 @@ import org.mapstruct.factory.Mappers;
 import com.sy.course_system.dto.course.CourseRegisterDTO;
 import com.sy.course_system.dto.course.CourseTempDTO;
 import com.sy.course_system.entity.Course;
+import com.sy.course_system.entity.Knowledge;
 import com.sy.course_system.vo.CourseDetailVO;
+import com.sy.course_system.vo.CourseUpdateVO;
 import com.sy.course_system.vo.CourseVO;
+import com.sy.course_system.vo.KnowledgeVO;
 
 @Mapper(componentModel = "spring", nullValueMappingStrategy = NullValueMappingStrategy.RETURN_DEFAULT)
 public interface CourseMapperStruct {
@@ -32,4 +35,12 @@ public interface CourseMapperStruct {
     CourseDetailVO toDetailVO(Course course);
 
     List<CourseDetailVO> toDetailVOs(List<Course> courses);
+
+    KnowledgeVO toKnowledgeVO(Knowledge knowledge);
+
+    List<KnowledgeVO> toKnowledgeVOs(List<Knowledge> knowledgePoints);
+
+    @Mapping(target = "categoryId", ignore = true)
+    @Mapping(target = "options", ignore = true)
+    CourseUpdateVO toUpdateVO(Course course);
 }

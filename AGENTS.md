@@ -118,10 +118,129 @@
 如果改动涉及 SQL、配置或启动链路，优先做编译检查；如果改动涉及明确的业务逻辑分支，优先补 service 层测试。
 
 ## 提交与 PR 约定
-- Commit 信息建议使用简洁中文，准确描述完成的变更。
-- 一个 commit 尽量只包含一类逻辑改动。
-- PR 描述应包含：变更目的、影响模块、配置或表结构变化、验证方式。
-- 如果改动影响接口行为，附上请求示例、返回示例，或说明兼容性影响。
+
+### Commit Message 规则（面向 Codex CLI）
+
+Commit 信息使用 Conventional Commits 风格，便于保持提交历史清晰，也便于后续生成变更日志。
+
+基本格式如下：
+
+```text
+<type>(<scope>): <summary>
+```
+
+如果本次改动影响范围较大，或标题无法说明原因，可以添加正文：
+
+```text
+<type>(<scope>): <summary>
+
+<why this change was made>
+<what changed at a high level>
+```
+
+允许使用的 `type` 如下：
+
+- `feat`：新增功能。
+- `fix`：修复 bug。
+- `refactor`：重构代码，不改变外部行为。
+- `perf`：性能优化。
+- `docs`：只修改文档。
+- `test`：新增或修改测试。
+- `style`：代码格式调整，不影响逻辑。
+- `build`：构建脚本、依赖、打包配置变更。
+- `ci`：CI/CD 配置变更。
+- `chore`：其他维护性改动。
+
+`scope` 应使用简短英文，表示本次改动影响的模块或业务区域。优先使用以下范围：
+
+- `auth`
+- `course`
+- `behavior`
+- `recommend`
+- `cold-start`
+- `graph`
+- `cache`
+- `video`
+- `config`
+- `mapper`
+- `repository`
+- `service`
+- `common`
+- `docs`
+- `test`
+
+标题规则：
+
+- 使用英文。
+- 使用祈使句，例如 `add`、`fix`、`remove`、`update`。
+- 首字母默认小写，专有名词除外。
+- 结尾不加句号。
+- 描述实际完成的改动，不写空泛描述。
+
+推荐示例：
+
+```text
+feat(recommend): add new course cold-start injection
+fix(behavior): prevent duplicate finish records
+refactor(graph): extract missing prerequisite query
+docs(thesis): describe cold-start recommendation flow
+test(recommend): add hybrid score calculation tests
+build(deps): update backend dependency versions
+```
+
+避免使用以下模糊提交信息：
+
+```text
+fix bug
+update code
+improve project
+optimize logic
+change files
+完善功能
+修改代码
+```
+
+当改动包含破坏性变更时，必须显式标记：
+
+```text
+feat(api)!: change recommendation response format
+
+BREAKING CHANGE: recommendation items now return objects with courseId and score instead of a plain courseId list.
+```
+
+如果提交关联 issue 或任务，可以在正文末尾补充：
+
+```text
+Fixes #123
+Refs #456
+```
+
+Codex 在生成 commit message 前，应先查看 staged diff，根据实际改动选择最准确的 `type` 和 `scope`。不要根据用户最初的需求猜测提交信息。
+
+### Commit 拆分原则
+
+一个 commit 尽量只包含一类逻辑改动。
+
+如果一次任务同时修改了业务逻辑、文档和测试，优先拆成多个 commit，例如：
+
+```text
+feat(recommend): add new course cold-start recall
+test(recommend): cover cold-start injection rules
+docs(recommend): document cold-start recommendation flow
+```
+
+如果只是一次小改动附带必要测试，可以放在同一个 commit 中。
+
+### PR 描述规则
+
+PR 描述应包含：
+
+- 变更目的。
+- 影响模块。
+- 配置或表结构变化。
+- 验证方式。
+
+如果改动影响接口行为，应附上请求示例、返回示例，或说明兼容性影响。
 
 ## 安全注意事项
 - 严禁提交真实密钥、数据库密码、云服务地址和生产环境凭据。

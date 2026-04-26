@@ -2,10 +2,12 @@ package com.sy.course_system.dto.recommend;
 
 import java.util.List;
 
+import com.sy.course_system.vo.KnowledgeMasteryVO;
+
 public class CourseReadinessDTO {
     private Long courseId;
     private Double readiness; // 0~1
-    private List<KnowledgeMasteryDTO> missing; // 缺失的先修知识点列表
+    private List<KnowledgeMasteryVO> missing; // 缺失的先修知识点列表
     
     public Long getCourseId() {
         return courseId;
@@ -19,10 +21,10 @@ public class CourseReadinessDTO {
     public void setReadiness(Double readiness) {
         this.readiness = readiness;
     }
-    public List<KnowledgeMasteryDTO> getMissing() {
+    public List<KnowledgeMasteryVO> getMissing() {
         return missing;
     }
-    public void setMissing(List<KnowledgeMasteryDTO> missing) {
+    public void setMissing(List<KnowledgeMasteryVO> missing) {
         this.missing = missing;
     }
     
