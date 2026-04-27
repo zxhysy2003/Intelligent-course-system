@@ -457,11 +457,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
             return null;
         }
 
-        List<Long> tagIds = baseMapper.selectTagIdsByCourseId(courseId);
-        List<TagOptionDTO> tags = tagMapper.listEnabledTagOptionsByIds(tagIds);
-        List<Long> kpIds = baseMapper.selectKnowledgePointIdsByCourseId(courseId);
-        List<KnowledgePointOptionDTO> knowledgePoints = knowledgePointMapper
-                .listEnabledKnowledgePointOptionsByIds(kpIds);
+        List<TagOptionDTO> tags = baseMapper.listEnabledTagOptionsByCourseId(courseId);
+        List<KnowledgePointOptionDTO> knowledgePoints = baseMapper
+                .listEnabledKnowledgePointOptionsByCourseId(courseId);
 
         CourseRegisterOptionsDTO options = new CourseRegisterOptionsDTO();
         options.setTags(tags);

@@ -15,6 +15,8 @@ import com.sy.course_system.dto.course.CoursePageLearnerCountDTO;
 import com.sy.course_system.dto.course.CoursePageTagDTO;
 import com.sy.course_system.dto.course.CourseQueryDTO;
 import com.sy.course_system.dto.course.CourseTempDTO;
+import com.sy.course_system.dto.course.KnowledgePointOptionDTO;
+import com.sy.course_system.dto.course.TagOptionDTO;
 import com.sy.course_system.dto.recommend.NewCourseBaseCandidateDTO;
 import com.sy.course_system.dto.recommend.NewCourseStatDTO;
 import com.sy.course_system.dto.recommend.NewCourseTagRowDTO;
@@ -103,11 +105,6 @@ public interface CourseMapper extends BaseMapper<Course> {
         List<Course> selectCoursesByKnowledgePointId(@Param("kpId") Long kpId);
 
         /**
-         * 按课程 id 批量更新课程状态。
-         */
-        int updateCourseStatusByBatchIds(@Param("courseIds") List<Long> courseIds, @Param("status") Integer status);
-
-        /**
          * 为课程批量插入知识点关联关系。
          */
         void insertCourseKnowledgePointRelations(@Param("courseId") Long courseId,
@@ -125,12 +122,10 @@ public interface CourseMapper extends BaseMapper<Course> {
 
         void deleteCourseKnowledgePointRelationsByCourseIds(@Param("courseIds") List<Long> courseIds);
 
-        @Select("""
-                        SELECT tag_id
-                        FROM course_tag
-                        WHERE course_id = #{courseId}
-                        """)
-        List<Long> selectTagIdsByCourseId(@Param("courseId") Long courseId);
+        /**
+         * 按课程 id 直接获取后台编辑页所需的有效标签选项。
+         */
+        List<TagOptionDTO> listEnabledTagOptionsByCourseId(@Param("courseId") Long courseId);
 
         @Select("""
                         SELECT category_id
@@ -138,6 +133,11 @@ public interface CourseMapper extends BaseMapper<Course> {
                         WHERE course_id = #{courseId}
                         """)
         Integer selectCategoryIdByCourseId(@Param("courseId") Long courseId);
+
+        /**
+         * 按课程 id 直接获取后台编辑页所需的有效知识点选项。
+         */
+        List<KnowledgePointOptionDTO> listEnabledKnowledgePointOptionsByCourseId(@Param("courseId") Long courseId);
 
         /**
          * 冷启动（用户侧）使用的课程与标签明细查询。

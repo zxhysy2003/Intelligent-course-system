@@ -165,7 +165,6 @@ class CourseServiceImplTest {
         assertEquals(List.of(1L, 2L), result.getRecords().stream().map(CourseVO::getId).toList());
         assertEquals(8.0, result.getRecords().get(0).getHotScore());
         assertEquals(3.0, result.getRecords().get(1).getHotScore());
-        verify(learningAnalysisService, never()).sortCoursesByHotness(anyList());
     }
 
     @Test
@@ -214,10 +213,8 @@ class CourseServiceImplTest {
         kp.setDifficulty(2);
 
         doReturn(course).when(courseService).getById(7L);
-        doReturn(List.of(1L)).when(courseMapper).selectTagIdsByCourseId(7L);
-        doReturn(List.of(tag)).when(tagMapper).listEnabledTagOptionsByIds(List.of(1L));
-        doReturn(List.of(2L)).when(courseMapper).selectKnowledgePointIdsByCourseId(7L);
-        doReturn(List.of(kp)).when(knowledgePointMapper).listEnabledKnowledgePointOptionsByIds(List.of(2L));
+        doReturn(List.of(tag)).when(courseMapper).listEnabledTagOptionsByCourseId(7L);
+        doReturn(List.of(kp)).when(courseMapper).listEnabledKnowledgePointOptionsByCourseId(7L);
         doReturn(9).when(courseMapper).selectCategoryIdByCourseId(7L);
 
         CourseUpdateVO result = courseService.getCourseDetailForAdmin(7L);

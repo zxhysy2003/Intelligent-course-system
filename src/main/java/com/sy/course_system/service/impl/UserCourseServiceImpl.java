@@ -2,6 +2,7 @@ package com.sy.course_system.service.impl;
 
 import java.time.LocalDateTime;
 
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -42,15 +43,6 @@ public class UserCourseServiceImpl extends ServiceImpl<UserCourseRelationMapper,
     @Override
     public Boolean userAttendCourse(Long courseId) {
         Long userId = UserContext.getUserId();
-        // 检查是否已存在关联关系
-        LambdaQueryWrapper<UserCourseRelation> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(UserCourseRelation::getUserId, userId)
-                .eq(UserCourseRelation::getCourseId, courseId);
-        UserCourseRelation existingRelation = this.getOne(queryWrapper);
-        if (existingRelation != null) {
-            return false; // 已存在关联关系，返回false
-        }
-        // 创建新的关联关系
         UserCourseRelation newRelation = new UserCourseRelation();
         newRelation.setUserId(userId);
         newRelation.setCourseId(courseId);
@@ -62,8 +54,11 @@ public class UserCourseServiceImpl extends ServiceImpl<UserCourseRelationMapper,
         newRelation.setIsFavorite(0); // 非收藏
         newRelation.setProgressSeconds(0); // 进度条时长为0
 
-        this.save(newRelation);
-        return true;
+        try {
+            return this.save(newRelation);
+        } catch (DuplicateKeyException ex) {
+            return false; // 已存在关联关系，返回false
+        }
     }
 
 }

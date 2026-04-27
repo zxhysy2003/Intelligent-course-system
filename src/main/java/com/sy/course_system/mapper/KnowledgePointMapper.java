@@ -23,6 +23,4 @@ public interface KnowledgePointMapper {
             ORDER BY kd.sort, kd.name, kp.difficulty, kp.name
             """)
     List<KnowledgePointOptionDTO> listEnabledKnowledgePointOptions();
-
-    List<KnowledgePointOptionDTO> listEnabledKnowledgePointOptionsByIds(List<Long> kpIds);
 }

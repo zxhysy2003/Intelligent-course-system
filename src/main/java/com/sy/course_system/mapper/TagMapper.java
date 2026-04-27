@@ -21,8 +21,6 @@ public interface TagMapper extends BaseMapper<Tag> {
             """)
     List<TagOptionDTO> listEnabledTagOptions();
 
-    List<TagOptionDTO> listEnabledTagOptionsByIds(@Param("tagIds") List<Long> tagIds);
-
     List<TagOptionDTO> listEnabledOnboardingTagOptions();
 
     List<Tag> selectOnboardingTagsByIds(@Param("tagIds") List<Long> tagIds);

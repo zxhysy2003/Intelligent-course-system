@@ -4,20 +4,14 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.SessionCallback;
-import org.springframework.data.redis.core.RedisOperations;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import com.sy.course_system.dto.AbilityDimensionScoreDTO;
@@ -30,7 +24,6 @@ import com.sy.course_system.mapper.LearningBehaviorMapper;
 import com.sy.course_system.mapper.UserCourseRelationMapper;
 import com.sy.course_system.repository.KnowledgeRepository;
 import com.sy.course_system.service.LearningAnalysisService;
-import com.sy.course_system.vo.CourseVO;
 
 @Service
 public class LearningAnalysisServiceImpl implements LearningAnalysisService {
@@ -38,8 +31,6 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
 
-    @Autowired
-    private StringRedisTemplate stringRedisTemplate;
     @Autowired
     private LearningBehaviorMapper learningBehaviorMapper;
     @Autowired
@@ -88,17 +79,6 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
     }
 
     /**
-     * 获取热门课程 TopN
-     */
-    @Override
-    public List<Long> getHotCourses(Integer topN) {
-        if (topN == null || topN <= 0) {
-            return Collections.emptyList();
-        }
-        return getHotCoursesByRange(0, topN);
-    }
-
-    /**
      * 按热度区间读取课程 ID。
      *
      * 该方法主要服务于“热门兜底扫描补满”策略：调用方会分批向后扫描 Redis 热榜，
@@ -124,52 +104,6 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
     public void refreshUserRecommendCache(Long userId) {
         String key = "recommend:user:" + userId;
         redisTemplate.delete(key); // 删除缓存，下次访问时会重新计算推荐结果
-    }
-
-    @Override
-    public List<CourseVO> sortCoursesByHotness(List<CourseVO> courses) {
-        if (courses == null || courses.isEmpty()) {
-            return courses;
-        }
-        // 1. 批量获取所有课程的热度值
-        Map<Long, Double> courseHotMap = batchGetCourseHotness(courses);
-        // 2. 回填热度值并排序
-
-        for (CourseVO course : courses) {
-            course.setHotScore(courseHotMap.getOrDefault(course.getId(), 0.0));
-        }
-
-        // 3. 根据热度值对课程进行降序排序
-        courses.sort(Comparator.comparing(CourseVO::getHotScore).reversed());
-        return courses;
-    }
-
-    private Map<Long, Double> batchGetCourseHotness(List<CourseVO> courses) {
-        // 提取课程ID列表
-        List<Long> courseIds = courses.stream()
-                .map(CourseVO::getId)
-                .collect(Collectors.toList());
-
-        // 批量获取热度值（使用 SessionCallback 与 opsForZSet().score）
-        List<Object> results = stringRedisTemplate.executePipelined(new SessionCallback<Object>() {
-            @Override
-            public Object execute(RedisOperations operations) throws DataAccessException {
-                for (Long courseId : courseIds) {
-                    operations.opsForZSet().score(HOT_COURSE_KEY, courseId.toString());
-                }
-                return null;
-            }
-        });
-
-        Map<Long, Double> map = new HashMap<>();
-        if (results != null) {
-            for (int i = 0; i < courseIds.size(); i++) {
-                Object result = results.get(i);
-                Double score = (result == null) ? 0.0 : Double.valueOf(result.toString());
-                map.put(courseIds.get(i), score);
-            }
-        }
-        return map;
     }
 
     /**
