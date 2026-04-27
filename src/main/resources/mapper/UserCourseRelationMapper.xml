@@ -48,7 +48,7 @@
         AND course_id = #{courseId}
     </update>
 
-    <!-- tryMarkFinished --> 
+    <!-- tryMarkFinished -->
 
     <update id="tryMarkFinished">
         UPDATE user_course_relation
@@ -58,6 +58,7 @@
             complete_time = IFNULL(complete_time, #{now})
         WHERE user_id = #{userId}
             AND course_id = #{courseId}
-            AND status &lt;&gt; 2
+            AND complete_time IS NULL
+            AND progress &gt;= 100
     </update>
 </mapper>

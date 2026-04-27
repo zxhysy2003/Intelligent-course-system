@@ -2,15 +2,14 @@ package com.sy.course_system.service.impl;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.sy.course_system.enums.CourseOrderType;
 import com.sy.course_system.enums.CourseStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -20,6 +19,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sy.course_system.common.PageResult;
 import com.sy.course_system.common.UserContext;
+import com.sy.course_system.dto.course.CoursePageLearnerCountDTO;
+import com.sy.course_system.dto.course.CoursePageTagDTO;
 import com.sy.course_system.dto.course.CourseRegisterOptionsDTO;
 import com.sy.course_system.dto.course.CourseQueryDTO;
 import com.sy.course_system.dto.course.CourseRegisterDTO;
@@ -30,6 +31,7 @@ import com.sy.course_system.dto.course.TagOptionDTO;
 import com.sy.course_system.entity.Course;
 import com.sy.course_system.entity.Knowledge;
 import com.sy.course_system.entity.Tag;
+import com.sy.course_system.mapper.CourseHotScoreMapper;
 import com.sy.course_system.mapper.CourseMapper;
 import com.sy.course_system.mapper.KnowledgePointMapper;
 import com.sy.course_system.mapper.TagMapper;
@@ -66,6 +68,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     @Autowired
     private KnowledgePointMapper knowledgePointMapper;
 
+    @Autowired
+    private CourseHotScoreMapper courseHotScoreMapper;
+
     @Override
     public CourseRegisterOptionsDTO getRegisterOptions() {
         List<TagOptionDTO> tags = tagMapper.listEnabledTagOptions();
@@ -85,48 +90,80 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         int pageSize = dto.getPageSize() != null && dto.getPageSize() > 0 ? dto.getPageSize() : 9;
 
         // 2.构建分页对象
-        Page<CourseTempDTO> pageParam = new Page<>(page, pageSize);
+        Page<CourseTempDTO> pageParam = new Page<>(page, pageSize, false);
 
         // 3.执行分页查询
         Page<CourseTempDTO> coursePage = baseMapper.selectCoursePage(pageParam, UserContext.getUserId(), dto);
         Long total = baseMapper.selectCoursePageCount(dto);
         coursePage.setTotal(total);
 
-        // 4.转换为VO
+        // 4.当前页批量回补展示聚合字段
         List<CourseTempDTO> courseTempList = coursePage.getRecords();
-        List<CourseVO> courses = convertToVO(courseTempList, dto);
+        enrichCoursePageRecords(courseTempList);
 
-        // 5.返回分页结果
+        // 5.转换为VO
+        List<CourseVO> courses = convertToVO(courseTempList);
+
+        // 6.返回分页结果
         return PageResult.of(coursePage.getTotal(), page, pageSize, courses);
 
     }
 
-    private List<CourseVO> convertToVO(List<CourseTempDTO> courseTempList, CourseQueryDTO dto) {
-        List<CourseVO> courses = courseTempList.stream()
+    private void enrichCoursePageRecords(List<CourseTempDTO> courseTempList) {
+        if (courseTempList == null || courseTempList.isEmpty()) {
+            return;
+        }
+
+        List<Long> courseIds = courseTempList.stream()
+                .map(CourseTempDTO::getId)
+                .filter(id -> id != null)
+                .distinct()
+                .collect(Collectors.toList());
+        if (courseIds.isEmpty()) {
+            return;
+        }
+
+        Map<Long, Integer> learnerMap = loadCoursePageLearnerMap(courseIds);
+        Map<Long, String> tagMap = loadCoursePageTagMap(courseIds);
+        for (CourseTempDTO course : courseTempList) {
+            Long courseId = course.getId();
+            course.setLearners(learnerMap.getOrDefault(courseId, 0));
+            course.setTags(tagMap.get(courseId));
+        }
+    }
+
+    private Map<Long, Integer> loadCoursePageLearnerMap(List<Long> courseIds) {
+        Map<Long, Integer> result = new HashMap<>();
+        List<CoursePageLearnerCountDTO> rows = baseMapper.selectCoursePageLearnerCounts(courseIds);
+        if (rows == null || rows.isEmpty()) {
+            return result;
+        }
+        for (CoursePageLearnerCountDTO row : rows) {
+            if (row != null && row.getCourseId() != null) {
+                result.put(row.getCourseId(), row.getLearners() == null ? 0 : row.getLearners());
+            }
+        }
+        return result;
+    }
+
+    private Map<Long, String> loadCoursePageTagMap(List<Long> courseIds) {
+        Map<Long, String> result = new HashMap<>();
+        List<CoursePageTagDTO> rows = baseMapper.selectCoursePageTags(courseIds);
+        if (rows == null || rows.isEmpty()) {
+            return result;
+        }
+        for (CoursePageTagDTO row : rows) {
+            if (row != null && row.getCourseId() != null) {
+                result.put(row.getCourseId(), row.getTags());
+            }
+        }
+        return result;
+    }
+
+    private List<CourseVO> convertToVO(List<CourseTempDTO> courseTempList) {
+        return courseTempList.stream()
                 .map(CourseMapperStruct.INSTANCE::tempToVO)
                 .collect(Collectors.toList());
-
-        Integer sortBy = dto.getSortBy();
-
-        // 热度排序特殊处理
-        if (CourseOrderType.HOT.getCode().equals(sortBy)) {
-            return learningAnalysisService.sortCoursesByHotness(courses);
-        }
-
-        // 定义排序规则映射
-        Map<Integer, Comparator<CourseVO>> sortStrategies = Map.of(
-                CourseOrderType.DEFAULT.getCode(), Comparator.comparing(CourseVO::getLearners).reversed(),
-                CourseOrderType.DIFFICULTY.getCode(), Comparator.comparing(CourseVO::getDifficulty),
-                CourseOrderType.PROGRESS.getCode(), Comparator.comparing(CourseVO::getProgress).reversed(),
-                CourseOrderType.NEW.getCode(), Comparator.comparing(CourseVO::getLastTime).reversed(),
-                CourseOrderType.SCORE.getCode(), Comparator.comparing(CourseVO::getScore).reversed());
-
-        Comparator<CourseVO> comparator = sortStrategies.get(sortBy);
-        if (comparator != null) {
-            courses.sort(comparator);
-        }
-
-        return courses;
     }
 
     @Override
@@ -280,6 +317,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
             } catch (RuntimeException ex) {
                 log.warn("删除课程后清理热榜失败，courseIds={}", courseIds, ex);
             }
+            cleanupHotScoreSnapshots(courseIds);
         }
         return result;
     }
@@ -302,42 +340,35 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
     @Override
     public Map<Long, String> getCourseTitleMapByIds(List<Long> courseIds) {
-        Map<Long, String> result = new java.util.HashMap<>();
-        List<Course> courses = baseMapper.selectCourseNamesByIds(courseIds);
-        if (courses == null || courses.isEmpty()) {
-            return result;
-        }
-        for (Course course : courses) {
-            if (course != null && course.getId() != null) {
-                result.put(course.getId(), course.getTitle());
-            }
-        }
-        return result;
+        Map<Long, Course> courseMap = loadCourseMap(courseIds, baseMapper::selectCourseNamesByIds);
+        Map<Long, String> titleMap = new HashMap<>();
+        courseMap.forEach((courseId, course) -> titleMap.put(courseId, course.getTitle()));
+        return titleMap;
     }
 
     @Override
     public Map<Long, Course> getRecommendCourseSummaryMapByIds(List<Long> courseIds) {
-        Map<Long, Course> result = new HashMap<>();
         // 这里返回 Map 而不是保留 List，是为了让推荐服务在按原始 courseIds 顺序组装结果时能 O(1) 取摘要。
         // IN 查询本身不保证结果顺序，真正的展示顺序仍由上层按照候选列表自行重建。
-        List<Course> courses = baseMapper.selectRecommendCourseSummariesByIds(courseIds);
-        if (courses == null || courses.isEmpty()) {
-            return result;
-        }
-        for (Course course : courses) {
-            if (course != null && course.getId() != null) {
-                result.put(course.getId(), course);
-            }
-        }
-        return result;
+        return loadCourseMap(courseIds, baseMapper::selectRecommendCourseSummariesByIds);
     }
 
     @Override
     public Map<Long, Course> getOnlineRecommendCourseSummaryMapByIds(List<Long> courseIds) {
-        Map<Long, Course> result = new HashMap<>();
         // 热门兜底使用独立的“在线摘要”查询，是读取侧的最后一道保护：
         // 即使 Redis 热榜里还残留历史脏 id，也不会把下线课程重新返回给前台。
-        List<Course> courses = baseMapper.selectOnlineRecommendCourseSummariesByIds(courseIds);
+        return loadCourseMap(courseIds, baseMapper::selectOnlineRecommendCourseSummariesByIds);
+    }
+
+    private Map<Long, Course> loadCourseMap(List<Long> courseIds, Function<List<Long>, List<Course>> loader) {
+        if (courseIds == null || courseIds.isEmpty()) {
+            return new HashMap<>();
+        }
+        return courseListToMap(loader.apply(courseIds));
+    }
+
+    private Map<Long, Course> courseListToMap(List<Course> courses) {
+        Map<Long, Course> result = new HashMap<>();
         if (courses == null || courses.isEmpty()) {
             return result;
         }
@@ -388,8 +419,25 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
             } catch (RuntimeException ex) {
                 log.warn("更新课程状态后清理热榜失败，courseId={}, status={}", courseId, status, ex);
             }
+            cleanupHotScoreSnapshot(courseId);
         }
         return updated;
+    }
+
+    private void cleanupHotScoreSnapshot(Long courseId) {
+        try {
+            courseHotScoreMapper.deleteByCourseId(courseId);
+        } catch (RuntimeException ex) {
+            log.warn("清理课程热度快照失败，courseId={}", courseId, ex);
+        }
+    }
+
+    private void cleanupHotScoreSnapshots(List<Long> courseIds) {
+        try {
+            courseHotScoreMapper.deleteByCourseIds(courseIds);
+        } catch (RuntimeException ex) {
+            log.warn("批量清理课程热度快照失败，courseIds={}", courseIds, ex);
+        }
     }
 
     @Override

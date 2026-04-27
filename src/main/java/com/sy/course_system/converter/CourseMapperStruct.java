@@ -29,7 +29,6 @@ public interface CourseMapperStruct {
 
     @Mapping(target = "tagList", expression = "java(tempDTO.getTags() != null ? java.util.Arrays.asList(tempDTO.getTags().split(\",\")) : null)")
     @Mapping(target = "score", ignore = true)
-    @Mapping(target = "hotScore", ignore = true)
     CourseVO tempToVO(CourseTempDTO tempDTO);
 
     CourseDetailVO toDetailVO(Course course);

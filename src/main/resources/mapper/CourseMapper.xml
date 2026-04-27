@@ -20,63 +20,39 @@
             c.id,
             c.title,
             cat.name AS category,
-            -- 课程标签，逗号分隔
-            tag.tags,
             c.description,
             c.cover_url as cover,
-            -- 学习人数
-            IFNULL(learn.learners, 0) AS learners,
             c.difficulty,
+            <choose>
+                <when test="dto.sortBy != null and dto.sortBy == 2">
+                    COALESCE(chs.hot_score, 0) AS hotScore,
+                </when>
+                <otherwise>
+                    NULL AS hotScore,
+                </otherwise>
+            </choose>
 
             -- 当前用户是否已选课
-            EXISTS (
-                SELECT 1
-                FROM user_course_relation ucr2
-                WHERE ucr2.course_id = c.id
-                AND ucr2.user_id = #{userId}
-            ) AS enrolled,
+            (ucr.id IS NOT NULL) AS enrolled,
 
             -- 当前用户学习进度
-            IFNULL((
-                SELECT ucr3.progress
-                FROM user_course_relation ucr3
-                WHERE ucr3.course_id = c.id
-                AND ucr3.user_id = #{userId}
-                LIMIT 1
-            ), 0) AS progress,
+            IFNULL(ucr.progress, 0) AS progress,
 
             c.update_time AS lastTime,
             c.status
 
         FROM course c
 
-        LEFT JOIN (
-            SELECT 
-                cc.course_id,
-                categ.id AS category_id,
-                categ.name
-            FROM course_category_relation cc
-            JOIN category categ ON cc.category_id = categ.id
-        )cat ON c.id = cat.course_id
+        LEFT JOIN course_category_relation cc ON c.id = cc.course_id
+        LEFT JOIN category cat ON cc.category_id = cat.id
 
-        -- 学习人数子查询
-        LEFT JOIN (
-            SELECT
-                course_id,
-                COUNT(DISTINCT user_id) AS learners
-            FROM user_course_relation
-            GROUP BY course_id
-        ) learn ON learn.course_id = c.id
+        LEFT JOIN user_course_relation ucr
+            ON ucr.course_id = c.id
+            AND ucr.user_id = #{userId}
 
-        -- 标签子查询
-        LEFT JOIN (
-            SELECT
-                ct.course_id,
-                GROUP_CONCAT(t.name) AS tags
-            FROM course_tag ct
-            JOIN tag t ON ct.tag_id = t.id
-            GROUP BY ct.course_id
-        ) tag ON tag.course_id = c.id
+        <if test="dto.sortBy != null and dto.sortBy == 2">
+            LEFT JOIN course_hot_score chs ON chs.course_id = c.id
+        </if>
 
         <where>
             <!-- 课程标题模糊查询 -->
@@ -86,7 +62,7 @@
 
             <!-- 分类过滤 -->
             <if test="dto.categoryId != null">
-                AND cat.category_id = #{dto.categoryId}
+                AND cc.category_id = #{dto.categoryId}
             </if>
 
             <!-- 难度过滤 -->
@@ -99,7 +75,36 @@
                 AND c.status = #{dto.status}
             </if>
         </where>
-        ORDER BY c.id DESC
+        <choose>
+            <!-- DEFAULT: 按学习人数全局排序。 -->
+            <when test="dto.sortBy != null and dto.sortBy == 0">
+                ORDER BY (
+                    SELECT COUNT(DISTINCT ucr_order.user_id)
+                    FROM user_course_relation ucr_order
+                    WHERE ucr_order.course_id = c.id
+                ) DESC, c.id DESC
+            </when>
+            <!-- NEW: 按更新时间全局排序。 -->
+            <when test="dto.sortBy != null and dto.sortBy == 1">
+                ORDER BY c.update_time DESC, c.id DESC
+            </when>
+            <!-- PROGRESS: 按当前用户学习进度全局排序。 -->
+            <when test="dto.sortBy != null and dto.sortBy == 3">
+                ORDER BY IFNULL(ucr.progress, 0) DESC, c.id DESC
+            </when>
+            <!-- DIFFICULTY: 按难度全局排序。 -->
+            <when test="dto.sortBy != null and dto.sortBy == 5">
+                ORDER BY c.difficulty ASC, c.id DESC
+            </when>
+            <!-- HOT: 使用 MySQL 热度快照做全局分页排序。 -->
+            <when test="dto.sortBy != null and dto.sortBy == 2">
+                ORDER BY COALESCE(chs.hot_score, 0) DESC, c.id DESC
+            </when>
+            <!-- SCORE 暂无可靠 SQL 排序来源，保留原分页基线顺序。 -->
+            <otherwise>
+                ORDER BY c.id DESC
+            </otherwise>
+        </choose>
     </select>
 
     <!-- selectCoursePageCount --> 
@@ -128,6 +133,31 @@
             </if>
         </where>
     </select>    
+
+    <select id="selectCoursePageLearnerCounts" resultType="com.sy.course_system.dto.course.CoursePageLearnerCountDTO">
+        SELECT
+            ucr.course_id AS courseId,
+            COUNT(DISTINCT ucr.user_id) AS learners
+        FROM user_course_relation ucr
+        WHERE ucr.course_id IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        GROUP BY ucr.course_id
+    </select>
+
+    <select id="selectCoursePageTags" resultType="com.sy.course_system.dto.course.CoursePageTagDTO">
+        SELECT
+            ct.course_id AS courseId,
+            GROUP_CONCAT(t.name) AS tags
+        FROM course_tag ct
+        JOIN tag t ON ct.tag_id = t.id
+        WHERE ct.course_id IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        GROUP BY ct.course_id
+    </select>
 
     <!-- selectCourseNamesByIds --> 
 

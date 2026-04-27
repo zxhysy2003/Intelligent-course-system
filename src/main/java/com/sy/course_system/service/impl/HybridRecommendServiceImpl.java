@@ -20,6 +20,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sy.course_system.dto.graph.CourseKnowledgePointDTO;
 import com.sy.course_system.dto.recommend.CourseReadinessDTO;
 import com.sy.course_system.dto.recommend.HybridRecommendItemDTO;
 import com.sy.course_system.dto.recommend.HybridRecommendResponseDTO;
@@ -738,6 +739,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
                 effectiveReadinessMap.putAll(fetchedReadinessMap);
             }
         }
+        Map<Long, List<KnowledgeVO>> knowledgePointsMap = loadCourseKnowledgePointsMap(courseIds);
 
         // 逐课程填充图谱解释信息。
         for (HybridRecommendItemDTO item : items) {
@@ -763,8 +765,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
             item.setMissingPrerequisitesMastery(missing);
 
             // 课程知识点概览：用于展示课程覆盖内容。
-            List<KnowledgeNode> kps = courseGraphRepository.findCourseKnowledgePoints(courseId);
-            item.setKnowledgePoints(convertBrief(kps));
+            item.setKnowledgePoints(knowledgePointsMap.getOrDefault(courseId, List.of()));
 
             // 学习路径：用于展示“从当前水平到可学习该课程”的推荐补齐路径。
             List<List<KnowledgeNode>> paths = findLearningPathsRawViaClient(userId, courseId,
@@ -774,6 +775,25 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
                     .collect(Collectors.toList());
             item.setLearningPaths(pathDTOs);
         }
+    }
+
+    /**
+     * 批量加载课程知识点，避免推荐列表逐课程访问 Neo4j。
+     */
+    private Map<Long, List<KnowledgeVO>> loadCourseKnowledgePointsMap(List<Long> courseIds) {
+        List<CourseKnowledgePointDTO> rows = courseGraphRepository.findCourseKnowledgePointsBatch(courseIds);
+        Map<Long, List<KnowledgeVO>> map = new LinkedHashMap<>();
+        if (rows == null || rows.isEmpty()) {
+            return map;
+        }
+        for (CourseKnowledgePointDTO row : rows) {
+            if (row == null || row.getCourseId() == null || row.getId() == null) {
+                continue;
+            }
+            map.computeIfAbsent(row.getCourseId(), k -> new ArrayList<>())
+                    .add(new KnowledgeVO(row.getId(), row.getName(), row.getDifficulty()));
+        }
+        return map;
     }
 
     /**
@@ -841,29 +861,37 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
                 .fetch()
                 .all()
                 .stream()
-                .map(row -> {
-                    Object pathObj = row.get("path");
-                    // SDN Neo4jClient 返回的数据通常是 List<Map>，这里做类型防御解析。
-                    if (!(pathObj instanceof List<?> list))
-                        return List.<KnowledgeNode>of();
-                    List<KnowledgeNode> path = new java.util.ArrayList<>();
-                    for (Object o : list) {
-                        if (!(o instanceof java.util.Map<?, ?> m))
-                            continue;
-                        KnowledgeNode k = new KnowledgeNode();
-                        Object id = m.get("id");
-                        if (id instanceof Number num)
-                            k.setId(num.longValue());
-                        k.setName((String) m.get("name"));
-                        Object diff = m.get("difficulty");
-                        if (diff instanceof Number num)
-                            k.setDifficulty(num.intValue());
-                        path.add(k);
-                    }
-                    return path;
-                })
+                .map(row -> parseKnowledgePath(row.get("path")))
                 .filter(p -> !p.isEmpty())
                 .toList();
+    }
+
+    private List<KnowledgeNode> parseKnowledgePath(Object pathObj) {
+        // SDN Neo4jClient 返回的数据通常是 List<Map>，这里做类型防御解析。
+        if (!(pathObj instanceof List<?> list)) {
+            return List.of();
+        }
+        List<KnowledgeNode> path = new ArrayList<>();
+        for (Object o : list) {
+            if (!(o instanceof Map<?, ?> m)) {
+                continue;
+            }
+            KnowledgeNode k = new KnowledgeNode();
+            Object id = m.get("id");
+            if (id instanceof Number num) {
+                k.setId(num.longValue());
+            }
+            Object name = m.get("name");
+            if (name instanceof String s) {
+                k.setName(s);
+            }
+            Object diff = m.get("difficulty");
+            if (diff instanceof Number num) {
+                k.setDifficulty(num.intValue());
+            }
+            path.add(k);
+        }
+        return path;
     }
 
 }

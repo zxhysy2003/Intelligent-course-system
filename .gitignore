@@ -33,7 +33,6 @@ build/
 .vscode/
 
 ### Test ###
-src/test/
 src/main/resources/static/
 src/main/java/com/sy/course_system/controller/server/BackfillController.java
 .codex

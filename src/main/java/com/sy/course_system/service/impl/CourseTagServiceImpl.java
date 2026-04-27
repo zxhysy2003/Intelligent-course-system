@@ -13,15 +13,6 @@ import com.sy.course_system.service.CourseTagService;
 
 @Service
 public class CourseTagServiceImpl extends ServiceImpl<TagMapper, Tag> implements CourseTagService {
-    
-    @Override
-    public List<Tag> getTagByIds(List<Integer> tagIds) { 
-        if (tagIds == null || tagIds.isEmpty()) {
-            return null;
-        }
-        List<Tag> tags = baseMapper.selectBatchIds(tagIds);
-        return tags;
-    }
 
     @Override
     public Map<Integer, Tag> getTagMapByIds(List<Integer> tagIds) {
@@ -33,6 +24,4 @@ public class CourseTagServiceImpl extends ServiceImpl<TagMapper, Tag> implements
         return tagMap;
     }
 
-    
-    
 }

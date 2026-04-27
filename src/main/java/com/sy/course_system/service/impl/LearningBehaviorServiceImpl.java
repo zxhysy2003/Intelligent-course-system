@@ -171,9 +171,9 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
     // 1) 原子更新学习时长+进度（并发安全累加）
     userCourseService.addStudyTimeAndUpdateProgress(userId, courseId, d, total, now);
 
-    // 2) 如果本来就已完成，不再尝试触发 FINISH（快路径）
+    // 2) 已写入完成时间才视为 FINISH 后置动作处理过，避免历史 status=2 但 complete_time 为空的数据被跳过。
     Integer oldStatus = relation.getStatus();
-    if (oldStatus != null && oldStatus == 2) {
+    if (oldStatus != null && oldStatus == 2 && relation.getCompleteTime() != null) {
         return BehaviorHandleResult.NORMAL;
     }
 

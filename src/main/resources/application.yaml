@@ -50,6 +50,10 @@ mybatis-plus:
 recommend:
   service:
     url: ${RECOMMEND_SERVICE_URL:http://localhost:8000}
+  hot-sync:
+    enabled: ${RECOMMEND_HOT_SYNC_ENABLED:true}
+    fixed-delay-ms: ${RECOMMEND_HOT_SYNC_FIXED_DELAY_MS:300000}
+    batch-size: ${RECOMMEND_HOT_SYNC_BATCH_SIZE:500}
   # 新课冷启动（常规推荐增强）配置
   # 目标：在不影响用户冷启动主分支的前提下，为常规推荐补充可控比例的新课曝光
   new-course:

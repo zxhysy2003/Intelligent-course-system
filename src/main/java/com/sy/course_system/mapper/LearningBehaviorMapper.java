@@ -59,13 +59,6 @@ public interface LearningBehaviorMapper extends BaseMapper<LearningBehavior> {
     List<UserCourseBaseScoreDTO> listUserCourseBaseScores();
 
     @Select("""
-                SELECT COUNT(*)
-                FROM learning_behavior
-                WHERE user_id = #{userId}
-            """)
-    Long countByUserId(@Param("userId") Long userId);
-
-    @Select("""
                 SELECT
                     COUNT(CASE WHEN behavior_type IN ('STUDY', 'FAVORITE', 'FINISH') THEN 1 END) AS effectiveBehaviorCount,
                     COUNT(DISTINCT CASE WHEN behavior_type IN ('STUDY', 'FINISH') THEN course_id END) AS studiedCourseCount,

@@ -15,6 +15,7 @@ public class CourseTempDTO {
     private Integer progress;
     private LocalDateTime lastTime;
     private Integer status;
+    private Double hotScore;
 
     public Long getId() {
         return id;
@@ -110,5 +111,13 @@ public class CourseTempDTO {
 
     public void setStatus(Integer status) {
         this.status = status;
+    }
+
+    public Double getHotScore() {
+        return hotScore;
+    }
+
+    public void setHotScore(Double hotScore) {
+        this.hotScore = hotScore;
     }
 }

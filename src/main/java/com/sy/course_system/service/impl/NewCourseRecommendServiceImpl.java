@@ -132,7 +132,7 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
             return List.of();
         }
 
-        Map<Long, List<NewCourseTagRowDTO>> courseTagsMap = buildCourseTagMap(courseIds);
+        Map<Long, CourseTagSnapshot> courseTagsMap = buildCourseTagMap(courseIds);
         Map<Long, Integer> kpCountMap = toCountMap(courseMapper.selectCourseKpCountsByCourseIds(courseIds));
         Map<Long, Integer> learnerCountMap = toCountMap(courseMapper.selectCourseLearnerCountsByCourseIds(courseIds));
 
@@ -150,13 +150,8 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
             if (courseId == null) {
                 continue;
             }
-            List<NewCourseTagRowDTO> tagRows = courseTagsMap.getOrDefault(courseId, List.of());
-
-            int tagCount = (int) tagRows.stream()
-                    .map(NewCourseTagRowDTO::getTagId)
-                    .filter(id -> id != null)
-                    .distinct()
-                    .count();
+            CourseTagSnapshot tagSnapshot = courseTagsMap.getOrDefault(courseId, CourseTagSnapshot.empty());
+            int tagCount = tagSnapshot.tagCount();
             int kpCount = kpCountMap.getOrDefault(courseId, 0);
             int learnerCount = learnerCountMap.getOrDefault(courseId, 0);
             int duration = base.getDuration() == null ? 0 : base.getDuration();
@@ -164,13 +159,9 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
                 continue;
             }
 
-            Set<Long> courseTagIds = tagRows.stream()
-                    .map(NewCourseTagRowDTO::getTagId)
-                    .filter(id -> id != null)
-                    .collect(Collectors.toCollection(LinkedHashSet::new));
-            List<String> matchedTagNames = findMatchedTagNames(tagRows, userTagIds);
+            List<String> matchedTagNames = tagSnapshot.matchedTagNames(userTagIds);
 
-            double tagMatch = calcTagMatch(courseTagIds, userTagIds);
+            double tagMatch = tagSnapshot.calcTagMatch(userTagIds);
             long daysSincePublish = calcDaysSincePublish(base.getPublishTime(), safeWindowDays);
             double freshness = calcFreshness(daysSincePublish, safeWindowDays);
             double quality = calcQuality(kpCount, duration);
@@ -180,7 +171,7 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
                     learningGoal,
                     base.getDifficulty(),
                     base.getTitle(),
-                    extractTagNames(tagRows));
+                    tagSnapshot.tagNames());
             if (goalFit) {
                 score = Math.min(1.0, score + LEARNING_GOAL_BONUS);
             }
@@ -236,16 +227,16 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
     }
 
     /**
-     * 将“课程-标签行”整理为 map，便于后续按课程快速访问标签集合。
+     * 将“课程-标签行”整理为快照，避免后续为同一课程重复扫描标签明细。
      */
-    private Map<Long, List<NewCourseTagRowDTO>> buildCourseTagMap(List<Long> courseIds) {
+    private Map<Long, CourseTagSnapshot> buildCourseTagMap(List<Long> courseIds) {
         List<NewCourseTagRowDTO> rows = courseMapper.selectCourseTagRowsByCourseIds(courseIds);
-        Map<Long, List<NewCourseTagRowDTO>> map = new LinkedHashMap<>();
+        Map<Long, CourseTagSnapshot> map = new LinkedHashMap<>();
         for (NewCourseTagRowDTO row : safeList(rows)) {
             if (row.getCourseId() == null) {
                 continue;
             }
-            map.computeIfAbsent(row.getCourseId(), k -> new ArrayList<>()).add(row);
+            map.computeIfAbsent(row.getCourseId(), k -> new CourseTagSnapshot()).add(row);
         }
         return map;
     }
@@ -286,34 +277,6 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
                         r -> r.getReadiness() == null ? 1.0 : r.getReadiness(),
                         (a, b) -> a,
                         LinkedHashMap::new));
-    }
-
-    /**
-     * 提取命中的兴趣标签名称，用于拼接推荐理由。
-     */
-    private List<String> findMatchedTagNames(List<NewCourseTagRowDTO> tagRows, Set<Long> userTagIds) {
-        if (userTagIds.isEmpty()) {
-            return List.of();
-        }
-        return safeList(tagRows).stream()
-                .filter(row -> row.getTagId() != null && userTagIds.contains(row.getTagId()))
-                .map(NewCourseTagRowDTO::getTagName)
-                .filter(name -> name != null && !name.isBlank())
-                .distinct()
-                .toList();
-    }
-
-    /**
-     * 标签匹配度：命中标签数 / 课程标签总数。
-     *
-     * 该定义强调“课程与用户兴趣的贴合比例”，而不是仅看命中绝对数量。
-     */
-    private double calcTagMatch(Set<Long> courseTagIds, Set<Long> userTagIds) {
-        if (courseTagIds == null || courseTagIds.isEmpty() || userTagIds == null || userTagIds.isEmpty()) {
-            return 0.0;
-        }
-        long matched = courseTagIds.stream().filter(userTagIds::contains).count();
-        return matched <= 0 ? 0.0 : matched * 1.0 / courseTagIds.size();
     }
 
     /**
@@ -398,19 +361,80 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
         return String.join("；", parts);
     }
 
-    private List<String> extractTagNames(List<NewCourseTagRowDTO> tagRows) {
-        // 共享 helper 只接受最小领域输入（tagNames），这里做一次 DTO -> 纯字符串列表的适配，
-        // 避免 LearningGoalRuleSupport 反向依赖推荐链路内部的 DTO 类型。
-        return safeList(tagRows).stream()
-                .map(NewCourseTagRowDTO::getTagName)
-                .toList();
-    }
-
     /**
      * 空安全列表转换，统一避免 NPE。
      */
     private <T> List<T> safeList(List<T> rows) {
         return rows == null ? List.of() : rows;
+    }
+
+    /**
+     * 课程标签快照：一次聚合后同时服务质量门槛、兴趣匹配、推荐理由与 learningGoal 判断。
+     */
+    private static class CourseTagSnapshot {
+        private final Map<Long, String> tagNameMap = new LinkedHashMap<>();
+        private final Set<String> tagNames = new LinkedHashSet<>();
+
+        private static CourseTagSnapshot empty() {
+            return new CourseTagSnapshot();
+        }
+
+        private void add(NewCourseTagRowDTO row) {
+            Long tagId = row.getTagId();
+            if (tagId == null) {
+                return;
+            }
+            String tagName = row.getTagName();
+            String existingName = tagNameMap.get(tagId);
+            if (!tagNameMap.containsKey(tagId) || isBlank(existingName)) {
+                tagNameMap.put(tagId, tagName);
+            }
+            if (tagName != null && !tagName.isBlank()) {
+                tagNames.add(tagName);
+            }
+        }
+
+        private int tagCount() {
+            return tagNameMap.size();
+        }
+
+        private List<String> tagNames() {
+            return List.copyOf(tagNames);
+        }
+
+        private List<String> matchedTagNames(Set<Long> userTagIds) {
+            if (userTagIds == null || userTagIds.isEmpty()) {
+                return List.of();
+            }
+            Set<String> matchedNames = new LinkedHashSet<>();
+            for (Map.Entry<Long, String> entry : tagNameMap.entrySet()) {
+                String name = entry.getValue();
+                if (userTagIds.contains(entry.getKey()) && name != null && !name.isBlank()) {
+                    matchedNames.add(name);
+                }
+            }
+            return List.copyOf(matchedNames);
+        }
+
+        /**
+         * 标签匹配度：命中标签数 / 课程标签总数。
+         */
+        private double calcTagMatch(Set<Long> userTagIds) {
+            if (tagNameMap.isEmpty() || userTagIds == null || userTagIds.isEmpty()) {
+                return 0.0;
+            }
+            long matched = 0L;
+            for (Long tagId : tagNameMap.keySet()) {
+                if (userTagIds.contains(tagId)) {
+                    matched++;
+                }
+            }
+            return matched <= 0 ? 0.0 : matched * 1.0 / tagNameMap.size();
+        }
+
+        private boolean isBlank(String value) {
+            return value == null || value.isBlank();
+        }
     }
 
     /**

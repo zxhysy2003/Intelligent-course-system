@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.sy.course_system.mapper.CourseHotScoreMapper">
+
+    <insert id="upsertHotScores">
+        INSERT INTO course_hot_score (course_id, hot_score, update_time)
+        VALUES
+        <foreach collection="scores" item="score" separator=",">
+            (#{score.courseId}, #{score.hotScore}, NOW())
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            hot_score = VALUES(hot_score),
+            update_time = NOW()
+    </insert>
+
+    <delete id="deleteByCourseId">
+        DELETE FROM course_hot_score
+        WHERE course_id = #{courseId}
+    </delete>
+
+    <delete id="deleteByCourseIds">
+        DELETE FROM course_hot_score
+        WHERE course_id IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+    <delete id="deleteHotScoresNotIn">
+        DELETE FROM course_hot_score
+        WHERE course_id NOT IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+    <delete id="deleteAllHotScores">
+        DELETE FROM course_hot_score
+    </delete>
+
+</mapper>

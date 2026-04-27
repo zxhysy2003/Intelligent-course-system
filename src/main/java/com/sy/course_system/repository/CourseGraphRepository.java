@@ -6,22 +6,25 @@ import org.springframework.data.neo4j.repository.Neo4jRepository;
 import org.springframework.data.neo4j.repository.query.Query;
 import org.springframework.data.repository.query.Param;
 
+import com.sy.course_system.dto.graph.CourseKnowledgePointDTO;
 import com.sy.course_system.dto.recommend.CourseReadinessDTO;
 import com.sy.course_system.dto.graph.KnowledgeGraphLinkDTO;
 import com.sy.course_system.dto.graph.KnowledgeGraphNodeDTO;
 import com.sy.course_system.graph.node.CourseNode;
-import com.sy.course_system.graph.node.KnowledgeNode;
 
 public interface CourseGraphRepository extends Neo4jRepository<CourseNode, Long> {
 
-     // 课程知识点
      @Query("""
-               MATCH (c:Course {id: $courseId})-[:HAS_KP]->(k:Knowledge)
-               RETURN DISTINCT k.id AS id, k.name AS name, k.difficulty AS difficulty
-               ORDER BY coalesce(k.difficulty, 99), k.name
+               UNWIND $courseIds AS cid
+               MATCH (c:Course {id: cid})-[:HAS_KP]->(k:Knowledge)
+               RETURN c.id AS courseId,
+                      k.id AS id,
+                      k.name AS name,
+                      k.difficulty AS difficulty
+               ORDER BY c.id, coalesce(k.difficulty, 99), k.name
                """)
-     List<KnowledgeNode> findCourseKnowledgePoints(
-               @Param("courseId") Long courseId);
+     List<CourseKnowledgePointDTO> findCourseKnowledgePointsBatch(
+               @Param("courseIds") List<Long> courseIds);
 
 
      @Query("""

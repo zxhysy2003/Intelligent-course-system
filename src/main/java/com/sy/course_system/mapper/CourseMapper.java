@@ -11,6 +11,8 @@ import org.apache.ibatis.annotations.Select;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.sy.course_system.dto.coldstart.ColdStartCourseCandidateDTO;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.sy.course_system.dto.course.CoursePageLearnerCountDTO;
+import com.sy.course_system.dto.course.CoursePageTagDTO;
 import com.sy.course_system.dto.course.CourseQueryDTO;
 import com.sy.course_system.dto.course.CourseTempDTO;
 import com.sy.course_system.dto.recommend.NewCourseBaseCandidateDTO;
@@ -42,6 +44,16 @@ public interface CourseMapper extends BaseMapper<Course> {
          * 统计分页查询的总数（与分页查询条件一致）。
          */
         Long selectCoursePageCount(@Param("dto") CourseQueryDTO dto);
+
+        /**
+         * 按当前页课程 id 批量统计学习人数。
+         */
+        List<CoursePageLearnerCountDTO> selectCoursePageLearnerCounts(@Param("courseIds") List<Long> courseIds);
+
+        /**
+         * 按当前页课程 id 批量聚合课程标签。
+         */
+        List<CoursePageTagDTO> selectCoursePageTags(@Param("courseIds") List<Long> courseIds);
 
         /**
          * 获取课程关联的知识点 id 列表。
