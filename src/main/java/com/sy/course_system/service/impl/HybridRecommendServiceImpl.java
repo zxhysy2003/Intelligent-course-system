@@ -27,7 +27,6 @@ import com.sy.course_system.dto.recommend.HybridRecommendResponseDTO;
 import com.sy.course_system.dto.recommend.RecommendItemDTO;
 import com.sy.course_system.dto.recommend.RecommendResponseDTO;
 import com.sy.course_system.entity.Course;
-import com.sy.course_system.graph.node.KnowledgeNode;
 import com.sy.course_system.repository.CourseGraphRepository;
 import com.sy.course_system.service.ColdStartRecommendService;
 import com.sy.course_system.service.ColdStartSupportService;
@@ -117,6 +116,8 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
 
     // 先修掌握阈值：小于该值的知识点视为“尚未掌握”，会进入缺失先修或补齐路径
     private static final double PREREQUISITE_THRESHOLD = 0.7;
+    // 每门推荐课程最多返回的补齐路径数，批量查询时仍按单课程维度截断。
+    private static final int LEARNING_PATH_LIMIT_PER_COURSE = 5;
 
     // 融合分中 CF 的权重（readiness 权重为 1 - CF_WEIGHT）
     private static final double CF_WEIGHT = 0.7;
@@ -740,6 +741,8 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
             }
         }
         Map<Long, List<KnowledgeVO>> knowledgePointsMap = loadCourseKnowledgePointsMap(courseIds);
+        Map<Long, List<List<KnowledgeVO>>> learningPathsMap = loadLearningPathsMap(userId, courseIds,
+                PREREQUISITE_THRESHOLD, LEARNING_PATH_LIMIT_PER_COURSE);
 
         // 逐课程填充图谱解释信息。
         for (HybridRecommendItemDTO item : items) {
@@ -768,12 +771,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
             item.setKnowledgePoints(knowledgePointsMap.getOrDefault(courseId, List.of()));
 
             // 学习路径：用于展示“从当前水平到可学习该课程”的推荐补齐路径。
-            List<List<KnowledgeNode>> paths = findLearningPathsRawViaClient(userId, courseId,
-                    PREREQUISITE_THRESHOLD, 5);
-            List<List<KnowledgeVO>> pathDTOs = paths.stream()
-                    .map(this::convertBrief)
-                    .collect(Collectors.toList());
-            item.setLearningPaths(pathDTOs);
+            item.setLearningPaths(learningPathsMap.getOrDefault(courseId, List.of()));
         }
     }
 
@@ -797,101 +795,110 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     }
 
     /**
-     * 轻量知识点转换：KnowledgeNode -> KnowledgeVO。
+     * 批量计算学习路径（包含掌握度过滤）。
      *
-     * 仅保留前端需要的 id/name/difficulty，避免将图数据库实体直接暴露到接口层。
-     */
-    private List<KnowledgeVO> convertBrief(List<KnowledgeNode> nodes) {
-        if (nodes == null || nodes.isEmpty()) {
-            return List.of();
-        }
-        return nodes.stream()
-                .map(k -> new KnowledgeVO(
-                        k.getId(),
-                        k.getName(),
-                        k.getDifficulty()))
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * 通过 Neo4jClient 原生 Cypher 计算学习路径（包含掌握度过滤）。
-     *
-     * 查询意图：
+     * 查询意图与旧的单课程查询保持一致，但以本次推荐 courseIds 为批量边界：
      * 1) 从课程知识点出发，沿 PRE_REQUIRES 关系回溯 1..3 层先修链。
      * 2) 过滤掉“用户已掌握”的节点，仅保留未达阈值的先修链路。
      * 3) 去掉被更长路径完全前缀覆盖的短路径，减少冗余展示。
-     * 4) 返回节点基础字段并按路径长度/起点难度排序。
+     * 4) 每门课按路径长度/起点难度排序后最多保留 limit 条。
      */
-    private List<List<KnowledgeNode>> findLearningPathsRawViaClient(Long userId, Long courseId, double threshold,
-            int limit) {
+    private Map<Long, List<List<KnowledgeVO>>> loadLearningPathsMap(Long userId, List<Long> courseIds,
+            double threshold, int limit) {
+        if (userId == null || courseIds == null || courseIds.isEmpty() || limit <= 0) {
+            return Map.of();
+        }
 
-        // Cypher 说明：
-        // - MATCH (c)-[:HAS_KP]->(k)：以课程知识点作为“目标知识”。
-        // - MATCH p=(k)-[:PRE_REQUIRES*1..3]->(pre)：反向追溯先修链，最多 3 层。
-        // - WHERE ALL(... < $threshold)：仅保留链路上未掌握节点。
-        // - reverse(nodes(p))：将路径顺序改为“基础 -> 目标”，更符合学习顺序。
-        // - NOT any(other ...)：移除被更长路径前缀覆盖的短路径，减少重复建议。
         String cypher = """
                     MATCH (u:User {id: $userId})
-                    WITH u
-                    MATCH (c:Course {id: $courseId})-[:HAS_KP]->(k:Knowledge)
-                    MATCH p = (k)-[:PRE_REQUIRES*1..3]->(pre:Knowledge)
-                    WHERE ALL(n IN nodes(p)[1..] WHERE
-                        coalesce( [(u)-[m:MASTERED]->(n) | m.score][0], 0.0 ) < $threshold
-                    )
-                    WITH reverse(nodes(p)) AS nodes
-                    WITH collect(nodes) AS nodePaths
-                    UNWIND nodePaths AS nodes
-                    WITH nodes, nodePaths
-                    WHERE NOT any(other IN nodePaths WHERE
-                        size(other) > size(nodes)
-                        AND all(i IN range(0, size(nodes) - 1) WHERE nodes[i].id = other[i].id)
-                    )
-                    RETURN [n IN nodes | {id:n.id, name:n.name, difficulty:n.difficulty}] AS path
-                    ORDER BY size(nodes), nodes[0].difficulty
-                    LIMIT $limit
+                    UNWIND $courseIds AS courseId
+                    CALL {
+                        WITH u, courseId
+                        MATCH (c:Course {id: courseId})-[:HAS_KP]->(k:Knowledge)
+                        MATCH p = (k)-[:PRE_REQUIRES*1..3]->(pre:Knowledge)
+                        WHERE ALL(n IN nodes(p)[1..] WHERE
+                            coalesce( [(u)-[m:MASTERED]->(n) | m.score][0], 0.0 ) < $threshold
+                        )
+                        WITH reverse(nodes(p)) AS nodes
+                        WITH collect(nodes) AS nodePaths
+                        UNWIND nodePaths AS nodes
+                        WITH nodes, nodePaths
+                        WHERE NOT any(other IN nodePaths WHERE
+                            size(other) > size(nodes)
+                            AND all(i IN range(0, size(nodes) - 1) WHERE nodes[i].id = other[i].id)
+                        )
+                        WITH nodes
+                        ORDER BY size(nodes), nodes[0].difficulty
+                        LIMIT $limit
+                        RETURN collect([n IN nodes | {id:n.id, name:n.name, difficulty:n.difficulty}]) AS paths
+                    }
+                    RETURN courseId, paths
                 """;
 
-        return neo4jClient.query(cypher)
+        Map<Long, List<List<KnowledgeVO>>> map = new LinkedHashMap<>();
+        neo4jClient.query(cypher)
                 .bindAll(java.util.Map.of(
                         "userId", userId,
-                        "courseId", courseId,
+                        "courseIds", courseIds,
                         "threshold", threshold,
                         "limit", limit))
                 .fetch()
                 .all()
-                .stream()
-                .map(row -> parseKnowledgePath(row.get("path")))
-                .filter(p -> !p.isEmpty())
-                .toList();
+                .forEach(row -> {
+                    Long courseId = parseLong(row.get("courseId"));
+                    if (courseId == null) {
+                        return;
+                    }
+                    List<List<KnowledgeVO>> paths = parseKnowledgePaths(row.get("paths"));
+                    if (!paths.isEmpty()) {
+                        map.put(courseId, paths);
+                    }
+                });
+        return map;
     }
 
-    private List<KnowledgeNode> parseKnowledgePath(Object pathObj) {
+    private List<List<KnowledgeVO>> parseKnowledgePaths(Object pathsObj) {
+        if (!(pathsObj instanceof List<?> list)) {
+            return List.of();
+        }
+        List<List<KnowledgeVO>> paths = new ArrayList<>();
+        for (Object pathObj : list) {
+            List<KnowledgeVO> path = parseKnowledgePath(pathObj);
+            if (!path.isEmpty()) {
+                paths.add(path);
+            }
+        }
+        return paths;
+    }
+
+    private List<KnowledgeVO> parseKnowledgePath(Object pathObj) {
         // SDN Neo4jClient 返回的数据通常是 List<Map>，这里做类型防御解析。
         if (!(pathObj instanceof List<?> list)) {
             return List.of();
         }
-        List<KnowledgeNode> path = new ArrayList<>();
+        List<KnowledgeVO> path = new ArrayList<>();
         for (Object o : list) {
             if (!(o instanceof Map<?, ?> m)) {
                 continue;
             }
-            KnowledgeNode k = new KnowledgeNode();
-            Object id = m.get("id");
-            if (id instanceof Number num) {
-                k.setId(num.longValue());
-            }
-            Object name = m.get("name");
-            if (name instanceof String s) {
-                k.setName(s);
-            }
-            Object diff = m.get("difficulty");
-            if (diff instanceof Number num) {
-                k.setDifficulty(num.intValue());
-            }
-            path.add(k);
+            path.add(new KnowledgeVO(
+                    parseLong(m.get("id")),
+                    parseString(m.get("name")),
+                    parseInteger(m.get("difficulty"))));
         }
         return path;
+    }
+
+    private Long parseLong(Object value) {
+        return value instanceof Number num ? num.longValue() : null;
+    }
+
+    private Integer parseInteger(Object value) {
+        return value instanceof Number num ? num.intValue() : null;
+    }
+
+    private String parseString(Object value) {
+        return value instanceof String text ? text : null;
     }
 
 }
