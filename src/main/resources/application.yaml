@@ -50,6 +50,9 @@ mybatis-plus:
 recommend:
   service:
     url: ${RECOMMEND_SERVICE_URL:http://localhost:8000}
+  score-matrix-cache:
+    enabled: ${RECOMMEND_SCORE_MATRIX_CACHE_ENABLED:true}
+    ttl-minutes: ${RECOMMEND_SCORE_MATRIX_CACHE_TTL_MINUTES:2}
   hot-sync:
     enabled: ${RECOMMEND_HOT_SYNC_ENABLED:true}
     fixed-delay-ms: ${RECOMMEND_HOT_SYNC_FIXED_DELAY_MS:300000}
