@@ -166,15 +166,12 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
             double freshness = calcFreshness(daysSincePublish, safeWindowDays);
             double quality = calcQuality(kpCount, duration);
             double readiness = readinessMap.getOrDefault(courseId, 1.0);
-            double score = calcScore(tagMatch, freshness, quality, readiness);
             boolean goalFit = LearningGoalRuleSupport.isGoalFit(
                     learningGoal,
                     base.getDifficulty(),
                     base.getTitle(),
                     tagSnapshot.tagNames());
-            if (goalFit) {
-                score = Math.min(1.0, score + LEARNING_GOAL_BONUS);
-            }
+            double finalScore = calcFinalScore(tagMatch, freshness, quality, readiness, goalFit);
 
             HybridRecommendItemDTO item = new HybridRecommendItemDTO();
             item.setCourseId(courseId);
@@ -182,7 +179,7 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
             item.setCoverUrl(base.getCoverUrl());
             item.setDifficulty(base.getDifficulty());
             item.setReadiness(readiness);
-            item.setFinalScore(score);
+            item.setFinalScore(finalScore);
             item.setReason(buildReason(daysSincePublish, matchedTagNames, readiness, quality, goalFit, learningGoal));
             item.setRecommendSource(SOURCE_COLD_START_COURSE);
             item.setIsNewCourse(Boolean.TRUE);
@@ -316,13 +313,28 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
     }
 
     /**
-     * 综合评分：按配置权重加权平均。
+     * 新课最终排序分的唯一组装入口。
+     *
+     * 先计算 tag/freshness/quality/readiness 加权基础分，再在同一处处理 learningGoal 轻量 bonus。
+     * 后续如果继续增加分数修正因子，应优先收口到这里，避免在候选循环里零散改写 finalScore。
+     */
+    private double calcFinalScore(double tagMatch, double freshness, double quality, double readiness,
+            boolean goalFit) {
+        double score = calcWeightedScore(tagMatch, freshness, quality, readiness);
+        if (goalFit) {
+            return Math.min(1.0, score + LEARNING_GOAL_BONUS);
+        }
+        return score;
+    }
+
+    /**
+     * 基础加权分：按配置权重加权平均。
      *
      * 注意：
      * - 权重为负会被截断为 0；
      * - 总权重为 0 时返回 0，避免除零并显式暴露配置异常。
      */
-    private double calcScore(double tagMatch, double freshness, double quality, double readiness) {
+    private double calcWeightedScore(double tagMatch, double freshness, double quality, double readiness) {
         double safeTagWeight = Math.max(0.0, tagWeight);
         double safeFreshnessWeight = Math.max(0.0, freshnessWeight);
         double safeQualityWeight = Math.max(0.0, qualityWeight);
