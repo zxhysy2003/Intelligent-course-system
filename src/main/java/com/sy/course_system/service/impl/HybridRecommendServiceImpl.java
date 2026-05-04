@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
@@ -24,6 +23,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sy.course_system.common.util.ConcurrentUtils;
 import com.sy.course_system.dto.graph.CourseKnowledgePointDTO;
 import com.sy.course_system.dto.recommend.CourseReadinessDTO;
 import com.sy.course_system.dto.recommend.HybridRecommendItemDTO;
@@ -229,8 +229,8 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
             CompletableFuture<List<HybridRecommendItemDTO>> ncFuture = CompletableFuture.supplyAsync(
                     () -> newCourseRecommendService.recommendForRegularUser(userId, NEW_COURSE_CANDIDATE_LIMIT),
                     recommendTaskExecutor);
-            cfResp = awaitFuture(cfFuture, ASYNC_INTERRUPTED_MSG);
-            newCourseCandidates = awaitFuture(ncFuture, ASYNC_INTERRUPTED_MSG);
+            cfResp = ConcurrentUtils.await(cfFuture, ASYNC_INTERRUPTED_MSG);
+            newCourseCandidates = ConcurrentUtils.await(ncFuture, ASYNC_INTERRUPTED_MSG);
         } else {
             cfResp = recommendService.recommend(userId);
             newCourseCandidates = newCourseRecommendEnabled
@@ -413,46 +413,6 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
             Thread.sleep(millis);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-        }
-    }
-
-    /**
-     * 等待单个 Future 完成，统一处理中断与业务异常。
-     *
-     * InterruptedException 恢复中断标记后包装为 RuntimeException 抛出；
-     * ExecutionException 解包后直接抛出原始 RuntimeException，其余包装。
-     */
-    private static <T> T awaitFuture(CompletableFuture<T> future, String interruptMessage) {
-        try {
-            return future.get();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException(interruptMessage, e);
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof RuntimeException re) {
-                throw re;
-            }
-            throw new RuntimeException(cause);
-        }
-    }
-
-    /**
-     * 等待多个 Future 全部完成，任一线程中断或失败即抛出异常。
-     */
-    private static void awaitAll(CompletableFuture<?> f1, CompletableFuture<?> f2,
-            CompletableFuture<?> f3, String interruptMessage) {
-        try {
-            CompletableFuture.allOf(f1, f2, f3).get();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException(interruptMessage, e);
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof RuntimeException re) {
-                throw re;
-            }
-            throw new RuntimeException(cause);
         }
     }
 
@@ -829,7 +789,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
                             LEARNING_PATH_LIMIT_PER_COURSE),
                     recommendTaskExecutor);
 
-            awaitAll(readinessFuture, kpFuture, pathFuture, GRAPH_ASYNC_INTERRUPTED_MSG);
+            ConcurrentUtils.awaitAll(GRAPH_ASYNC_INTERRUPTED_MSG, readinessFuture, kpFuture, pathFuture);
             Map<Long, CourseReadinessDTO> fetchedReadinessMap = readinessFuture.getNow(Map.of());
             if (!fetchedReadinessMap.isEmpty()) {
                 effectiveReadinessMap.putAll(fetchedReadinessMap);
