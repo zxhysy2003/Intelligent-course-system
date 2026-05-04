@@ -48,6 +48,12 @@ mybatis-plus:
     map-underscore-to-camel-case: true
 
 recommend:
+  # 推荐主链路异步开关与线程池配置
+  async:
+    enabled: ${RECOMMEND_ASYNC_ENABLED:true}
+    core-size: ${RECOMMEND_ASYNC_CORE_SIZE:2}
+    max-size: ${RECOMMEND_ASYNC_MAX_SIZE:4}
+    queue-capacity: ${RECOMMEND_ASYNC_QUEUE_CAPACITY:100}
   service:
     url: ${RECOMMEND_SERVICE_URL:http://localhost:8000}
   score-matrix-cache:
