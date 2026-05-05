@@ -1,87 +1,141 @@
 <template>
   <div class="course-overview">
-    <h2>课程总览</h2>
-    <div class="subtitle">浏览、搜索并加入你感兴趣的课程</div>
+    <section class="page-head">
+      <div class="title-group">
+        <h2 class="page-title">课程总览</h2>
+        <p class="subtitle">发现适合当前阶段的课程内容</p>
+      </div>
 
-    <!-- 工具栏 -->
-    <div class="toolbar">
-      <el-input v-model.trim="searchQuery" placeholder="搜索课程名称、讲师或标签…" clearable @keyup.enter="searchCourses"
-        class="toolbar-item input">
+      <div class="summary-strip">
+        <div class="summary-item">
+          <el-icon><Collection /></el-icon>
+          <div>
+            <span class="summary-value">{{ total }}</span>
+            <span class="summary-label">全部课程</span>
+          </div>
+        </div>
+        <div class="summary-item">
+          <el-icon><CircleCheck /></el-icon>
+          <div>
+            <span class="summary-value">{{ enrolledCount }}</span>
+            <span class="summary-label">已加入</span>
+          </div>
+        </div>
+        <div class="summary-item">
+          <el-icon><Tickets /></el-icon>
+          <div>
+            <span class="summary-value">{{ filteredCourses.length }}</span>
+            <span class="summary-label">当前显示</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="toolbar-panel">
+      <el-input
+        v-model.trim="searchQuery"
+        placeholder="搜索课程名称、讲师或标签"
+        clearable
+        class="search-input"
+        @keyup.enter="applyFilters"
+      >
         <template #prefix>
-          <el-icon>
-            <Search />
-          </el-icon>
+          <el-icon><Search /></el-icon>
         </template>
       </el-input>
 
-      <el-select v-model="selectedCategory" placeholder="全部分类" clearable class="toolbar-item select">
+      <el-select v-model="selectedCategory" placeholder="全部分类" clearable class="filter-select" @change="applyFilters">
         <el-option label="全部分类" :value="null" />
         <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
       </el-select>
 
-      <el-select v-model="sortBy" placeholder="排序" class="toolbar-item select">
+      <el-select v-model="sortBy" placeholder="排序" class="filter-select" @change="applyFilters">
         <el-option label="按人数" :value="0" />
         <el-option label="按最新" :value="1" />
         <el-option label="按热度" :value="2" />
         <el-option label="按进度" :value="3" />
       </el-select>
 
-      <el-checkbox v-model="showEnrolledOnly" class="toolbar-item">
-        仅显示已加入
-      </el-checkbox>
+      <div class="enrolled-switch">
+        <span>已加入</span>
+        <el-switch v-model="showEnrolledOnly" />
+      </div>
 
-      <el-button type="primary" @click="searchCourses" :loading="loading" class="toolbar-item">
-        搜索
-      </el-button>
-    </div>
+      <div class="toolbar-actions">
+        <el-button :icon="Refresh" @click="resetFilters">
+          重置
+        </el-button>
+        <el-button type="primary" :icon="Search" @click="applyFilters" :loading="loading">
+          搜索
+        </el-button>
+      </div>
+    </section>
 
-    <!-- 课程列表 -->
-    <el-row v-if="filteredCourses.length" :gutter="12">
-      <el-col v-for="course in filteredCourses" :key="course.id" :xs="24" :sm="12" :md="8">
-        <el-card shadow="hover" class="course-card">
-          <el-image :src="course.cover" :alt="course.title" fit="cover" class="cover" />
+    <el-row v-if="filteredCourses.length" :gutter="20" class="course-grid">
+      <el-col v-for="course in filteredCourses" :key="course.id" :xs="24" :sm="12" :lg="8">
+        <el-card shadow="hover" class="course-card" :body-style="{ padding: '0' }">
+          <div class="cover-wrap" @click="openCourse(course)">
+            <el-image :src="course.cover" :alt="course.title" fit="cover" class="cover">
+              <template #error>
+                <div class="cover-fallback">
+                  <el-icon><Picture /></el-icon>
+                </div>
+              </template>
+            </el-image>
+            <el-tag v-if="course.enrolled" class="enrolled-badge" type="success" effect="dark">
+              已加入
+            </el-tag>
+          </div>
 
           <div class="card-body">
             <div class="card-header">
-              <span class="title" @click="openCourse(course)">
+              <button class="title-button" type="button" @click="openCourse(course)">
                 {{ course.title }}
-              </span>
-            </div>
-
-            <div class="meta">
-              <span class="difficulty" :style="{ color: difficultyMap[getDifficultyLevel(course.difficulty)]?.color }">
-                {{ difficultyMap[getDifficultyLevel(course.difficulty)]?.label || "未知" }}
-              </span>
-              <el-rate :model-value="getDifficultyLevel(course.difficulty)" :max="3" disabled class="difficulty-rate" />
-              <span class="separator">|</span>
-              <span class="category">{{ course.category }}</span>
-            </div>
-
-            <div class="tags">
-              <el-tag v-for="tag in course.tagList" :key="tag" size="small" effect="light">
-                #{{ tag }}
+              </button>
+              <el-tag size="small" :type="difficultyTagType(course.difficulty)" effect="light">
+                {{ difficultyText(course.difficulty) }}
               </el-tag>
             </div>
 
-            <div class="desc">{{ course.description }}</div>
-
-            <div class="stats">
-              <div class="learners">
-                <el-icon>
-                  <User />
-                </el-icon>
-                <span>{{ course.learners.toLocaleString() }}</span>
-              </div>
+            <div class="meta">
+              <span class="meta-item">
+                <el-icon><Grid /></el-icon>
+                {{ course.category }}
+              </span>
+              <span class="meta-dot" />
+              <span class="meta-item">
+                <el-icon><User /></el-icon>
+                {{ formatLearners(course.learners) }} 人学习
+              </span>
             </div>
 
-            <el-progress v-if="course.enrolled" :percentage="course.progress" :stroke-width="10" />
+            <div v-if="course.tagList.length" class="tags">
+              <el-tag v-for="tag in course.tagList.slice(0, 4)" :key="tag" size="small" effect="plain">
+                {{ tag }}
+              </el-tag>
+            </div>
+
+            <p class="desc">{{ course.description || "暂无课程简介" }}</p>
+
+            <div v-if="course.enrolled" class="progress-wrap">
+              <div class="progress-label">
+                <span>学习进度</span>
+                <strong>{{ course.progress }}%</strong>
+              </div>
+              <el-progress :percentage="course.progress" :stroke-width="9" :show-text="false" />
+            </div>
 
             <div class="actions">
-              <el-button type="primary" @click="openCourse(course)">
+              <el-button type="primary" :icon="VideoPlay" @click="openCourse(course)">
                 {{ course.enrolled ? "继续学习" : "查看详情" }}
               </el-button>
-              <el-button v-if="!course.enrolled" @click="enroll(course)" :loading="!!enrolling[course.id]">
-                {{ enrolling[course.id] ? "加入中…" : "加入课程" }}
+              <el-button
+                v-if="!course.enrolled"
+                :icon="Plus"
+                @click="enroll(course)"
+                :loading="!!enrolling[course.id]"
+              >
+                {{ enrolling[course.id] ? "加入中" : "加入课程" }}
               </el-button>
             </div>
           </div>
@@ -89,72 +143,63 @@
       </el-col>
     </el-row>
 
-    <el-empty v-else description="未找到符合条件的课程">
-      <el-button @click="resetFilters">重置筛选</el-button>
+    <el-empty v-else description="未找到符合条件的课程" class="empty-state">
+      <el-button :icon="Refresh" @click="resetFilters">重置筛选</el-button>
     </el-empty>
 
-    <!-- 分页 -->
     <div class="pagination" v-if="filteredCourses.length">
-      <el-pagination 
-        background 
-        layout="prev, pager, next, ->, sizes" 
-        :current-page="page" 
+      <el-pagination
+        background
+        layout="prev, pager, next, ->, sizes"
+        :current-page="page"
         :page-size="pageSize"
         :page-sizes="[6, 9, 12, 18]"
-        :size="default"
-        :total="total" @current-change="p => { page = p; searchCourses(); }"
-        @size-change="size => { pageSize = size; page = 1; searchCourses(); }" />
+        :total="total"
+        @current-change="handlePageChange"
+        @size-change="handleSizeChange"
+      />
     </div>
   </div>
 </template>
 
-
 <script setup>
-
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import { Search, User } from "@element-plus/icons-vue";
-import { logger } from "../../utils/logger";
-import { GetCategories, GetCourses, UserAttendCourse } from "../../api/course";
+import {
+  CircleCheck,
+  Collection,
+  Grid,
+  Picture,
+  Plus,
+  Refresh,
+  Search,
+  Tickets,
+  User,
+  VideoPlay
+} from "@element-plus/icons-vue";
+import { logger } from "@/utils/logger";
+import { GetCategories, GetCourses, UserAttendCourse } from "@/api/course";
 
 const router = useRouter();
 
-// 查询与筛选
 const searchQuery = ref("");
 const selectedCategory = ref(null);
 const sortBy = ref(0);
 const showEnrolledOnly = ref(false);
-// 分页
+
 const page = ref(1);
 const pageSize = ref(9);
 const total = ref(0);
 
 const courses = ref([]);
-// 处理中状态：使用对象映射以便响应式
 const enrolling = ref({});
-
-// 根据showEnrolledOnly过滤课程
-const filteredCourses = computed(() => {
-  if (!showEnrolledOnly.value) {
-    return courses.value;
-  }
-  return courses.value.filter(course => course.enrolled === true);
-});
-
-// 搜索加载状态
 const loading = ref(false);
-// 分类列表
-const categories = ref([{
-  id: 0,
-  name: "默认分类"
-}]);
+const categories = ref([{ id: 0, name: "默认分类" }]);
 
-
-// 难度等级映射
 const difficultyMap = {
-  1: { label: "初级", color: "#67c23a" },
-  2: { label: "中级", color: "#e6a23c" },
-  3: { label: "高级", color: "#f56c6c" },
+  1: { label: "初级", color: "#67c23a", type: "success" },
+  2: { label: "中级", color: "#e6a23c", type: "warning" },
+  3: { label: "高级", color: "#f56c6c", type: "danger" },
 };
 
 const getDifficultyLevel = (value) => {
@@ -164,30 +209,49 @@ const getDifficultyLevel = (value) => {
   return 2;
 };
 
-// 组件挂载时获取分类列表和初始课程列表
-onMounted(async () => {
+const difficultyText = (value) => difficultyMap[getDifficultyLevel(value)]?.label || "未知";
+
+const difficultyTagType = (value) => difficultyMap[getDifficultyLevel(value)]?.type || "info";
+
+const clampPercent = (value) => {
+  const number = Math.round(Number(value) || 0);
+  return Math.min(100, Math.max(0, number));
+};
+
+const normalizeCourse = (course) => ({
+  ...course,
+  id: Number(course?.id),
+  title: course?.title || `课程 #${course?.id ?? ""}`,
+  cover: course?.cover || course?.coverUrl || "",
+  category: course?.category || course?.categoryName || "未分类",
+  description: course?.description || "",
+  difficulty: getDifficultyLevel(course?.difficulty),
+  learners: Number(course?.learners || 0),
+  enrolled: Boolean(course?.enrolled),
+  progress: clampPercent(course?.progress),
+  tagList: Array.isArray(course?.tagList) ? course.tagList : [],
+});
+
+const filteredCourses = computed(() => {
+  if (!showEnrolledOnly.value) {
+    return courses.value;
+  }
+  return courses.value.filter((course) => course.enrolled);
+});
+
+const enrolledCount = computed(() => courses.value.filter((course) => course.enrolled).length);
+
+const formatLearners = (value) => Number(value || 0).toLocaleString();
+
+const fetchCategories = async () => {
   try {
     const res = await GetCategories();
-    categories.value = res.data?.data || [];
+    categories.value = Array.isArray(res.data?.data) ? res.data.data : [];
   } catch (e) {
     logger.error("获取分类列表失败", e);
   }
-  // 初始搜索
-  searchCourses();
-});
-
-
-// 重置搜索选项
-const resetFilters = () => {
-  searchQuery.value = "";
-  selectedCategory.value = null;
-  sortBy.value = 0;
-  showEnrolledOnly.value = false;
-  searchCourses();
 };
 
-
-// 搜索课程
 const searchCourses = async () => {
   loading.value = true;
   try {
@@ -197,13 +261,14 @@ const searchCourses = async () => {
       keyword: searchQuery.value,
       categoryId: selectedCategory.value,
       sortBy: sortBy.value,
-      status: 1 // 仅搜索已发布的课程
+      status: 1,
     });
 
-    logger.debug("搜索课程结果", res);
-
-    courses.value = res.data.data?.records || [];
-    total.value = res.data.data?.total || 0;
+    const payload = res.data?.data || {};
+    courses.value = Array.isArray(payload.records)
+      ? payload.records.map(normalizeCourse).filter((course) => Number.isFinite(course.id))
+      : [];
+    total.value = Number(payload.total || 0);
     logger.success("搜索成功");
   } catch (e) {
     logger.error("搜索失败", e);
@@ -212,15 +277,37 @@ const searchCourses = async () => {
   }
 };
 
-// 路由名称根据实际情况调整
+const applyFilters = () => {
+  page.value = 1;
+  searchCourses();
+};
+
+const resetFilters = () => {
+  searchQuery.value = "";
+  selectedCategory.value = null;
+  sortBy.value = 0;
+  showEnrolledOnly.value = false;
+  applyFilters();
+};
+
+const handlePageChange = (nextPage) => {
+  page.value = nextPage;
+  searchCourses();
+};
+
+const handleSizeChange = (size) => {
+  pageSize.value = size;
+  page.value = 1;
+  searchCourses();
+};
+
 const openCourse = (course) => {
-  router.push({ 
-    name: "CourseDetail", 
-    params: { id: course.id }
+  router.push({
+    name: "CourseDetail",
+    params: { id: course.id },
   });
 };
 
-// 加入课程
 const enroll = async (course) => {
   if (enrolling.value[course.id]) return;
   enrolling.value[course.id] = true;
@@ -239,141 +326,337 @@ const enroll = async (course) => {
   }
 };
 
-// 筛选项变化自动搜索（showEnrolledOnly不触发搜索，只做前端过滤）
-watch(
-  [selectedCategory, sortBy],
-  searchCourses
-);
-
+onMounted(async () => {
+  await fetchCategories();
+  searchCourses();
+});
 
 </script>
 
 <style scoped>
 .course-overview {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 16px;
+  min-height: 100vh;
+  padding: 24px;
+  background: #f8fafc;
+}
+
+.page-head {
+  max-width: 1180px;
+  margin: 0 auto 18px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.page-title {
+  margin: 0;
+  color: #111827;
+  font-size: 26px;
+  font-weight: 700;
 }
 
 .subtitle {
-  color: #666;
-  margin-top: 4px;
+  margin: 6px 0 0;
+  color: #64748b;
   font-size: 14px;
-  margin-bottom: 12px;
 }
 
-.toolbar {
+.summary-strip {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.summary-item {
+  min-width: 116px;
+  display: flex;
   align-items: center;
-  margin: 12px 0 16px;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #409eff;
 }
 
-.toolbar .input {
-  flex: 1 1 320px;
+.summary-value,
+.summary-label {
+  display: block;
 }
 
-.toolbar .select {
-  width: 160px;
+.summary-value {
+  color: #111827;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.summary-label {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.toolbar-panel {
+  max-width: 1180px;
+  margin: 0 auto 20px;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 160px 160px auto auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.search-input,
+.filter-select {
+  width: 100%;
+}
+
+.enrolled-switch {
+  height: 32px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  color: #475569;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.course-grid {
+  max-width: 1180px;
+  margin: 0 auto;
 }
 
 .course-card {
-  margin-bottom: 12px;
+  height: 100%;
+  margin-bottom: 20px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.course-card:hover {
+  transform: translateY(-3px);
+  border-color: #bfdbfe;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+}
+
+.cover-wrap {
+  position: relative;
+  cursor: pointer;
 }
 
 .cover {
+  display: block;
   width: 100%;
-  aspect-ratio: 16/9;
-  object-fit: cover;
-  background: #f6f6f6;
-  border-radius: 6px;
+  aspect-ratio: 16 / 9;
+  background: #eef2f7;
+}
+
+.cover-fallback {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef2f7;
+  color: #94a3b8;
+  font-size: 26px;
+}
+
+.enrolled-badge {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  border: none;
 }
 
 .card-body {
-  padding: 10px 0 0;
+  min-height: 238px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .card-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 10px;
 }
 
-.title {
+.title-button {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #111827;
   font-size: 16px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: left;
   cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.title-button:hover {
+  color: #2563eb;
 }
 
 .meta {
-  color: #666;
-  font-size: 13px;
+  min-height: 20px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
+  color: #64748b;
+  font-size: 13px;
 }
 
-.difficulty-rate {
-  font-size: 14px;
-}
-
-.difficulty {
+.meta-item {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-weight: 500;
 }
 
-.separator {
-  color: #ddd;
-}
-
-.category {
-  color: #666;
+.meta-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #cbd5e1;
 }
 
 .tags {
+  min-height: 24px;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
 .desc {
-  color: #444;
+  min-height: 44px;
+  margin: 0;
+  color: #475569;
   font-size: 14px;
   line-height: 1.6;
   display: -webkit-box;
   line-clamp: 2;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-.stats {
+.progress-wrap {
+  margin-top: auto;
+}
+
+.progress-label {
+  margin-bottom: 6px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  color: #64748b;
+  font-size: 12px;
 }
 
-.learners {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #555;
-  font-size: 13px;
+.progress-label strong {
+  color: #111827;
 }
 
 .actions {
-  display: flex;
+  margin-top: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  margin-top: 4px;
+}
+
+.actions .el-button {
+  width: 100%;
+  margin-left: 0;
+}
+
+.actions .el-button:only-child {
+  grid-column: 1 / -1;
+}
+
+.empty-state {
+  max-width: 1180px;
+  margin: 40px auto 0;
+  padding: 44px 0;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
 }
 
 .pagination {
+  max-width: 1180px;
+  margin: 6px auto 0;
+  padding: 14px 0 4px;
   display: flex;
   justify-content: center;
-  margin-top: 16px;
+}
+
+@media (max-width: 900px) {
+  .page-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .summary-strip {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .toolbar-panel {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .search-input,
+  .toolbar-actions {
+    grid-column: 1 / -1;
+  }
+
+  .toolbar-actions {
+    justify-content: stretch;
+  }
+
+  .toolbar-actions .el-button {
+    flex: 1;
+  }
+}
+
+@media (max-width: 560px) {
+  .course-overview {
+    padding: 16px;
+  }
+
+  .toolbar-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-item {
+    flex: 1 1 100%;
+  }
+
+  .enrolled-switch,
+  .toolbar-actions {
+    width: 100%;
+  }
 }
 </style>

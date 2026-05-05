@@ -1,143 +1,142 @@
 <template>
   <div class="recommend-page" v-loading="loading">
-    <div class="header">
-      <div class="title">课程推荐</div>
-      <div class="subtitle">根据协同过滤与知识掌握度生成的个性化推荐</div>
+    <div class="header-section">
+      <div class="title-group">
+        <h2 class="main-title">课程推荐</h2>
+        <p class="sub-title">基于协同过滤算法与知识图谱的深度定制方案</p>
+      </div>
+      <el-button type="primary" :icon="Refresh" @click="fetchRecommendation" :loading="loading" plain>
+        刷新推荐
+      </el-button>
     </div>
 
-    <el-card class="summary-card" shadow="hover">
-      <div class="summary-row">
-        <div class="summary-item">
-          <div class="label">用户 ID</div>
-          <div class="value">{{ recommendation.userId ?? "-" }}</div>
-        </div>
-        <div class="summary-item">
-          <div class="label">推荐数量</div>
-          <div class="value">{{ items.length }}</div>
-        </div>
-        <div class="summary-item">
-          <div class="label">更新时间</div>
-          <div class="value">{{ lastUpdatedText || "-" }}</div>
-        </div>
+    <div class="summary-grid">
+      <div class="info-card">
+        <span class="label">目标用户</span>
+        <span class="value">{{ currentUserIdText }}</span>
       </div>
-    </el-card>
+      <div class="info-card">
+        <span class="label">为您精选</span>
+        <span class="value">{{ items.length }} <small>门课程</small></span>
+      </div>
+      <div class="info-card">
+        <span class="label">更新于</span>
+        <span class="value">{{ lastUpdatedText || "-" }}</span>
+      </div>
+    </div>
 
-    <el-row v-if="items.length" :gutter="16" class="cards">
+    <el-row v-if="items.length" :gutter="20" class="cards-container">
       <el-col v-for="item in items" :key="item.courseId" :xs="24" :lg="12">
-        <el-card shadow="hover" class="recommend-card">
+        <el-card shadow="always" class="course-card">
           <template #header>
             <div class="card-header">
-              <div class="course-id">
+              <div class="course-info">
+                <el-icon class="course-icon"><Reading /></el-icon>
                 <span class="course-title" @click="openCourse(item)">
                   {{ item.title || `课程 #${item.courseId}` }}
                 </span>
+                <el-tag v-if="item.difficulty" size="small" type="info" effect="plain">
+                  {{ difficultyText(item.difficulty) }}
+                </el-tag>
               </div>
-              <el-tag type="success" effect="light">综合推荐</el-tag>
+              <el-tag :type="scoreTagType(item.recommendScore)" effect="dark">
+                {{ formatRecommendScore(item.recommendScore) }}分 {{ recommendTagText(item) }}
+              </el-tag>
             </div>
           </template>
 
-          <div class="score-grid">
-            <div class="score-item">
-              <div class="label">推荐评分</div>
-              <div class="value">{{ item.finalScore.toFixed(1) }}</div>
-            </div>
-            <div class="score-item">
-              <div class="label">准备度</div>
-              <el-progress :percentage="toPercent(item.readiness)" :stroke-width="10" />
+          <div v-if="item.reason" class="reason-text">
+            {{ item.reason }}
+          </div>
+
+          <div class="metric-section">
+            <div class="metric-item">
+              <span class="metric-label">学习准备度</span>
+              <el-progress 
+                :percentage="toPercent(item.readiness)" 
+                :stroke-width="12" 
+                :color="progressColors"
+              />
             </div>
           </div>
 
-          <div class="section">
-            <div class="section-title">相关知识点</div>
-            <div class="tag-list">
-              <el-tag v-for="kp in item.knowledgePoints" :key="kp.id" effect="light">
-                {{ kp.name }} · {{ difficultyText(kp.difficulty) }}
+          <div class="content-section" v-if="item.knowledgePoints.length">
+            <h4 class="section-label">涵盖知识点</h4>
+            <div class="tag-cloud">
+              <el-tag 
+                v-for="kp in item.knowledgePoints" 
+                :key="kp.id" 
+                class="kp-tag" 
+                round
+              >
+                {{ kp.name }} 
+                <span class="diff-badge">{{ difficultyText(kp.difficulty) }}</span>
               </el-tag>
             </div>
           </div>
 
-          <div class="section">
-            <div class="section-title">待补齐前置掌握度</div>
-            <el-table :data="item.missingPrerequisitesMastery" size="small" border>
-              <el-table-column prop="name" label="知识点" min-width="160" />
-              <el-table-column prop="difficulty" label="难度" width="90">
+          <div class="content-section" v-if="item.missingPrerequisitesMastery?.length">
+            <h4 class="section-label">薄弱前置项 (需补齐)</h4>
+            <el-table :data="item.missingPrerequisitesMastery" size="small" border class="mini-table">
+              <el-table-column prop="name" label="知识点" />
+              <el-table-column label="差距" align="center" width="120">
                 <template #default="{ row }">
-                  {{ difficultyText(row.difficulty) }}
-                </template>
-              </el-table-column>
-              <el-table-column prop="have" label="当前掌握" width="110">
-                <template #default="{ row }">
-                  {{ toPercent(row.have) }}%
-                </template>
-              </el-table-column>
-              <el-table-column prop="need" label="目标掌握" width="110">
-                <template #default="{ row }">
-                  {{ toPercent(row.need) }}%
+                  <span class="gap-text">{{ toPercent(row.have) }}% → {{ toPercent(row.need) }}%</span>
                 </template>
               </el-table-column>
             </el-table>
           </div>
 
-          <div class="section">
-            <div class="section-header">
-              <div class="section-title">推荐学习路径</div>
-              <el-button
-                type="primary"
-                plain
-                size="small"
-                class="toggle-button"
-                @click="togglePath(item.courseId)"
-              >
-                {{ isPathExpanded(item.courseId) ? "收起路径" : "展开路径" }}
-              </el-button>
+          <div class="path-section" v-if="item.learningPaths.length">
+            <div class="path-header" @click="togglePath(item.courseId)">
+              <span class="section-label">建议学习路径</span>
+              <el-link :underline="false" type="primary">
+                {{ isPathExpanded(item.courseId) ? '隐藏' : '查看详情' }}
+                <el-icon><ArrowDown v-if="!isPathExpanded(item.courseId)" /><ArrowUp v-else /></el-icon>
+              </el-link>
             </div>
-            <div v-show="isPathExpanded(item.courseId)" class="paths">
-              <div v-for="(path, index) in item.learningPaths" :key="index" class="path">
-                <div class="path-title">路径 {{ index + 1 }}</div>
-                <el-steps direction="vertical" :active="path.length - 1">
-                  <el-step
-                    v-for="node in path"
-                    :key="node.id"
-                    :description="`难度：${difficultyText(node.difficulty)}`"
-                  >
-                    <template #title>
-                      <span class="path-kp-link" @click="openKnowledgePointCourses(node)">
-                        {{ node.name }}
-                      </span>
-                    </template>
-                  </el-step>
-                </el-steps>
+            
+            <el-collapse-transition>
+              <div v-show="isPathExpanded(item.courseId)" class="path-body">
+                <div v-for="(path, index) in item.learningPaths" :key="index" class="path-item">
+                  <div class="path-tag">路径 {{ index + 1 }}</div>
+                  <el-steps direction="vertical" :active="path.length" space="60px">
+                    <el-step v-for="node in path" :key="node.id">
+                      <template #title>
+                        <span class="node-link" @click="openKnowledgePointCourses(node)">{{ node.name }}</span>
+                      </template>
+                      <template #description>
+                        难度: {{ difficultyText(node.difficulty) }}
+                      </template>
+                    </el-step>
+                  </el-steps>
+                </div>
               </div>
-            </div>
+            </el-collapse-transition>
           </div>
         </el-card>
       </el-col>
     </el-row>
 
-    <el-empty v-else description="暂无推荐数据">
-      <el-button type="primary" @click="fetchRecommendation" :loading="loading">
-        刷新推荐
-      </el-button>
-    </el-empty>
+    <el-empty v-else description="正在分析您的学习画像..." />
 
-    <el-dialog
-      v-model="courseSelectorVisible"
-      title="请选择课程"
-      width="520px"
-      destroy-on-close
-    >
-      <el-empty v-if="!relatedCourses.length" description="该知识点暂无关联课程" />
-      <div v-else class="course-option-list">
-        <el-button
-          v-for="course in relatedCourses"
-          :key="course.id"
-          text
-          class="course-option-btn"
-          @click="goToCourseDetail(course.id)"
-        >
-          <span class="course-option-title">{{ course.title || `课程 #${course.id}` }}</span>
-          <span class="course-option-difficulty">难度：{{ difficultyText(course.difficulty) }}</span>
-        </el-button>
+    <el-dialog v-model="courseSelectorVisible" title="相关推荐课程" width="480px">
+      <div v-loading="loadingCoursesByKp">
+        <div v-if="relatedCourses.length" class="course-list">
+          <div 
+            v-for="course in relatedCourses" 
+            :key="course.id" 
+            class="course-option"
+            @click="goToCourseDetail(course.id)"
+          >
+            <div class="option-main">
+              <span class="option-title">{{ course.title }}</span>
+              <el-tag size="small" type="info">{{ difficultyText(course.difficulty) }}</el-tag>
+            </div>
+            <el-icon><ArrowRight /></el-icon>
+          </div>
+        </div>
+        <el-empty v-else size="small" description="暂无关联课程" />
       </div>
     </el-dialog>
   </div>
@@ -146,14 +145,22 @@
 <script setup>
 import { computed, ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
+import { useUserStore } from "@/store/user";
 import { GetHybridRecommend } from "@/api/recommend";
+import { Reading, Refresh, ArrowDown, ArrowUp, ArrowRight } from '@element-plus/icons-vue';
 import { GetCourseByKp } from "@/api/course";
 import { logger } from "@/utils/logger";
 
 const router = useRouter();
+const userStore = useUserStore();
+
+const currentUserId = computed(() => userStore.userInfo?.userId);
+const currentUserIdText = computed(() => {
+  const userId = Number(currentUserId.value);
+  return Number.isFinite(userId) && userId > 0 ? String(userId) : "未登录";
+});
 
 const recommendation = ref({
-  userId: null,
   items: [],
 });
 
@@ -170,13 +177,35 @@ const formatDate = (date) => {
 
 const loading = ref(false);
 
+const toFiniteNumber = (value, fallback = 0) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+};
+
+const normalizeArray = (value) => Array.isArray(value) ? value : [];
+
+const normalizeRecommendItem = (item) => ({
+  courseId: toFiniteNumber(item?.courseId, 0),
+  title: item?.title ?? "",
+  difficulty: toFiniteNumber(item?.difficulty, 0),
+  recommendScore: toFiniteNumber(item?.recommendScore ?? item?.finalScore, 0),
+  reason: item?.reason ?? "",
+  readiness: toFiniteNumber(item?.readiness, 0),
+  isNewCourse: Boolean(item?.isNewCourse),
+  knowledgePoints: normalizeArray(item?.knowledgePoints),
+  missingPrerequisitesMastery: normalizeArray(item?.missingPrerequisitesMastery),
+  learningPaths: normalizeArray(item?.learningPaths).filter(Array.isArray),
+});
+
 const normalizePayload = (payload) => {
   if (!payload || typeof payload !== "object") {
-    return { userId: null, items: [] };
+    return { items: [] };
   }
+
   return {
-    userId: payload.userId ?? null,
-    items: Array.isArray(payload.items) ? payload.items : [],
+    items: normalizeArray(payload.items)
+      .map(normalizeRecommendItem)
+      .filter((item) => item.courseId > 0),
   };
 };
 
@@ -200,6 +229,12 @@ onMounted(() => {
 
 const toPercent = (value) => Math.round(Number(value || 0) * 100);
 
+const formatRecommendScore = (score) => Math.round(toFiniteNumber(score, 0));
+
+const scoreTagType = (score) => formatRecommendScore(score) >= 85 ? "danger" : "success";
+
+const recommendTagText = (item) => item.isNewCourse ? "新课推荐" : "强力推荐";
+
 const difficultyMap = {
   1: "初级",
   2: "中级",
@@ -213,11 +248,17 @@ const expandedMap = ref({});
 const isPathExpanded = (courseId) => !!expandedMap.value[courseId];
 
 const togglePath = (courseId) => {
-  expandedMap.value = {
-    ...expandedMap.value,
-    [courseId]: !expandedMap.value[courseId],
-  };
+  expandedMap.value[courseId] = !expandedMap.value[courseId];
 };
+
+// 进度条颜色渐变
+const progressColors = [
+  { color: '#f56c6c', percentage: 20 },
+  { color: '#e6a23c', percentage: 40 },
+  { color: '#5cb87a', percentage: 60 },
+  { color: '#1989fa', percentage: 80 },
+  { color: '#6f7ad3', percentage: 100 },
+];
 
 const openCourse = (item) => {
   router.push({
@@ -273,187 +314,223 @@ const goToCourseDetail = (courseId) => {
 
 <style scoped>
 .recommend-page {
-  padding: 16px 20px 40px;
+  padding: 24px;
+  background-color: #f8fafc;
+  min-height: 100vh;
 }
 
-.header {
+.header-section {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 16px;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
 }
 
-.title {
-  font-size: 22px;
-  font-weight: 600;
-  color: #1f2a44;
+.main-title {
+  margin: 0;
+  font-size: 26px;
+  color: #1e293b;
+  font-weight: 700;
 }
 
-.subtitle {
-  color: #6b778c;
+.sub-title {
+  margin: 4px 0 0;
+  color: #64748b;
   font-size: 14px;
 }
 
-.summary-card {
-  margin-bottom: 16px;
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
 }
 
-.summary-row {
+.info-card {
+  background: white;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
+  flex-direction: column;
 }
 
-.summary-item .label {
-  color: #97a3b6;
+.info-card .label {
   font-size: 12px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.summary-item .value {
-  font-size: 18px;
+.info-card .value {
+  font-size: 20px;
   font-weight: 600;
-  color: #24324b;
+  color: #0f172a;
+  margin-top: 4px;
 }
 
-.cards {
-  margin-top: 8px;
+.course-card {
+  border-radius: 16px;
+  border: none;
+  transition: transform 0.3s ease;
 }
 
-.recommend-card {
-  margin-bottom: 16px;
+.course-card:hover {
+  transform: translateY(-4px);
 }
 
 .card-header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
 }
 
-.course-id {
-  font-size: 16px;
-  font-weight: 600;
+.course-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.course-icon {
+  font-size: 20px;
+  color: #409eff;
 }
 
 .course-title {
+  font-weight: 600;
+  font-size: 17px;
   cursor: pointer;
-  color: #1f6feb;
+  color: #1e293b;
+  overflow-wrap: anywhere;
 }
 
 .course-title:hover {
-  color: #0f4fbf;
+  color: #409eff;
 }
 
-.score-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 12px;
+.reason-text {
+  margin-bottom: 18px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
-.score-item .label {
-  font-size: 12px;
-  color: #97a3b6;
-  margin-bottom: 6px;
+.metric-section {
+  margin-bottom: 20px;
 }
 
-.score-item .value {
-  font-size: 20px;
-  font-weight: 600;
-  color: #2c3e50;
-}
-
-.section {
-  margin-top: 16px;
-}
-
-.section-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #2c3e50;
+.metric-label {
+  display: block;
+  font-size: 13px;
+  color: #64748b;
   margin-bottom: 8px;
 }
 
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+.content-section {
+  margin-top: 20px;
 }
 
-.toggle-button {
-  padding: 4px 10px;
+.section-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 12px;
 }
 
-.tag-list {
+.tag-cloud {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.paths {
+.kp-tag {
+  background: #f1f5f9;
+  border: none;
+  color: #475569;
+}
+
+.diff-badge {
+  opacity: 0.6;
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+.mini-table {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.path-section {
+  margin-top: 24px;
+  background: #fcfcfd;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.path-header {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.path-title {
-  font-size: 13px;
-  color: #5c6f8a;
-  margin-bottom: 6px;
-}
-
-.path-kp-link {
-  color: #1f6feb;
+  justify-content: space-between;
   cursor: pointer;
 }
 
-.path-kp-link:hover {
-  color: #0f4fbf;
+.path-body {
+  padding-top: 16px;
 }
 
-.course-option-list {
+.path-tag {
+  font-size: 12px;
+  font-weight: 600;
+  color: #409eff;
+  background: #ecf5ff;
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+
+.node-link {
+  color: #1e293b;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.node-link:hover {
+  color: #409eff;
+  text-decoration: underline;
+}
+
+/* 弹窗课程项美化 */
+.course-option {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 8px;
+  border: 1px solid #f1f5f9;
+  transition: all 0.2s;
 }
 
-.course-option-btn {
-  width: 100%;
-  justify-content: flex-start;
-  padding: 8px 0;
-  height: auto;
+.course-option:hover {
+  background: #f0f7ff;
+  border-color: #d1e9ff;
 }
 
-.course-option-btn :deep(.el-button__text) {
-  width: 100%;
+.option-main {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
 }
 
-.course-option-list :deep(.el-button + .el-button) {
-  margin-left: 0;
-  margin-top: 0;
-}
-
-.course-option-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.course-option-difficulty {
-  font-size: small;
-  margin-left: 10px;
-  white-space: nowrap;
-}
-
-@media (max-width: 960px) {
-  .score-grid {
-    grid-template-columns: 1fr;
-  }
+.option-title {
+  font-weight: 500;
+  color: #334155;
 }
 </style>
