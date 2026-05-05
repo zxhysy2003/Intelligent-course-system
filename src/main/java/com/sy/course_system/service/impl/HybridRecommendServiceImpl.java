@@ -269,12 +269,25 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
         List<Long> courseIds = topCourses.stream()
                 .map(RecommendItemDTO::getCourseId)
                 .collect(Collectors.toList());
-        List<CourseReadinessDTO> readinessList = courseGraphRepository.getCourseReadinessBatch(userId, courseIds,
-                PREREQUISITE_THRESHOLD);
 
-        Map<Long, CourseReadinessDTO> readinessMap = readinessList.stream()
-                .collect(Collectors.toMap(CourseReadinessDTO::getCourseId, r -> r, (a, b) -> a));
-        Map<Long, Course> courseSummaryMap = courseService.getRecommendCourseSummaryMapByIds(courseIds);
+        Map<Long, CourseReadinessDTO> readinessMap;
+        Map<Long, Course> courseSummaryMap;
+        if (asyncEnabled) {
+            // CF 候选的 readiness 和课程摘要来自 Neo4j / MySQL，互不依赖，先并行拉取再统一组装。
+            CompletableFuture<Map<Long, CourseReadinessDTO>> readinessFuture = CompletableFuture.supplyAsync(
+                    () -> toReadinessMap(courseGraphRepository.getCourseReadinessBatch(
+                            userId, courseIds, PREREQUISITE_THRESHOLD)),
+                    recommendTaskExecutor);
+            CompletableFuture<Map<Long, Course>> summaryFuture = CompletableFuture.supplyAsync(
+                    () -> courseService.getRecommendCourseSummaryMapByIds(courseIds), recommendTaskExecutor);
+            ConcurrentUtils.awaitAll(GRAPH_ASYNC_INTERRUPTED_MSG, readinessFuture, summaryFuture);
+            readinessMap = readinessFuture.getNow(Map.of());
+            courseSummaryMap = summaryFuture.getNow(Map.of());
+        } else {
+            readinessMap = toReadinessMap(courseGraphRepository.getCourseReadinessBatch(
+                    userId, courseIds, PREREQUISITE_THRESHOLD));
+            courseSummaryMap = courseService.getRecommendCourseSummaryMapByIds(courseIds);
+        }
 
         List<HybridRecommendItemDTO> hybridItems = topCourses.stream()
                 .map(item -> buildHybridBaseItem(item, min, max, eps, courseSummaryMap, readinessMap))
@@ -769,13 +782,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
                 readinessFuture = CompletableFuture.supplyAsync(() -> {
                     List<CourseReadinessDTO> readinessList = courseGraphRepository.getCourseReadinessBatch(
                             userId, missingReadinessCourseIds, PREREQUISITE_THRESHOLD);
-                    if (readinessList == null || readinessList.isEmpty()) {
-                        return Map.<Long, CourseReadinessDTO>of();
-                    }
-                    return readinessList.stream()
-                            .filter(r -> r != null && r.getCourseId() != null)
-                            .collect(Collectors.toMap(
-                                    CourseReadinessDTO::getCourseId, r -> r, (a, b) -> a));
+                    return toReadinessMap(readinessList);
                 }, recommendTaskExecutor);
             } else {
                 readinessFuture = CompletableFuture.completedFuture(Map.of());
@@ -800,11 +807,8 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
             if (!missingReadinessCourseIds.isEmpty()) {
                 List<CourseReadinessDTO> readinessList = courseGraphRepository.getCourseReadinessBatch(
                         userId, missingReadinessCourseIds, PREREQUISITE_THRESHOLD);
-                if (readinessList != null && !readinessList.isEmpty()) {
-                    Map<Long, CourseReadinessDTO> fetchedReadinessMap = readinessList.stream()
-                            .filter(r -> r != null && r.getCourseId() != null)
-                            .collect(Collectors.toMap(
-                                    CourseReadinessDTO::getCourseId, r -> r, (a, b) -> a));
+                Map<Long, CourseReadinessDTO> fetchedReadinessMap = toReadinessMap(readinessList);
+                if (!fetchedReadinessMap.isEmpty()) {
                     effectiveReadinessMap.putAll(fetchedReadinessMap);
                 }
             }
@@ -842,6 +846,20 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
             // 学习路径：用于展示"从当前水平到可学习该课程"的推荐补齐路径。
             item.setLearningPaths(learningPathsMap.getOrDefault(courseId, List.of()));
         }
+    }
+
+    private Map<Long, CourseReadinessDTO> toReadinessMap(List<CourseReadinessDTO> readinessList) {
+        Map<Long, CourseReadinessDTO> map = new LinkedHashMap<>();
+        if (readinessList == null || readinessList.isEmpty()) {
+            return map;
+        }
+        for (CourseReadinessDTO readiness : readinessList) {
+            if (readiness == null || readiness.getCourseId() == null) {
+                continue;
+            }
+            map.putIfAbsent(readiness.getCourseId(), readiness);
+        }
+        return map;
     }
 
     /**

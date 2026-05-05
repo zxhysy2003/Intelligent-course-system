@@ -12,6 +12,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -219,9 +220,11 @@ class HybridRecommendServiceImplTest {
         when(courseGraphRepository.getCourseReadinessBatch(eq(1L), anyList(), eq(0.7d))).thenAnswer(invocation -> {
             List<Long> courseIds = invocation.getArgument(1);
             if (courseIds.equals(List.of(1L, 2L, 3L))) {
-                return List.of(
+                return java.util.Arrays.asList(
                         readiness(1L, 0.2d),
                         readiness(2L, 1.0d),
+                        readiness(2L, 0.4d),
+                        null,
                         readiness(3L, 0.8d));
             }
             if (courseIds.equals(List.of(4L))) {
@@ -407,6 +410,8 @@ class HybridRecommendServiceImplTest {
         assertEquals(List.of(87, 83, 92, 68),
                 result.getItems().stream().map(HybridRecommendItemDTO::getRecommendScore).toList());
         assertEquals(0.6d, result.getItems().get(2).getReadiness());
+        verify(courseGraphRepository, times(1)).getCourseReadinessBatch(1L, List.of(1L, 2L, 3L), 0.7d);
+        verify(courseService, times(1)).getRecommendCourseSummaryMapByIds(List.of(1L, 2L, 3L));
     }
 
     @Test
