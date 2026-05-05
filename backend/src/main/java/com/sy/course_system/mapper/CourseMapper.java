@@ -1,0 +1,173 @@
+package com.sy.course_system.mapper;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.sy.course_system.dto.coldstart.ColdStartCourseCandidateDTO;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.sy.course_system.dto.course.CoursePageLearnerCountDTO;
+import com.sy.course_system.dto.course.CoursePageTagDTO;
+import com.sy.course_system.dto.course.CourseQueryDTO;
+import com.sy.course_system.dto.course.CourseTempDTO;
+import com.sy.course_system.dto.course.KnowledgePointOptionDTO;
+import com.sy.course_system.dto.course.TagOptionDTO;
+import com.sy.course_system.dto.recommend.NewCourseBaseCandidateDTO;
+import com.sy.course_system.dto.recommend.NewCourseStatDTO;
+import com.sy.course_system.dto.recommend.NewCourseTagRowDTO;
+import com.sy.course_system.entity.Course;
+import com.sy.course_system.entity.Knowledge;
+import com.sy.course_system.entity.Tag;
+
+@Mapper
+public interface CourseMapper extends BaseMapper<Course> {
+        /**
+         * 为课程批量插入分类关联关系。
+         */
+        void insertCourseCategoryRelations(@Param("id") Long id, @Param("categoryIds") List<Integer> categoryIds);
+
+        /**
+         * 为课程批量插入标签关联关系。
+         */
+        void insertCourseTagRelations(@Param("id") Long id, @Param("tagMap") Map<Integer, Tag> tagMap);
+
+        /**
+         * 根据筛选条件分页查询课程（带用户上下文）。
+         */
+        Page<CourseTempDTO> selectCoursePage(Page<CourseTempDTO> page, @Param("userId") Long userId,
+                        @Param("dto") CourseQueryDTO dto);
+
+        /**
+         * 统计分页查询的总数（与分页查询条件一致）。
+         */
+        Long selectCoursePageCount(@Param("dto") CourseQueryDTO dto);
+
+        /**
+         * 按当前页课程 id 批量统计学习人数。
+         */
+        List<CoursePageLearnerCountDTO> selectCoursePageLearnerCounts(@Param("courseIds") List<Long> courseIds);
+
+        /**
+         * 按当前页课程 id 批量聚合课程标签。
+         */
+        List<CoursePageTagDTO> selectCoursePageTags(@Param("courseIds") List<Long> courseIds);
+
+        /**
+         * 获取课程关联的知识点 id 列表。
+         */
+        @Select("""
+                        SELECT kp_id
+                        FROM course_knowledge_point
+                        WHERE course_id = #{courseId}
+                        """)
+        List<Long> selectKnowledgePointIdsByCourseId(@Param("courseId") Long courseId);
+
+        /**
+         * 获取课程关联的有效知识点列表。
+         */
+        @Select("""
+                        SELECT *
+                        FROM knowledge_point kp
+                        JOIN course_knowledge_point ckp ON kp.id = ckp.kp_id
+                        WHERE ckp.course_id = #{courseId} AND kp.status = 1
+                        """)
+        List<Knowledge> selectKnowledgePointsByCourseId(@Param("courseId") Long courseId);
+
+        /**
+         * 按课程 id 获取课程名称信息。
+         */
+        List<Course> selectCourseNamesByIds(@Param("courseIds") List<Long> courseIds);
+
+        /**
+         * 按课程 id 获取推荐结果需要的课程摘要信息。
+         */
+        List<Course> selectRecommendCourseSummariesByIds(@Param("courseIds") List<Long> courseIds);
+
+        /**
+         * 按课程 id 获取热门兜底所需的在线课程摘要信息。
+         */
+        List<Course> selectOnlineRecommendCourseSummariesByIds(@Param("courseIds") List<Long> courseIds);
+
+        /**
+         * 获取与知识点关联的有效课程列表。
+         */
+        @Select("""
+                        SELECT c.*
+                        FROM course c
+                        JOIN course_knowledge_point ckp ON c.id = ckp.course_id
+                        WHERE ckp.kp_id = #{kpId} AND c.status = 1
+                        """)
+        List<Course> selectCoursesByKnowledgePointId(@Param("kpId") Long kpId);
+
+        /**
+         * 为课程批量插入知识点关联关系。
+         */
+        void insertCourseKnowledgePointRelations(@Param("courseId") Long courseId,
+                        @Param("knowledgePointIds") List<Long> knowledgePointIds);
+
+        void deleteCourseCategoryRelations(@Param("courseId") Long courseId);
+
+        void deleteCourseTagRelations(@Param("courseId") Long courseId);
+
+        void deleteCourseKnowledgePointRelations(@Param("courseId") Long courseId);
+
+        void deleteCourseCategoryRelationsByCourseIds(@Param("courseIds") List<Long> courseIds);
+
+        void deleteCourseTagRelationsByCourseIds(@Param("courseIds") List<Long> courseIds);
+
+        void deleteCourseKnowledgePointRelationsByCourseIds(@Param("courseIds") List<Long> courseIds);
+
+        /**
+         * 按课程 id 直接获取后台编辑页所需的有效标签选项。
+         */
+        List<TagOptionDTO> listEnabledTagOptionsByCourseId(@Param("courseId") Long courseId);
+
+        @Select("""
+                        SELECT category_id
+                        FROM course_category_relation
+                        WHERE course_id = #{courseId}
+                        """)
+        Integer selectCategoryIdByCourseId(@Param("courseId") Long courseId);
+
+        /**
+         * 按课程 id 直接获取后台编辑页所需的有效知识点选项。
+         */
+        List<KnowledgePointOptionDTO> listEnabledKnowledgePointOptionsByCourseId(@Param("courseId") Long courseId);
+
+        /**
+         * 冷启动（用户侧）使用的课程与标签明细查询。
+         */
+        List<ColdStartCourseCandidateDTO> selectPublishedCoursesWithTagsForColdStart();
+
+        /**
+         * 新课冷启动第一阶段：查询时间窗口内的课程基础信息。
+         *
+         * 说明：
+         * - 仅查 course 主表，避免大范围多表 join；
+         * - 发布时间优先 publish_time，兼容历史数据回退到 create_time。
+         */
+        List<NewCourseBaseCandidateDTO> selectOnlineNewCourseBaseCandidates(
+                        @Param("publishedAfter") LocalDateTime publishedAfter,
+                        @Param("limit") Integer limit);
+
+        /**
+         * 新课冷启动第二阶段：按课程批量查询标签行。
+         */
+        List<NewCourseTagRowDTO> selectCourseTagRowsByCourseIds(@Param("courseIds") List<Long> courseIds);
+
+        /**
+         * 新课冷启动第二阶段：按课程批量统计知识点数量。
+         */
+        List<NewCourseStatDTO> selectCourseKpCountsByCourseIds(@Param("courseIds") List<Long> courseIds);
+
+        /**
+         * 新课冷启动第二阶段：按课程批量统计学习人数。
+         */
+        List<NewCourseStatDTO> selectCourseLearnerCountsByCourseIds(@Param("courseIds") List<Long> courseIds);
+
+}

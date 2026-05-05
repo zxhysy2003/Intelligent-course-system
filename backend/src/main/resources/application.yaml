@@ -1,0 +1,106 @@
+server:
+  port: 8080
+
+app:
+  name: course-system
+  cors:
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://127.0.0.1:5173,http://192.168.*:5173}
+  upload:
+    video-dir: ${VIDEO_DIR:/Users/shiyang/Desktop/graduate_design/course_videos}
+  video:
+    base-url: ${VIDEO_BASE_URL:http://localhost:8080}
+    ffprobe-path: ${FFPROBE_PATH:/opt/homebrew/bin/ffprobe}
+
+spring:
+  application:
+    name: course-system
+  servlet:
+    multipart:
+      max-file-size: 500MB
+      max-request-size: 500MB
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:course_db}?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:dev}
+    password: ${DB_PASSWORD:dev123}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redis123}
+      jedis:
+        pool:
+          max-active: 10
+          max-idle: 5
+          min-idle: 1
+          max-wait: 3000
+  neo4j:
+    uri: ${NEO4J_URI:bolt://localhost:7687}
+    authentication:
+      username: ${NEO4J_USERNAME:neo4j}
+      password: ${NEO4J_PASSWORD:neo4j123}
+  
+mybatis-plus:
+  mapper-locations: classpath:/mapper/*.xml
+  type-aliases-package: com.sy.course_system.entity
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    map-underscore-to-camel-case: true
+
+recommend:
+  # 推荐主链路异步开关与线程池配置
+  async:
+    enabled: ${RECOMMEND_ASYNC_ENABLED:true}
+    core-size: ${RECOMMEND_ASYNC_CORE_SIZE:2}
+    max-size: ${RECOMMEND_ASYNC_MAX_SIZE:4}
+    queue-capacity: ${RECOMMEND_ASYNC_QUEUE_CAPACITY:100}
+  service:
+    url: ${RECOMMEND_SERVICE_URL:http://localhost:8000}
+  # CF 服务调用超时（毫秒）
+  cf-service:
+    connect-timeout-ms: ${RECOMMEND_CF_CONNECT_TIMEOUT_MS:5000}
+    read-timeout-ms: ${RECOMMEND_CF_READ_TIMEOUT_MS:30000}
+  score-matrix-cache:
+    enabled: ${RECOMMEND_SCORE_MATRIX_CACHE_ENABLED:true}
+    ttl-minutes: ${RECOMMEND_SCORE_MATRIX_CACHE_TTL_MINUTES:2}
+  hot-sync:
+    enabled: ${RECOMMEND_HOT_SYNC_ENABLED:true}
+    fixed-delay-ms: ${RECOMMEND_HOT_SYNC_FIXED_DELAY_MS:300000}
+    batch-size: ${RECOMMEND_HOT_SYNC_BATCH_SIZE:500}
+  # 新课冷启动（常规推荐增强）配置
+  # 目标：在不影响用户冷启动主分支的前提下，为常规推荐补充可控比例的新课曝光
+  new-course:
+    # 总开关：关闭后不做新课候选查询与注入
+    enabled: ${RECOMMEND_NEW_COURSE_ENABLED:true}
+    # 新课时间窗（单位：天），与 publish_time 配合使用
+    window-days: ${RECOMMEND_NEW_COURSE_WINDOW_DAYS:14}
+    # 新课候选池大小（服务层还会结合 limit 再做截断）
+    candidate-limit: ${RECOMMEND_NEW_COURSE_CANDIDATE_LIMIT:80}
+    # 新课人数上限：超过该值通常视为已进入常规课程阶段
+    max-learners: ${RECOMMEND_NEW_COURSE_MAX_LEARNERS:20}
+    # 单次最多注入的新课条数
+    inject-limit: ${RECOMMEND_NEW_COURSE_INJECT_LIMIT:3}
+    # 新课最大曝光占比，防止挤占 CF 主链路结果
+    max-exposure-ratio: ${RECOMMEND_NEW_COURSE_MAX_EXPOSURE_RATIO:0.30}
+    # 质量门槛：标签数 / 知识点数 / 时长下限
+    min-tag-count: ${RECOMMEND_NEW_COURSE_MIN_TAG_COUNT:1}
+    min-kp-count: ${RECOMMEND_NEW_COURSE_MIN_KP_COUNT:1}
+    min-duration-seconds: ${RECOMMEND_NEW_COURSE_MIN_DURATION_SECONDS:300}
+    # 评分权重：tagMatch + freshness + quality + readiness(可选补充)
+    # 当前权重分布用于在“相关性优先”的前提下，为新课提供适度曝光并控制质量风险：
+    # 1) tag-weight 最高（0.45），因为标签匹配是新课与用户兴趣对齐的主信号；
+    # 2) freshness-weight 次高（0.30），用于保证新发布课程在冷启动阶段获得可控曝光；
+    # 3) quality-weight（0.20）作为质量兜底，避免仅因“新”而推送信息不足或完成度较低的课程；
+    # 4) readiness-weight（0.05）仅作补充校正，避免先修条件对整体新课曝光产生过强抑制。
+    # 如需针对课程类型做差异化调权，建议通过后续策略版本或独立配置项管理，而不是在此保留未完成说明。
+    tag-weight: ${RECOMMEND_NEW_COURSE_TAG_WEIGHT:0.45}
+    freshness-weight: ${RECOMMEND_NEW_COURSE_FRESHNESS_WEIGHT:0.30}
+    quality-weight: ${RECOMMEND_NEW_COURSE_QUALITY_WEIGHT:0.20}
+    readiness-weight: ${RECOMMEND_NEW_COURSE_READINESS_WEIGHT:0.05}
+    # readiness 批量计算时使用的先修掌握阈值
+    readiness-threshold: ${RECOMMEND_NEW_COURSE_READINESS_THRESHOLD:0.7}
+
+logging:
+  level:
+    "[org.springframework.transaction]": DEBUG
+    "[org.springframework.jdbc.datasource.DataSourceTransactionManager]": DEBUG

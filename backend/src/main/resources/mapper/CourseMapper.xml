@@ -1,0 +1,376 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.sy.course_system.mapper.CourseMapper">
+
+    <!-- insertCourseCategoryRelations --> 
+
+    <insert id="insertCourseCategoryRelations">
+        INSERT INTO course_category_relation (course_id, category_id)
+        VALUES
+        <foreach collection="categoryIds" item="categoryId" separator=",">
+            (#{id}, #{categoryId})
+        </foreach>
+    </insert>
+
+
+    <!-- selectCoursePage --> 
+
+    <select id="selectCoursePage" resultType="com.sy.course_system.dto.course.CourseTempDTO">
+        SELECT
+            c.id,
+            c.title,
+            cat.name AS category,
+            c.description,
+            c.cover_url as cover,
+            c.difficulty,
+            <choose>
+                <when test="dto.sortBy != null and dto.sortBy == 2">
+                    COALESCE(chs.hot_score, 0) AS hotScore,
+                </when>
+                <otherwise>
+                    NULL AS hotScore,
+                </otherwise>
+            </choose>
+
+            -- 当前用户是否已选课
+            (ucr.id IS NOT NULL) AS enrolled,
+
+            -- 当前用户学习进度
+            IFNULL(ucr.progress, 0) AS progress,
+
+            c.update_time AS lastTime,
+            c.status
+
+        FROM course c
+
+        LEFT JOIN course_category_relation cc ON c.id = cc.course_id
+        LEFT JOIN category cat ON cc.category_id = cat.id
+
+        LEFT JOIN user_course_relation ucr
+            ON ucr.course_id = c.id
+            AND ucr.user_id = #{userId}
+
+        <if test="dto.sortBy != null and dto.sortBy == 2">
+            LEFT JOIN course_hot_score chs ON chs.course_id = c.id
+        </if>
+
+        <where>
+            <!-- 课程标题模糊查询 -->
+            <if test="dto.keyword != null and dto.keyword != ''">
+                AND c.title LIKE CONCAT('%', #{dto.keyword}, '%')
+            </if>
+
+            <!-- 分类过滤 -->
+            <if test="dto.categoryId != null">
+                AND cc.category_id = #{dto.categoryId}
+            </if>
+
+            <!-- 难度过滤 -->
+            <if test="dto.difficulty != null">
+                AND c.difficulty = #{dto.difficulty}
+            </if>
+
+            <!-- 上架状态过滤 -->
+            <if test="dto.status != null">
+                AND c.status = #{dto.status}
+            </if>
+        </where>
+        <choose>
+            <!-- DEFAULT: 按学习人数全局排序。 -->
+            <when test="dto.sortBy != null and dto.sortBy == 0">
+                ORDER BY (
+                    SELECT COUNT(DISTINCT ucr_order.user_id)
+                    FROM user_course_relation ucr_order
+                    WHERE ucr_order.course_id = c.id
+                ) DESC, c.id DESC
+            </when>
+            <!-- NEW: 按更新时间全局排序。 -->
+            <when test="dto.sortBy != null and dto.sortBy == 1">
+                ORDER BY c.update_time DESC, c.id DESC
+            </when>
+            <!-- PROGRESS: 按当前用户学习进度全局排序。 -->
+            <when test="dto.sortBy != null and dto.sortBy == 3">
+                ORDER BY IFNULL(ucr.progress, 0) DESC, c.id DESC
+            </when>
+            <!-- DIFFICULTY: 按难度全局排序。 -->
+            <when test="dto.sortBy != null and dto.sortBy == 5">
+                ORDER BY c.difficulty ASC, c.id DESC
+            </when>
+            <!-- HOT: 使用 MySQL 热度快照做全局分页排序。 -->
+            <when test="dto.sortBy != null and dto.sortBy == 2">
+                ORDER BY COALESCE(chs.hot_score, 0) DESC, c.id DESC
+            </when>
+            <!-- SCORE 暂无可靠 SQL 排序来源，保留原分页基线顺序。 -->
+            <otherwise>
+                ORDER BY c.id DESC
+            </otherwise>
+        </choose>
+    </select>
+
+    <!-- selectCoursePageCount --> 
+
+    <select id="selectCoursePageCount" resultType="long">
+        SELECT COUNT(DISTINCT c.id)
+        FROM course c
+        LEFT JOIN course_category_relation cc ON c.id = cc.course_id
+        <where>
+            <!-- AND c.status = 1 -->
+            <!-- 课程标题模糊查询 -->
+            <if test="dto.keyword != null and dto.keyword != ''">
+                AND c.title LIKE CONCAT('%', #{dto.keyword}, '%')
+            </if>
+            <!-- 分类过滤 -->
+            <if test="dto.categoryId != null">
+                AND cc.category_id = #{dto.categoryId}
+            </if>
+            <!-- 难度过滤 -->
+            <if test="dto.difficulty != null">
+                AND c.difficulty = #{dto.difficulty}
+            </if>
+            <!-- 上架状态过滤 -->
+            <if test="dto.status != null">
+                AND c.status = #{dto.status}
+            </if>
+        </where>
+    </select>    
+
+    <select id="selectCoursePageLearnerCounts" resultType="com.sy.course_system.dto.course.CoursePageLearnerCountDTO">
+        SELECT
+            ucr.course_id AS courseId,
+            COUNT(DISTINCT ucr.user_id) AS learners
+        FROM user_course_relation ucr
+        WHERE ucr.course_id IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        GROUP BY ucr.course_id
+    </select>
+
+    <select id="selectCoursePageTags" resultType="com.sy.course_system.dto.course.CoursePageTagDTO">
+        SELECT
+            ct.course_id AS courseId,
+            GROUP_CONCAT(t.name) AS tags
+        FROM course_tag ct
+        JOIN tag t ON ct.tag_id = t.id
+        WHERE ct.course_id IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        GROUP BY ct.course_id
+    </select>
+
+    <!-- selectCourseNamesByIds --> 
+
+    <select id="selectCourseNamesByIds" resultType="com.sy.course_system.entity.Course">
+        SELECT id, title
+        FROM course
+        WHERE id IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <!-- 推荐卡片摘要查询：只取标题/封面/难度等轻量字段，避免主推荐链路为了展示信息回表查完整课程。 -->
+    <select id="selectRecommendCourseSummariesByIds" resultType="com.sy.course_system.entity.Course">
+        SELECT
+            id,
+            title,
+            cover_url AS coverUrl,
+            difficulty
+        FROM course
+        WHERE id IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <!-- 热门兜底专用：读取侧再次限制 status=1，确保 Redis 热榜残留脏数据时也不会返回下线课程。 -->
+    <select id="selectOnlineRecommendCourseSummariesByIds" resultType="com.sy.course_system.entity.Course">
+        SELECT
+            id,
+            title,
+            cover_url AS coverUrl,
+            difficulty
+        FROM course
+        WHERE status = 1
+          AND id IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <!-- insertCourseTagRelations --> 
+
+    <insert id="insertCourseTagRelations">
+        INSERT INTO course_tag (course_id, tag_id, tag_name)
+        VALUES
+        <foreach collection="tagMap" item="tag" index="tagId" separator=",">
+            (#{id}, #{tagId}, #{tag.name})
+        </foreach>
+    </insert>
+
+    <!-- insertCourseKnowledgePointRelations --> 
+
+    <insert id="insertCourseKnowledgePointRelations">
+        INSERT INTO course_knowledge_point (course_id, kp_id)
+        VALUES
+        <foreach collection="knowledgePointIds" item="kpId" separator=",">
+            (#{courseId}, #{kpId})
+        </foreach>
+    </insert>
+
+    <delete id="deleteCourseCategoryRelations">
+        DELETE FROM course_category_relation
+        WHERE course_id = #{courseId}
+    </delete>
+
+    <delete id="deleteCourseTagRelations">
+        DELETE FROM course_tag
+        WHERE course_id = #{courseId}
+    </delete>
+
+    <delete id="deleteCourseKnowledgePointRelations">
+        DELETE FROM course_knowledge_point
+        WHERE course_id = #{courseId}
+    </delete>
+
+    <delete id="deleteCourseCategoryRelationsByCourseIds">
+        DELETE FROM course_category_relation
+        WHERE course_id IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+    <delete id="deleteCourseTagRelationsByCourseIds">
+        DELETE FROM course_tag
+        WHERE course_id IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+    <delete id="deleteCourseKnowledgePointRelationsByCourseIds">
+        DELETE FROM course_knowledge_point
+        WHERE course_id IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+    <select id="listEnabledTagOptionsByCourseId" resultType="com.sy.course_system.dto.course.TagOptionDTO">
+        SELECT
+            t.id,
+            t.name,
+            t.type
+        FROM course_tag ct
+        JOIN tag t ON t.id = ct.tag_id
+        WHERE ct.course_id = #{courseId}
+          AND t.status = 1
+        ORDER BY t.type, t.name
+    </select>
+
+    <select id="listEnabledKnowledgePointOptionsByCourseId" resultType="com.sy.course_system.dto.course.KnowledgePointOptionDTO">
+        SELECT
+            kp.id AS id,
+            kp.name AS name,
+            kp.difficulty AS difficulty,
+            kp.dimension_id AS dimensionId,
+            kd.name AS dimensionName
+        FROM course_knowledge_point ckp
+        JOIN knowledge_point kp ON kp.id = ckp.kp_id
+        LEFT JOIN knowledge_dimension kd ON kp.dimension_id = kd.id
+        WHERE ckp.course_id = #{courseId}
+          AND kp.status = 1
+        ORDER BY kd.sort, kd.name, kp.difficulty, kp.name
+    </select>
+
+    <select id="selectPublishedCoursesWithTagsForColdStart" resultType="com.sy.course_system.dto.coldstart.ColdStartCourseCandidateDTO">
+        SELECT
+            c.id AS courseId,
+            c.title,
+            c.cover_url AS coverUrl,
+            c.difficulty,
+            t.id AS tagId,
+            t.name AS tagName,
+            t.type AS tagType
+        FROM course c
+        LEFT JOIN course_tag ct ON c.id = ct.course_id
+        LEFT JOIN tag t ON ct.tag_id = t.id AND t.status = 1
+        WHERE c.status = 1
+        ORDER BY c.id DESC, t.id
+    </select>
+
+    <!--
+      新课冷启动（常规推荐增强）第一阶段：
+      1) 仅查询 course 主表，避免多表 join 对线上查询造成压力；
+      2) 发布时间优先 publish_time，历史课程回退到 create_time；
+      3) 候选课程按发布时间倒序，保证“更近上线”优先进入候选池。
+    -->
+    <select id="selectOnlineNewCourseBaseCandidates" resultType="com.sy.course_system.dto.recommend.NewCourseBaseCandidateDTO">
+        SELECT
+            c.id AS courseId,
+            c.title,
+            c.cover_url AS coverUrl,
+            c.difficulty,
+            c.duration,
+            COALESCE(c.publish_time, c.create_time) AS publishTime
+        FROM course c
+        WHERE c.status = 1
+          AND COALESCE(c.publish_time, c.create_time) &gt;= #{publishedAfter}
+        ORDER BY COALESCE(c.publish_time, c.create_time) DESC, c.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <!--
+      新课冷启动第二阶段：按 courseIds 回补标签信息。
+      该查询只返回结构化标签行（courseId/tagId/tagName），
+      在 Service 层聚合，便于后续调整匹配和解释策略。
+    -->
+    <select id="selectCourseTagRowsByCourseIds" resultType="com.sy.course_system.dto.recommend.NewCourseTagRowDTO">
+        SELECT
+            ct.course_id AS courseId,
+            t.id AS tagId,
+            t.name AS tagName
+        FROM course_tag ct
+        JOIN tag t ON t.id = ct.tag_id
+        WHERE t.status = 1
+          AND ct.course_id IN
+          <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+              #{id}
+          </foreach>
+        ORDER BY ct.course_id, t.id
+    </select>
+
+    <!--
+      新课冷启动第二阶段：按课程统计知识点数量。
+      用于质量门槛与质量得分计算。
+    -->
+    <select id="selectCourseKpCountsByCourseIds" resultType="com.sy.course_system.dto.recommend.NewCourseStatDTO">
+        SELECT
+            ckp.course_id AS courseId,
+            COUNT(*) AS countValue
+        FROM course_knowledge_point ckp
+        WHERE ckp.course_id IN
+          <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+              #{id}
+          </foreach>
+        GROUP BY ckp.course_id
+    </select>
+
+    <!--
+      新课冷启动第二阶段：按课程统计学习人数。
+      用于限制“已不新”的课程进入新课候选池。
+    -->
+    <select id="selectCourseLearnerCountsByCourseIds" resultType="com.sy.course_system.dto.recommend.NewCourseStatDTO">
+        SELECT
+            ucr.course_id AS courseId,
+            COUNT(DISTINCT ucr.user_id) AS countValue
+        FROM user_course_relation ucr
+        WHERE ucr.course_id IN
+          <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+              #{id}
+          </foreach>
+        GROUP BY ucr.course_id
+    </select>
+</mapper>

@@ -1,0 +1,69 @@
+package com.sy.course_system.service;
+
+import java.util.List;
+import java.util.Map;
+
+import com.sy.course_system.common.PageResult;
+import com.sy.course_system.dto.course.CourseRegisterOptionsDTO;
+import com.sy.course_system.dto.course.CourseQueryDTO;
+import com.sy.course_system.dto.course.CourseRegisterDTO;
+import com.sy.course_system.dto.course.CourseUpdateDTO;
+import com.sy.course_system.entity.Course;
+import com.sy.course_system.vo.CourseDetailVO;
+import com.sy.course_system.vo.CourseUpdateVO;
+import com.sy.course_system.vo.CourseVO;
+import com.sy.course_system.vo.KnowledgeVO;
+
+public interface CourseService {
+    // ===== 课程注册 =====
+    Long register(CourseRegisterDTO registerDTO);
+
+    // ===== 课程注册下拉选项 =====
+    CourseRegisterOptionsDTO getRegisterOptions();
+
+    // ===== 课程-知识点 关联查询 =====
+    List<Long> getKnowledgePointIdsByCourseId(Long courseId);
+
+    // ===== 根据课程id列表获取课程知识点列表 =====
+    List<KnowledgeVO> getKnowledgePointsByCourseId(Long courseId);
+
+    // ===== 根据知识点id获取课程详情集合 =====
+    List<CourseDetailVO> getCourseDetailsByKnowledgePointId(Long kpId);
+
+    // ===== 前台课程池 =====
+    PageResult<CourseVO> pageForUser(CourseQueryDTO queryDTO);
+
+    // ===== 获取课程视频地址 =====
+    String getCourseVideoPath(Long courseId);
+
+    // ===== 根据课程id获取课程详情 =====
+    CourseDetailVO getCourseByIdForUser(Long courseId);
+
+    // ===== 根据课程id列表获取课程标题列表 =====
+    Map<Long, String> getCourseTitleMapByIds(List<Long> courseIds);
+
+    // ===== 根据课程id列表获取推荐场景所需的课程摘要 =====
+    Map<Long, Course> getRecommendCourseSummaryMapByIds(List<Long> courseIds);
+
+    // ===== 根据课程id列表获取热门兜底所需的在线课程摘要 =====
+    Map<Long, Course> getOnlineRecommendCourseSummaryMapByIds(List<Long> courseIds);
+
+    // ===============================================================
+
+    // ===== 后台课程管理 =====
+
+     // ===== 课程修改 =====
+    boolean update(CourseUpdateDTO updateDTO);
+
+    // ===== 课程删除（逻辑删除）=====
+    Integer removeCourses(List<Long> courseIds);
+
+    // ===== 课程上下架 =====
+    Boolean updateCourseStatus(Long courseId, Integer status);
+
+    // ===== 课程时长更新 =====
+    Boolean updateCourseDuration(Long courseId, Integer durationSeconds);
+
+    CourseUpdateVO getCourseDetailForAdmin(Long courseId);
+
+}

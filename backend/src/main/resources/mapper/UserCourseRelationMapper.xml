@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.sy.course_system.mapper.UserCourseRelationMapper">
+
+    <!-- updateUserCourseRelation --> 
+
+    <update id="updateUserCourseRelation">
+        UPDATE user_course_relation
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="relation.progress != null">
+                progress = #{relation.progress},
+            </if>
+            <if test="relation.learnedSeconds != null">
+                learned_seconds = #{relation.learnedSeconds},
+            </if>
+            <if test="relation.status != null">
+                status = #{relation.status},
+            </if>
+            <if test="relation.lastLearnTime != null">
+                last_learn_time = #{relation.lastLearnTime},
+            </if>
+            <if test="relation.completeTime != null">
+                complete_time = #{relation.completeTime},
+            </if>
+            <if test="relation.isFavorite != null">
+                is_favorite = #{relation.isFavorite},
+            </if>
+            <if test="relation.progressSeconds != null">
+                progress_seconds = #{relation.progressSeconds},
+            </if>
+        </trim>
+        WHERE user_id = #{relation.userId} AND course_id = #{relation.courseId}
+    </update>
+
+    <!-- addStudyTimeAndUpdateProgress --> 
+
+    <update id="addStudyTimeAndUpdateProgress">
+        UPDATE user_course_relation
+        SET
+        learned_seconds = LEAST(learned_seconds + #{duration}, #{totalSeconds}),
+        progress = LEAST(100, (LEAST(learned_seconds + #{duration}, #{totalSeconds}) * 100) DIV #{totalSeconds}),
+        last_learn_time = #{now},
+        status = CASE
+                    WHEN LEAST(100, (LEAST(learned_seconds + #{duration}, #{totalSeconds}) * 100) DIV #{totalSeconds}) = 100
+                    THEN 2 ELSE 1
+                END
+        WHERE user_id = #{userId}
+        AND course_id = #{courseId}
+    </update>
+
+    <!-- tryMarkFinished -->
+
+    <update id="tryMarkFinished">
+        UPDATE user_course_relation
+        SET
+            status = 2,
+            progress = 100,
+            complete_time = IFNULL(complete_time, #{now})
+        WHERE user_id = #{userId}
+            AND course_id = #{courseId}
+            AND complete_time IS NULL
+            AND progress &gt;= 100
+    </update>
+</mapper>
