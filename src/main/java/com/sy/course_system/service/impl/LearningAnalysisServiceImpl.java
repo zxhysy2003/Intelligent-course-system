@@ -39,6 +39,7 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
     private KnowledgeRepository knowledgeRepository;
 
     private static final String HOT_COURSE_KEY = "course:hot";
+    private static final String SCORE_MATRIX_CACHE_KEY = "recommend:score-matrix";
     private static final DateTimeFormatter DAY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     /**
@@ -104,6 +105,7 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
     public void refreshUserRecommendCache(Long userId) {
         String key = "recommend:user:" + userId;
         redisTemplate.delete(key); // 删除缓存，下次访问时会重新计算推荐结果
+        redisTemplate.delete(SCORE_MATRIX_CACHE_KEY);
     }
 
     /**

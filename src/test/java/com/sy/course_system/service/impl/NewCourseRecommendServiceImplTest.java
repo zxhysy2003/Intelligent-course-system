@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -113,10 +114,10 @@ class NewCourseRecommendServiceImplTest {
         when(courseMapper.selectCourseLearnerCountsByCourseIds(anyList())).thenReturn(List.of(
                 stat(101L, 10), stat(102L, 10), stat(103L, 10), stat(104L, 10)));
         when(userInterestTagMapper.selectTagIdsByUserIdAndSource(1L, "INIT")).thenReturn(List.of(1L));
-        when(courseGraphRepository.getCourseReadinessBatch(eq(1L), anyList(), eq(0.7d))).thenReturn(List.of(
+        // 103 被质量门槛过滤后，不应再进入 Neo4j readiness 批量查询。
+        when(courseGraphRepository.getCourseReadinessBatch(eq(1L), eq(List.of(101L, 102L, 104L)), eq(0.7d))).thenReturn(List.of(
                 readiness(101L, 0.8d),
-                readiness(102L, 0.8d),
-                readiness(103L, 0.8d)));
+                readiness(102L, 0.8d)));
 
         List<HybridRecommendItemDTO> result = newCourseRecommendService.recommendForRegularUser(1L, 3);
 
@@ -126,6 +127,29 @@ class NewCourseRecommendServiceImplTest {
         assertEquals(1.0d, result.get(2).getReadiness());
         assertTrue(result.get(2).getReason().contains("可学习性 1.00"));
         verify(courseMapper).selectOnlineNewCourseBaseCandidates(any(LocalDateTime.class), eq(10));
+        verify(courseGraphRepository).getCourseReadinessBatch(1L, List.of(101L, 102L, 104L), 0.7d);
+    }
+
+    @Test
+    void recommendForRegularUserShouldSkipUserAndGraphQueriesWhenAllCandidatesFailQualityGate() {
+        when(courseMapper.selectOnlineNewCourseBaseCandidates(any(LocalDateTime.class), eq(10))).thenReturn(List.of(
+                baseCourse(501L, "无标签课程", 1, 1800, LocalDateTime.now().minusDays(1)),
+                baseCourse(502L, "时长不足课程", 1, 100, LocalDateTime.now().minusDays(1))));
+        when(courseMapper.selectCourseTagRowsByCourseIds(anyList())).thenReturn(List.of(tagRow(502L, 1L, "Java")));
+        when(courseMapper.selectCourseKpCountsByCourseIds(anyList())).thenReturn(List.of(
+                stat(501L, 4),
+                stat(502L, 4)));
+        when(courseMapper.selectCourseLearnerCountsByCourseIds(anyList())).thenReturn(List.of(
+                stat(501L, 1),
+                stat(502L, 1)));
+
+        List<HybridRecommendItemDTO> result = newCourseRecommendService.recommendForRegularUser(1L, 3);
+
+        assertTrue(result.isEmpty());
+        // 全部候选都未通过质量门槛时，后续用户画像和图谱查询都没有可消费的候选。
+        verify(userInterestTagMapper, never()).selectTagIdsByUserIdAndSource(any(), any());
+        verify(userOnboardingProfileMapper, never()).selectByUserId(any());
+        verify(courseGraphRepository, never()).getCourseReadinessBatch(any(), anyList(), any());
     }
 
     @Test

@@ -7,6 +7,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -14,12 +16,14 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.neo4j.core.Neo4jClient;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sy.course_system.common.util.ConcurrentUtils;
 import com.sy.course_system.dto.graph.CourseKnowledgePointDTO;
 import com.sy.course_system.dto.recommend.CourseReadinessDTO;
 import com.sy.course_system.dto.recommend.HybridRecommendItemDTO;
@@ -27,7 +31,6 @@ import com.sy.course_system.dto.recommend.HybridRecommendResponseDTO;
 import com.sy.course_system.dto.recommend.RecommendItemDTO;
 import com.sy.course_system.dto.recommend.RecommendResponseDTO;
 import com.sy.course_system.entity.Course;
-import com.sy.course_system.graph.node.KnowledgeNode;
 import com.sy.course_system.repository.CourseGraphRepository;
 import com.sy.course_system.service.ColdStartRecommendService;
 import com.sy.course_system.service.ColdStartSupportService;
@@ -45,7 +48,7 @@ import com.sy.course_system.vo.KnowledgeVO;
  *
  * 核心职责分为两层：
  * 1) 召回与排序：先使用 CF 给出候选课程及相关性分，再结合先修可学习性（readiness）做融合排序。
- * 2) 解释与补全：为每条推荐补充知识点、缺失先修、学习路径，便于前端展示“为什么推荐、怎么补齐”。
+ * 2) 解释与补全：为每条推荐补充知识点、缺失先修、学习路径，便于前端展示"为什么推荐、怎么补齐"。
  *
  * 推荐路径分支：
  * - 冷启动用户：走冷启动推荐，再复用图谱补全逻辑统一填充解释字段。
@@ -115,8 +118,10 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     // CF 候选池上限：先截断再做图谱计算，减少 Neo4j 批量查询压力
     private static final int CANDIDATE_POOL_SIZE = 20;
 
-    // 先修掌握阈值：小于该值的知识点视为“尚未掌握”，会进入缺失先修或补齐路径
+    // 先修掌握阈值：小于该值的知识点视为"尚未掌握"，会进入缺失先修或补齐路径
     private static final double PREREQUISITE_THRESHOLD = 0.7;
+    // 每门推荐课程最多返回的补齐路径数，批量查询时仍按单课程维度截断。
+    private static final int LEARNING_PATH_LIMIT_PER_COURSE = 5;
 
     // 融合分中 CF 的权重（readiness 权重为 1 - CF_WEIGHT）
     private static final double CF_WEIGHT = 0.7;
@@ -127,19 +132,22 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
 
     // 展示分基线：统一把不同来源的推荐结果映射到 60~95 区间，便于前端稳定展示。
     // 这里故意不映射到 0~100：
-    // - 过低分数容易被用户理解为“系统不推荐却硬塞给我”；
+    // - 过低分数容易被用户理解为"系统不推荐却硬塞给我"；
     // - 过高分数又容易被误读成算法置信度接近百分百。
-    // 因此选择中高位区间，只表达“相对推荐度”，不表达概率含义。
+    // 因此选择中高位区间，只表达"相对推荐度"，不表达概率含义。
     private static final int RECOMMEND_SCORE_BASE = 60;
     private static final int RECOMMEND_SCORE_SPAN = 35;
     // 冷启动用户的 finalScore 是启发式原始分，分布不受 0~1 约束，
     // 这里用指数压缩把它平滑映射到展示分区间，避免高分尾部过度拉开。
     private static final double COLD_START_USER_SCORE_SCALE = 10.0;
     // 热门兜底没有可复用的排序分，因此展示分按最终列表位置给一个稳定梯度：
-    // 第一条较高，之后逐项递减，但设置下限，避免尾部看起来“几乎不推荐”。
+    // 第一条较高，之后逐项递减，但设置下限，避免尾部看起来"几乎不推荐"。
     private static final double HOT_FALLBACK_NORMALIZED_BASE = 0.70;
     private static final double HOT_FALLBACK_NORMALIZED_STEP = 0.03;
     private static final double HOT_FALLBACK_NORMALIZED_MIN = 0.55;
+
+    private static final String ASYNC_INTERRUPTED_MSG = "推荐异步执行被中断";
+    private static final String GRAPH_ASYNC_INTERRUPTED_MSG = "图谱补全异步执行被中断";
 
     private static final String SOURCE_CF = "CF";
     private static final String SOURCE_USER_COLD_START = "COLD_START_USER";
@@ -152,6 +160,13 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     private int newCourseInjectLimit;
     @Value("${recommend.new-course.max-exposure-ratio:0.30}")
     private double newCourseMaxExposureRatio;
+
+    @Autowired
+    @Qualifier("recommendTaskExecutor")
+    private Executor recommendTaskExecutor;
+
+    @Value("${recommend.async.enabled:true}")
+    private boolean asyncEnabled;
 
     /**
      * 融合推荐主入口。
@@ -204,11 +219,26 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
      * 5) 最后统一做图谱字段补全，确保返回结构一致。
      */
     private HybridRecommendResponseDTO buildRegularResponse(Long userId) {
-        RecommendResponseDTO cfResp = recommendService.recommend(userId);
+        RecommendResponseDTO cfResp;
+        List<HybridRecommendItemDTO> newCourseCandidates;
+
+        // 异步开关开启且新课开关也开启时，CF 与新课候选并行执行，减少串行 IO 等待。
+        if (asyncEnabled && newCourseRecommendEnabled) {
+            CompletableFuture<RecommendResponseDTO> cfFuture = CompletableFuture.supplyAsync(
+                    () -> recommendService.recommend(userId), recommendTaskExecutor);
+            CompletableFuture<List<HybridRecommendItemDTO>> ncFuture = CompletableFuture.supplyAsync(
+                    () -> newCourseRecommendService.recommendForRegularUser(userId, NEW_COURSE_CANDIDATE_LIMIT),
+                    recommendTaskExecutor);
+            cfResp = ConcurrentUtils.await(cfFuture, ASYNC_INTERRUPTED_MSG);
+            newCourseCandidates = ConcurrentUtils.await(ncFuture, ASYNC_INTERRUPTED_MSG);
+        } else {
+            cfResp = recommendService.recommend(userId);
+            newCourseCandidates = newCourseRecommendEnabled
+                    ? newCourseRecommendService.recommendForRegularUser(userId, NEW_COURSE_CANDIDATE_LIMIT)
+                    : List.of();
+        }
+
         List<RecommendItemDTO> items = cfResp == null ? List.of() : cfResp.getItems();
-        List<HybridRecommendItemDTO> newCourseCandidates = newCourseRecommendEnabled
-                ? newCourseRecommendService.recommendForRegularUser(userId, NEW_COURSE_CANDIDATE_LIMIT)
-                : List.of();
         if (items == null || items.isEmpty()) {
             // CF 无数据时不直接返回空列表，优先使用新课候选保证结果可用。
             List<HybridRecommendItemDTO> fallback = newCourseCandidates.stream()
@@ -239,12 +269,25 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
         List<Long> courseIds = topCourses.stream()
                 .map(RecommendItemDTO::getCourseId)
                 .collect(Collectors.toList());
-        List<CourseReadinessDTO> readinessList = courseGraphRepository.getCourseReadinessBatch(userId, courseIds,
-                PREREQUISITE_THRESHOLD);
 
-        Map<Long, CourseReadinessDTO> readinessMap = readinessList.stream()
-                .collect(Collectors.toMap(CourseReadinessDTO::getCourseId, r -> r, (a, b) -> a));
-        Map<Long, Course> courseSummaryMap = courseService.getRecommendCourseSummaryMapByIds(courseIds);
+        Map<Long, CourseReadinessDTO> readinessMap;
+        Map<Long, Course> courseSummaryMap;
+        if (asyncEnabled) {
+            // CF 候选的 readiness 和课程摘要来自 Neo4j / MySQL，互不依赖，先并行拉取再统一组装。
+            CompletableFuture<Map<Long, CourseReadinessDTO>> readinessFuture = CompletableFuture.supplyAsync(
+                    () -> toReadinessMap(courseGraphRepository.getCourseReadinessBatch(
+                            userId, courseIds, PREREQUISITE_THRESHOLD)),
+                    recommendTaskExecutor);
+            CompletableFuture<Map<Long, Course>> summaryFuture = CompletableFuture.supplyAsync(
+                    () -> courseService.getRecommendCourseSummaryMapByIds(courseIds), recommendTaskExecutor);
+            ConcurrentUtils.awaitAll(GRAPH_ASYNC_INTERRUPTED_MSG, readinessFuture, summaryFuture);
+            readinessMap = readinessFuture.getNow(Map.of());
+            courseSummaryMap = summaryFuture.getNow(Map.of());
+        } else {
+            readinessMap = toReadinessMap(courseGraphRepository.getCourseReadinessBatch(
+                    userId, courseIds, PREREQUISITE_THRESHOLD));
+            courseSummaryMap = courseService.getRecommendCourseSummaryMapByIds(courseIds);
+        }
 
         List<HybridRecommendItemDTO> hybridItems = topCourses.stream()
                 .map(item -> buildHybridBaseItem(item, min, max, eps, courseSummaryMap, readinessMap))
@@ -254,7 +297,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
                 .sorted(Comparator.comparing(HybridRecommendItemDTO::getFinalScore).reversed())
                 .collect(Collectors.toList());
 
-        // 新课注入数量由“绝对上限 + 暴光比例上限”共同约束，避免挤占原有个性化结果。
+        // 新课注入数量由"绝对上限 + 暴光比例上限"共同约束，避免挤占原有个性化结果。
         int injectLimit = calculateNewCourseInjectLimit(hybridItems.size());
         List<HybridRecommendItemDTO> mergedItems = mergeWithNewCourseCandidates(hybridItems, newCourseCandidates,
                 injectLimit);
@@ -308,14 +351,14 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
      * 读取缓存并兼容 Map 反序列化场景。
      *
      * 这里读取后仍会再次执行一次展示分补齐，看起来像与 writeCache 重复，
-     * 但这是刻意保留的“读路径自修复”：
+     * 但这是刻意保留的"读路径自修复"：
      * 1) 兼容旧缓存：历史缓存里可能根本没有 recommendScore 字段；
      * 2) 兼容反序列化：某些缓存序列化方式会把 DTO 还原成 Map，再转回对象；
      * 3) 兼容规则演进：如果未来展示分公式调整，旧缓存也能在读取时即时按新规则补齐。
      *
      * 换句话说：
-     * - writeCache 负责保证“新写入的缓存”和“当前请求的即时返回值”已带展示分；
-     * - readCache 负责保证“任何历史缓存对象”在出缓存时都满足当前出参约定。
+     * - writeCache 负责保证"新写入的缓存"和"当前请求的即时返回值"已带展示分；
+     * - readCache 负责保证"任何历史缓存对象"在出缓存时都满足当前出参约定。
      *
      * 由于结果列表规模很小，这个补齐成本只是一次轻量遍历，优先保证语义稳定而不是省掉这点计算。
      */
@@ -338,7 +381,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
      *
      * 写入前先补齐 recommendScore，不只是为了缓存本身，更是为了保证：
      * 当前这次 cache miss 触发的请求，在 writeCache 返回后直接把 result 返回给前端时，
-     * 结果对象已经具备完整展示字段，而不是依赖下次“从缓存读出来”时才补齐。
+     * 结果对象已经具备完整展示字段，而不是依赖下次"从缓存读出来"时才补齐。
      */
     private void writeCache(String cacheKey, HybridRecommendResponseDTO value, long ttlMinutes) {
         fillRecommendScores(value);
@@ -415,7 +458,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
      * 1) 先按来源把该条结果映射到 0~1 的 normalized 分；
      * 2) 再统一映射到 60~95 整数区间。
      *
-     * 这样做的目的，是把“不同推荐链路的内部打分公式”与“统一展示口径”解耦。
+     * 这样做的目的，是把"不同推荐链路的内部打分公式"与"统一展示口径"解耦。
      */
     private int toRecommendScore(HybridRecommendItemDTO item, int index) {
         double normalized = normalizeRecommendScore(item, index);
@@ -436,7 +479,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
      * - CF / COLD_START_COURSE：这两类当前 finalScore 已按 0~1 设计，可直接裁剪；
      * - 其他未知来源：走 clamp01 兜底，避免新增来源时直接把异常值暴露到前端。
      *
-     * 这里不要把不同来源强行改写成相同语义，只做“展示口径统一”，不改变原有业务排序逻辑。
+     * 这里不要把不同来源强行改写成相同语义，只做"展示口径统一"，不改变原有业务排序逻辑。
      */
     private double normalizeRecommendScore(HybridRecommendItemDTO item, int index) {
         String source = item.getRecommendSource();
@@ -471,7 +514,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     /**
      * 约束到 0~1 区间。
      *
-     * 这里单独抽方法，是为了把“展示分归一化”与具体来源规则拆开，
+     * 这里单独抽方法，是为了把"展示分归一化"与具体来源规则拆开，
      * 避免后续修改来源分支时重复散落边界处理。
      */
     private double clamp01(double value) {
@@ -528,9 +571,9 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
         Course course = courseSummaryMap.get(courseId);
         Double cfScore = item.getScore();
 
-        // 排序层允许对缺失图谱数据使用 1.0 兜底，避免“没有 readiness 数据”的课程被系统性压低。
+        // 排序层允许对缺失图谱数据使用 1.0 兜底，避免"没有 readiness 数据"的课程被系统性压低。
         // 但 explain 层不会直接复用这个兜底值，而是只根据 readinessDTO 的真实值生成 reason，
-        // 防止把“未知”误说成“当前可直接学习”。
+        // 防止把"未知"误说成"当前可直接学习"。
         CourseReadinessDTO readinessDTO = readinessMap.get(courseId);
         double readiness = (readinessDTO == null || readinessDTO.getReadiness() == null) ? 1.0
                 : readinessDTO.getReadiness();
@@ -555,8 +598,8 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
      * 构建 CF 场景文案。
      *
      * 关键约束：
-     * - 这里只看“真实图谱 readiness”；
-     * - 如果图谱缺失，文案保持通用推荐说明，不根据排序兜底值 1.0 推断“可直接学习”；
+     * - 这里只看"真实图谱 readiness"；
+     * - 如果图谱缺失，文案保持通用推荐说明，不根据排序兜底值 1.0 推断"可直接学习"；
      * - 这样可以同时兼顾排序稳定性和解释语义准确性。
      */
     private String buildCfReason(CourseReadinessDTO readinessDTO) {
@@ -572,7 +615,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     /**
      * 构建热门课程兜底结果。
      *
-     * 读取策略不是“固定取前 10 个 raw hot ids”，而是分批向后扫描：
+     * 读取策略不是"固定取前 10 个 raw hot ids"，而是分批向后扫描：
      * 1) 从 Redis 热榜读取一段区间；
      * 2) 在 SQL 侧按在线状态过滤课程摘要；
      * 3) 过滤后如果数量不足，则继续扫描下一段；
@@ -615,7 +658,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
                     break;
                 }
             }
-            // scannedCount 按“已扫描的热榜成员数”推进，而不是按“已返回结果数”推进，
+            // scannedCount 按"已扫描的热榜成员数"推进，而不是按"已返回结果数"推进，
             // 这样下一轮才能真正越过本轮被过滤掉的脏数据，继续向后补齐在线课程。
             scannedCount += hotCourseIds.size();
         }
@@ -720,26 +763,59 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
         }
 
         // 允许上游复用 readinessMap。
-        // 若传入的是“部分 map”（例如仅覆盖 CF 候选），则补查缺失课程，避免新课注入后解释字段降级。
+        // 若传入的是"部分 map"（例如仅覆盖 CF 候选），则补查缺失课程，避免新课注入后解释字段降级。
         Map<Long, CourseReadinessDTO> effectiveReadinessMap = readinessMap == null
                 ? new LinkedHashMap<>()
                 : new LinkedHashMap<>(readinessMap);
         List<Long> missingReadinessCourseIds = courseIds.stream()
                 .filter(id -> !effectiveReadinessMap.containsKey(id))
                 .toList();
-        if (!missingReadinessCourseIds.isEmpty()) {
-            List<CourseReadinessDTO> readinessList = courseGraphRepository.getCourseReadinessBatch(
-                    userId,
-                    missingReadinessCourseIds,
-                    PREREQUISITE_THRESHOLD);
-            if (readinessList != null && !readinessList.isEmpty()) {
-                Map<Long, CourseReadinessDTO> fetchedReadinessMap = readinessList.stream()
-                        .filter(r -> r != null && r.getCourseId() != null)
-                        .collect(Collectors.toMap(CourseReadinessDTO::getCourseId, r -> r, (a, b) -> a));
+
+        Map<Long, List<KnowledgeVO>> knowledgePointsMap;
+        Map<Long, List<List<KnowledgeVO>>> learningPathsMap;
+
+        if (asyncEnabled) {
+            // 异步分支：将 readiness 补查、知识点加载、学习路径加载三个互不依赖的
+            // Neo4j 查询并行执行，减少图谱补全阶段的总等待时间。
+            CompletableFuture<Map<Long, CourseReadinessDTO>> readinessFuture;
+            if (!missingReadinessCourseIds.isEmpty()) {
+                readinessFuture = CompletableFuture.supplyAsync(() -> {
+                    List<CourseReadinessDTO> readinessList = courseGraphRepository.getCourseReadinessBatch(
+                            userId, missingReadinessCourseIds, PREREQUISITE_THRESHOLD);
+                    return toReadinessMap(readinessList);
+                }, recommendTaskExecutor);
+            } else {
+                readinessFuture = CompletableFuture.completedFuture(Map.of());
+            }
+
+            CompletableFuture<Map<Long, List<KnowledgeVO>>> kpFuture = CompletableFuture.supplyAsync(
+                    () -> loadCourseKnowledgePointsMap(courseIds), recommendTaskExecutor);
+
+            CompletableFuture<Map<Long, List<List<KnowledgeVO>>>> pathFuture = CompletableFuture.supplyAsync(
+                    () -> loadLearningPathsMap(userId, courseIds, PREREQUISITE_THRESHOLD,
+                            LEARNING_PATH_LIMIT_PER_COURSE),
+                    recommendTaskExecutor);
+
+            ConcurrentUtils.awaitAll(GRAPH_ASYNC_INTERRUPTED_MSG, readinessFuture, kpFuture, pathFuture);
+            Map<Long, CourseReadinessDTO> fetchedReadinessMap = readinessFuture.getNow(Map.of());
+            if (!fetchedReadinessMap.isEmpty()) {
                 effectiveReadinessMap.putAll(fetchedReadinessMap);
             }
+            knowledgePointsMap = kpFuture.getNow(Map.of());
+            learningPathsMap = pathFuture.getNow(Map.of());
+        } else {
+            if (!missingReadinessCourseIds.isEmpty()) {
+                List<CourseReadinessDTO> readinessList = courseGraphRepository.getCourseReadinessBatch(
+                        userId, missingReadinessCourseIds, PREREQUISITE_THRESHOLD);
+                Map<Long, CourseReadinessDTO> fetchedReadinessMap = toReadinessMap(readinessList);
+                if (!fetchedReadinessMap.isEmpty()) {
+                    effectiveReadinessMap.putAll(fetchedReadinessMap);
+                }
+            }
+            knowledgePointsMap = loadCourseKnowledgePointsMap(courseIds);
+            learningPathsMap = loadLearningPathsMap(userId, courseIds, PREREQUISITE_THRESHOLD,
+                    LEARNING_PATH_LIMIT_PER_COURSE);
         }
-        Map<Long, List<KnowledgeVO>> knowledgePointsMap = loadCourseKnowledgePointsMap(courseIds);
 
         // 逐课程填充图谱解释信息。
         for (HybridRecommendItemDTO item : items) {
@@ -759,7 +835,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
                 item.setReadiness(readiness);
             }
 
-            // 缺失先修：用于提示“还差哪些知识点”。
+            // 缺失先修：用于提示"还差哪些知识点"。
             List<KnowledgeMasteryVO> missing = (readinessDTO == null || readinessDTO.getMissing() == null) ? List.of()
                     : readinessDTO.getMissing();
             item.setMissingPrerequisitesMastery(missing);
@@ -767,14 +843,23 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
             // 课程知识点概览：用于展示课程覆盖内容。
             item.setKnowledgePoints(knowledgePointsMap.getOrDefault(courseId, List.of()));
 
-            // 学习路径：用于展示“从当前水平到可学习该课程”的推荐补齐路径。
-            List<List<KnowledgeNode>> paths = findLearningPathsRawViaClient(userId, courseId,
-                    PREREQUISITE_THRESHOLD, 5);
-            List<List<KnowledgeVO>> pathDTOs = paths.stream()
-                    .map(this::convertBrief)
-                    .collect(Collectors.toList());
-            item.setLearningPaths(pathDTOs);
+            // 学习路径：用于展示"从当前水平到可学习该课程"的推荐补齐路径。
+            item.setLearningPaths(learningPathsMap.getOrDefault(courseId, List.of()));
         }
+    }
+
+    private Map<Long, CourseReadinessDTO> toReadinessMap(List<CourseReadinessDTO> readinessList) {
+        Map<Long, CourseReadinessDTO> map = new LinkedHashMap<>();
+        if (readinessList == null || readinessList.isEmpty()) {
+            return map;
+        }
+        for (CourseReadinessDTO readiness : readinessList) {
+            if (readiness == null || readiness.getCourseId() == null) {
+                continue;
+            }
+            map.putIfAbsent(readiness.getCourseId(), readiness);
+        }
+        return map;
     }
 
     /**
@@ -797,101 +882,110 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     }
 
     /**
-     * 轻量知识点转换：KnowledgeNode -> KnowledgeVO。
+     * 批量计算学习路径（包含掌握度过滤）。
      *
-     * 仅保留前端需要的 id/name/difficulty，避免将图数据库实体直接暴露到接口层。
-     */
-    private List<KnowledgeVO> convertBrief(List<KnowledgeNode> nodes) {
-        if (nodes == null || nodes.isEmpty()) {
-            return List.of();
-        }
-        return nodes.stream()
-                .map(k -> new KnowledgeVO(
-                        k.getId(),
-                        k.getName(),
-                        k.getDifficulty()))
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * 通过 Neo4jClient 原生 Cypher 计算学习路径（包含掌握度过滤）。
-     *
-     * 查询意图：
+     * 查询意图与旧的单课程查询保持一致，但以本次推荐 courseIds 为批量边界：
      * 1) 从课程知识点出发，沿 PRE_REQUIRES 关系回溯 1..3 层先修链。
-     * 2) 过滤掉“用户已掌握”的节点，仅保留未达阈值的先修链路。
+     * 2) 过滤掉"用户已掌握"的节点，仅保留未达阈值的先修链路。
      * 3) 去掉被更长路径完全前缀覆盖的短路径，减少冗余展示。
-     * 4) 返回节点基础字段并按路径长度/起点难度排序。
+     * 4) 每门课按路径长度/起点难度排序后最多保留 limit 条。
      */
-    private List<List<KnowledgeNode>> findLearningPathsRawViaClient(Long userId, Long courseId, double threshold,
-            int limit) {
+    private Map<Long, List<List<KnowledgeVO>>> loadLearningPathsMap(Long userId, List<Long> courseIds,
+            double threshold, int limit) {
+        if (userId == null || courseIds == null || courseIds.isEmpty() || limit <= 0) {
+            return Map.of();
+        }
 
-        // Cypher 说明：
-        // - MATCH (c)-[:HAS_KP]->(k)：以课程知识点作为“目标知识”。
-        // - MATCH p=(k)-[:PRE_REQUIRES*1..3]->(pre)：反向追溯先修链，最多 3 层。
-        // - WHERE ALL(... < $threshold)：仅保留链路上未掌握节点。
-        // - reverse(nodes(p))：将路径顺序改为“基础 -> 目标”，更符合学习顺序。
-        // - NOT any(other ...)：移除被更长路径前缀覆盖的短路径，减少重复建议。
         String cypher = """
                     MATCH (u:User {id: $userId})
-                    WITH u
-                    MATCH (c:Course {id: $courseId})-[:HAS_KP]->(k:Knowledge)
-                    MATCH p = (k)-[:PRE_REQUIRES*1..3]->(pre:Knowledge)
-                    WHERE ALL(n IN nodes(p)[1..] WHERE
-                        coalesce( [(u)-[m:MASTERED]->(n) | m.score][0], 0.0 ) < $threshold
-                    )
-                    WITH reverse(nodes(p)) AS nodes
-                    WITH collect(nodes) AS nodePaths
-                    UNWIND nodePaths AS nodes
-                    WITH nodes, nodePaths
-                    WHERE NOT any(other IN nodePaths WHERE
-                        size(other) > size(nodes)
-                        AND all(i IN range(0, size(nodes) - 1) WHERE nodes[i].id = other[i].id)
-                    )
-                    RETURN [n IN nodes | {id:n.id, name:n.name, difficulty:n.difficulty}] AS path
-                    ORDER BY size(nodes), nodes[0].difficulty
-                    LIMIT $limit
+                    UNWIND $courseIds AS courseId
+                    CALL {
+                        WITH u, courseId
+                        MATCH (c:Course {id: courseId})-[:HAS_KP]->(k:Knowledge)
+                        MATCH p = (k)-[:PRE_REQUIRES*1..3]->(pre:Knowledge)
+                        WHERE ALL(n IN nodes(p)[1..] WHERE
+                            coalesce( [(u)-[m:MASTERED]->(n) | m.score][0], 0.0 ) < $threshold
+                        )
+                        WITH reverse(nodes(p)) AS nodes
+                        WITH collect(nodes) AS nodePaths
+                        UNWIND nodePaths AS nodes
+                        WITH nodes, nodePaths
+                        WHERE NOT any(other IN nodePaths WHERE
+                            size(other) > size(nodes)
+                            AND all(i IN range(0, size(nodes) - 1) WHERE nodes[i].id = other[i].id)
+                        )
+                        WITH nodes
+                        ORDER BY size(nodes), nodes[0].difficulty
+                        LIMIT $limit
+                        RETURN collect([n IN nodes | {id:n.id, name:n.name, difficulty:n.difficulty}]) AS paths
+                    }
+                    RETURN courseId, paths
                 """;
 
-        return neo4jClient.query(cypher)
+        Map<Long, List<List<KnowledgeVO>>> map = new LinkedHashMap<>();
+        neo4jClient.query(cypher)
                 .bindAll(java.util.Map.of(
                         "userId", userId,
-                        "courseId", courseId,
+                        "courseIds", courseIds,
                         "threshold", threshold,
                         "limit", limit))
                 .fetch()
                 .all()
-                .stream()
-                .map(row -> parseKnowledgePath(row.get("path")))
-                .filter(p -> !p.isEmpty())
-                .toList();
+                .forEach(row -> {
+                    Long courseId = parseLong(row.get("courseId"));
+                    if (courseId == null) {
+                        return;
+                    }
+                    List<List<KnowledgeVO>> paths = parseKnowledgePaths(row.get("paths"));
+                    if (!paths.isEmpty()) {
+                        map.put(courseId, paths);
+                    }
+                });
+        return map;
     }
 
-    private List<KnowledgeNode> parseKnowledgePath(Object pathObj) {
+    private List<List<KnowledgeVO>> parseKnowledgePaths(Object pathsObj) {
+        if (!(pathsObj instanceof List<?> list)) {
+            return List.of();
+        }
+        List<List<KnowledgeVO>> paths = new ArrayList<>();
+        for (Object pathObj : list) {
+            List<KnowledgeVO> path = parseKnowledgePath(pathObj);
+            if (!path.isEmpty()) {
+                paths.add(path);
+            }
+        }
+        return paths;
+    }
+
+    private List<KnowledgeVO> parseKnowledgePath(Object pathObj) {
         // SDN Neo4jClient 返回的数据通常是 List<Map>，这里做类型防御解析。
         if (!(pathObj instanceof List<?> list)) {
             return List.of();
         }
-        List<KnowledgeNode> path = new ArrayList<>();
+        List<KnowledgeVO> path = new ArrayList<>();
         for (Object o : list) {
             if (!(o instanceof Map<?, ?> m)) {
                 continue;
             }
-            KnowledgeNode k = new KnowledgeNode();
-            Object id = m.get("id");
-            if (id instanceof Number num) {
-                k.setId(num.longValue());
-            }
-            Object name = m.get("name");
-            if (name instanceof String s) {
-                k.setName(s);
-            }
-            Object diff = m.get("difficulty");
-            if (diff instanceof Number num) {
-                k.setDifficulty(num.intValue());
-            }
-            path.add(k);
+            path.add(new KnowledgeVO(
+                    parseLong(m.get("id")),
+                    parseString(m.get("name")),
+                    parseInteger(m.get("difficulty"))));
         }
         return path;
+    }
+
+    private Long parseLong(Object value) {
+        return value instanceof Number num ? num.longValue() : null;
+    }
+
+    private Integer parseInteger(Object value) {
+        return value instanceof Number num ? num.intValue() : null;
+    }
+
+    private String parseString(Object value) {
+        return value instanceof String text ? text : null;
     }
 
 }

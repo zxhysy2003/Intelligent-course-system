@@ -48,8 +48,21 @@ mybatis-plus:
     map-underscore-to-camel-case: true
 
 recommend:
+  # 推荐主链路异步开关与线程池配置
+  async:
+    enabled: ${RECOMMEND_ASYNC_ENABLED:true}
+    core-size: ${RECOMMEND_ASYNC_CORE_SIZE:2}
+    max-size: ${RECOMMEND_ASYNC_MAX_SIZE:4}
+    queue-capacity: ${RECOMMEND_ASYNC_QUEUE_CAPACITY:100}
   service:
     url: ${RECOMMEND_SERVICE_URL:http://localhost:8000}
+  # CF 服务调用超时（毫秒）
+  cf-service:
+    connect-timeout-ms: ${RECOMMEND_CF_CONNECT_TIMEOUT_MS:5000}
+    read-timeout-ms: ${RECOMMEND_CF_READ_TIMEOUT_MS:30000}
+  score-matrix-cache:
+    enabled: ${RECOMMEND_SCORE_MATRIX_CACHE_ENABLED:true}
+    ttl-minutes: ${RECOMMEND_SCORE_MATRIX_CACHE_TTL_MINUTES:2}
   hot-sync:
     enabled: ${RECOMMEND_HOT_SYNC_ENABLED:true}
     fixed-delay-ms: ${RECOMMEND_HOT_SYNC_FIXED_DELAY_MS:300000}

@@ -9,13 +9,16 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -72,6 +75,8 @@ class HybridRecommendServiceImplTest {
     private NewCourseRecommendService newCourseRecommendService;
     @Mock
     private LearningAnalysisService learningAnalysisService;
+    @Mock
+    private Executor recommendTaskExecutor;
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper();
 
@@ -80,22 +85,31 @@ class HybridRecommendServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        // 测试统一打开新课推荐，并把注入限制调成“容易观察”的配置，
-        // 这样不同用例都能稳定验证“新课注入是否影响最终顺序与展示分”。
+        // 测试统一打开新课推荐，并把注入限制调成"容易观察"的配置，
+        // 这样不同用例都能稳定验证"新课注入是否影响最终顺序与展示分"。
         ReflectionTestUtils.setField(hybridRecommendService, "newCourseRecommendEnabled", true);
         ReflectionTestUtils.setField(hybridRecommendService, "newCourseInjectLimit", 2);
         ReflectionTestUtils.setField(hybridRecommendService, "newCourseMaxExposureRatio", 1.0d);
+        // 默认走串行路径，让现有测试断言不受异步执行调度影响；
+        // 异步分支由专用测试用例在启用 asyncEnabled 后单独验证。
+        ReflectionTestUtils.setField(hybridRecommendService, "asyncEnabled", false);
 
         // 缓存与 Neo4j 查询不是本测试关注点时，统一给出宽松默认桩，
         // 每个用例只覆盖自己真正关心的分支，避免样板 stub 淹没断言重点。
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(neo4jClient.query(anyString()).bindAll(anyMap()).fetch().all()).thenReturn(List.of());
         lenient().when(courseGraphRepository.findCourseKnowledgePointsBatch(anyList())).thenReturn(List.of());
+
+        // 异步测试中 executor 直接在当前线程执行，既模拟并行语义又保证断言确定性。
+        lenient().doAnswer(invocation -> {
+            ((Runnable) invocation.getArgument(0)).run();
+            return null;
+        }).when(recommendTaskExecutor).execute(any(Runnable.class));
     }
 
     @Test
     void recommendShouldReturnCachedRegularResponseWithoutCallingBuilderDependencies() {
-        // 这里故意直接把“未带 recommendScore 的 DTO 对象”塞进缓存，
+        // 这里故意直接把"未带 recommendScore 的 DTO 对象"塞进缓存，
         // 用来验证 readCache 的自修复逻辑：
         // 即使缓存命中的对象是旧版本结构，读出时也会即时补齐展示分，而不需要手工清缓存。
         HybridRecommendResponseDTO cached = new HybridRecommendResponseDTO(1L, List.of(hybridItem(10L, "缓存课程")));
@@ -150,7 +164,7 @@ class HybridRecommendServiceImplTest {
 
     @Test
     void recommendShouldUseNewCourseFallbackWhenCfResponseIsEmpty() {
-        // 该用例覆盖“CF 完全空，但新课候选可用”的兜底分支。
+        // 该用例覆盖"CF 完全空，但新课候选可用"的兜底分支。
         // 此时不重写新课原有 finalScore，只验证最终出参会统一补 recommendScore。
         HybridRecommendItemDTO newCourse = hybridItem(5L, "新课兜底");
         newCourse.setRecommendSource("COLD_START_COURSE");
@@ -206,9 +220,11 @@ class HybridRecommendServiceImplTest {
         when(courseGraphRepository.getCourseReadinessBatch(eq(1L), anyList(), eq(0.7d))).thenAnswer(invocation -> {
             List<Long> courseIds = invocation.getArgument(1);
             if (courseIds.equals(List.of(1L, 2L, 3L))) {
-                return List.of(
+                return java.util.Arrays.asList(
                         readiness(1L, 0.2d),
                         readiness(2L, 1.0d),
+                        readiness(2L, 0.4d),
+                        null,
                         readiness(3L, 0.8d));
             }
             if (courseIds.equals(List.of(4L))) {
@@ -222,7 +238,7 @@ class HybridRecommendServiceImplTest {
         assertEquals(List.of(1L, 2L, 4L, 3L), result.getItems().stream().map(HybridRecommendItemDTO::getCourseId).toList());
         assertEquals(4, result.getItems().stream().map(HybridRecommendItemDTO::getCourseId).distinct().count());
         assertEquals(0.76d, result.getItems().get(0).getFinalScore(), 1e-9);
-        // 这里的 87/83/92/68 对应的是“不同来源 finalScore 统一换算后的展示分”，
+        // 这里的 87/83/92/68 对应的是"不同来源 finalScore 统一换算后的展示分"，
         // 不是重新参与排序的分值，主要用来保证前端拿到可直接展示的统一口径。
         assertEquals(List.of(87, 83, 92, 68),
                 result.getItems().stream().map(HybridRecommendItemDTO::getRecommendScore).toList());
@@ -238,9 +254,9 @@ class HybridRecommendServiceImplTest {
 
     @Test
     void recommendShouldUseGenericCfReasonWhenReadinessIsMissing() {
-        // 这里验证“排序兜底值”和“解释文案”故意分离：
+        // 这里验证"排序兜底值"和"解释文案"故意分离：
         // readiness 缺失时，排序上允许按 1.0 兜底，避免无图谱课程被系统性压低；
-        // 但文案上不能误写成“当前可直接学习”，因此 reason 仍应保持通用描述。
+        // 但文案上不能误写成"当前可直接学习"，因此 reason 仍应保持通用描述。
         when(coldStartSupportService.isColdStartUser(3L)).thenReturn(false);
         when(valueOperations.get("recommend:user:3")).thenReturn((Object) null, (Object) null);
         when(valueOperations.setIfAbsent("recommend:lock:user:3", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
@@ -282,7 +298,7 @@ class HybridRecommendServiceImplTest {
 
     @Test
     void recommendShouldUseHotFallbackWhenCacheMissAndLockIsNotAcquired() {
-        // 这里故意模拟“没拿到构建锁且等待缓存也失败”的场景，
+        // 这里故意模拟"没拿到构建锁且等待缓存也失败"的场景，
         // 触发热点兜底路径，验证最终仍能回源构建并写缓存。
         when(coldStartSupportService.isColdStartUser(1L)).thenReturn(false);
         when(valueOperations.get("recommend:user:1")).thenReturn((Object) null, (Object) null, (Object) null,
@@ -314,7 +330,7 @@ class HybridRecommendServiceImplTest {
 
     @Test
     void recommendShouldContinueScanningHotFallbackUntilFilled() {
-        // 热榜里允许混入无效或下线课程，因此热门兜底不能简单“只查第一批就结束”，
+        // 热榜里允许混入无效或下线课程，因此热门兜底不能简单"只查第一批就结束"，
         // 必须按已扫描区间继续向后找，直到补够或热榜耗尽。
         when(coldStartSupportService.isColdStartUser(4L)).thenReturn(false);
         when(valueOperations.get("recommend:user:4")).thenReturn((Object) null, (Object) null);
@@ -349,9 +365,107 @@ class HybridRecommendServiceImplTest {
     }
 
     @Test
+    void recommendShouldProduceSameResultWhenAsyncEnabledForRegularPath() {
+        // 开启异步后，executor 在当前线程同步执行，CF + 新课候选的并行结果
+        // 必须与串行路径完全一致：包括排序、新课插槽注入和展示分。
+        ReflectionTestUtils.setField(hybridRecommendService, "asyncEnabled", true);
+
+        HybridRecommendItemDTO newCourse = hybridItem(4L, "新课注入");
+        newCourse.setRecommendSource("COLD_START_COURSE");
+        newCourse.setIsNewCourse(Boolean.TRUE);
+
+        when(coldStartSupportService.isColdStartUser(1L)).thenReturn(false);
+        when(valueOperations.get("recommend:user:1")).thenReturn((Object) null, (Object) null);
+        when(valueOperations.setIfAbsent("recommend:lock:user:1", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
+        when(recommendService.recommend(1L)).thenReturn(recommendResponseDto(List.of(
+                cfItem(1L, 10.0d),
+                cfItem(2L, 8.0d),
+                cfItem(3L, 6.0d))));
+        when(newCourseRecommendService.recommendForRegularUser(1L, 30)).thenReturn(List.of(newCourse));
+        when(courseService.getRecommendCourseSummaryMapByIds(List.of(1L, 2L, 3L))).thenReturn(Map.of(
+                1L, courseSummary(1L, "CF 课程 1", "cover-1", 1),
+                2L, courseSummary(2L, "CF 课程 2", "cover-2", 2),
+                3L, courseSummary(3L, "CF 课程 3", "cover-3", 3)));
+        when(courseGraphRepository.getCourseReadinessBatch(eq(1L), anyList(), eq(0.7d))).thenAnswer(invocation -> {
+            List<Long> courseIds = invocation.getArgument(1);
+            if (courseIds.equals(List.of(1L, 2L, 3L))) {
+                return List.of(
+                        readiness(1L, 0.2d),
+                        readiness(2L, 1.0d),
+                        readiness(3L, 0.8d));
+            }
+            if (courseIds.equals(List.of(4L))) {
+                return List.of(readiness(4L, 0.6d));
+            }
+            return List.of();
+        });
+
+        HybridRecommendResponseDTO result = hybridRecommendService.recommend(1L);
+
+        // 结果必须与串行测试 recommendShouldMergeCfAndNewCourseAndFetchMissingReadiness 完全一致。
+        assertEquals(List.of(1L, 2L, 4L, 3L),
+                result.getItems().stream().map(HybridRecommendItemDTO::getCourseId).toList());
+        assertEquals(4, result.getItems().stream().map(HybridRecommendItemDTO::getCourseId).distinct().count());
+        assertEquals(0.76d, result.getItems().get(0).getFinalScore(), 1e-9);
+        assertEquals(List.of(87, 83, 92, 68),
+                result.getItems().stream().map(HybridRecommendItemDTO::getRecommendScore).toList());
+        assertEquals(0.6d, result.getItems().get(2).getReadiness());
+        verify(courseGraphRepository, times(1)).getCourseReadinessBatch(1L, List.of(1L, 2L, 3L), 0.7d);
+        verify(courseService, times(1)).getRecommendCourseSummaryMapByIds(List.of(1L, 2L, 3L));
+    }
+
+    @Test
+    void recommendShouldProduceSameResultWhenAsyncEnabledForColdStartPath() {
+        // 冷启动分支也通过 enrichGraphInfo 做图谱补全；异步开启后 exec 同步执行，
+        // 需保证 readiness 补查、知识点、学习路径的填充结果与串行路径一致。
+        ReflectionTestUtils.setField(hybridRecommendService, "asyncEnabled", true);
+
+        ColdStartRecommendItemVO first = coldStartItem(100L, "课程 A", 1, 0.9d, "匹配兴趣标签：Java");
+        ColdStartRecommendItemVO second = coldStartItem(200L, "课程 B", 1, 0.8d, "兜底");
+        CourseKnowledgePointDTO kp = knowledgePointRow(100L, 11L, "集合", 2);
+
+        when(coldStartSupportService.isColdStartUser(6L)).thenReturn(true);
+        when(valueOperations.get("recommend:cold:user:6")).thenReturn((Object) null, (Object) null);
+        when(valueOperations.setIfAbsent("recommend:cold:lock:user:6", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
+        when(coldStartRecommendService.recommend(6L, 10)).thenReturn(List.of(first, second));
+        when(courseGraphRepository.getCourseReadinessBatch(6L, List.of(100L, 200L), 0.7d)).thenReturn(List.of());
+        when(courseGraphRepository.findCourseKnowledgePointsBatch(List.of(100L, 200L))).thenReturn(List.of(kp));
+
+        HybridRecommendResponseDTO result = hybridRecommendService.recommend(6L);
+
+        assertEquals(1, result.getItems().get(0).getKnowledgePoints().size());
+        assertEquals("集合", result.getItems().get(0).getKnowledgePoints().get(0).getName());
+        assertTrue(result.getItems().get(1).getKnowledgePoints().isEmpty());
+    }
+
+    @Test
+    void recommendShouldNotCallNewCourseRecommendWhenNewCourseDisabledEvenIfAsyncEnabled() {
+        // 新课开关关闭时，即使 asyncEnabled=true，也不创建异步任务，
+        // 直接使用 List.of() 保持当前行为。
+        ReflectionTestUtils.setField(hybridRecommendService, "asyncEnabled", true);
+        ReflectionTestUtils.setField(hybridRecommendService, "newCourseRecommendEnabled", false);
+
+        when(coldStartSupportService.isColdStartUser(3L)).thenReturn(false);
+        when(valueOperations.get("recommend:user:3")).thenReturn((Object) null, (Object) null);
+        when(valueOperations.setIfAbsent("recommend:lock:user:3", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
+        when(recommendService.recommend(3L)).thenReturn(recommendResponseDto(List.of(cfItem(30L, 9.0d))));
+        when(courseService.getRecommendCourseSummaryMapByIds(List.of(30L))).thenReturn(Map.of(
+                30L, courseSummary(30L, "无图谱课程", "cover-30", 2)));
+        when(courseGraphRepository.getCourseReadinessBatch(3L, List.of(30L), 0.7d)).thenReturn(List.of());
+
+        HybridRecommendResponseDTO result = hybridRecommendService.recommend(3L);
+
+        assertEquals(1, result.getItems().size());
+        assertEquals(30L, result.getItems().get(0).getCourseId());
+        assertEquals("CF", result.getItems().get(0).getRecommendSource());
+        verify(newCourseRecommendService, never()).recommendForRegularUser(any(), any());
+        // 新课开关关闭时注入上限为 0，不应尝试注入。
+    }
+
+    @Test
     void recommendShouldReturnEmptyWhenAllHotFallbackCoursesAreOffline() {
         // 如果热榜所有课程都被在线过滤挡掉，当前策略返回空列表；
-        // 这个行为先保留，不在“统一展示分”这次改动里擅自改成其他兜底语义。
+        // 这个行为先保留，不在"统一展示分"这次改动里擅自改成其他兜底语义。
         when(coldStartSupportService.isColdStartUser(2L)).thenReturn(false);
         when(valueOperations.get("recommend:user:2")).thenReturn((Object) null, (Object) null);
         when(valueOperations.setIfAbsent("recommend:lock:user:2", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);

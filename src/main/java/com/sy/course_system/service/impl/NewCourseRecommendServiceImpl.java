@@ -136,45 +136,60 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
         Map<Long, Integer> kpCountMap = toCountMap(courseMapper.selectCourseKpCountsByCourseIds(courseIds));
         Map<Long, Integer> learnerCountMap = toCountMap(courseMapper.selectCourseLearnerCountsByCourseIds(courseIds));
 
-        Set<Long> userTagIds = new LinkedHashSet<>(
-                safeList(userInterestTagMapper.selectTagIdsByUserIdAndSource(userId, INIT_SOURCE)));
-        // 常规推荐里的新课候选也会受到 onboarding learningGoal 影响，但这里只做“分数接近时的轻量偏置”，
-        // 不把 learningGoal 当成硬过滤条件，避免新课池被压缩成单一类型课程。
-        UserOnboardingProfile profile = userOnboardingProfileMapper.selectByUserId(userId);
-        String learningGoal = profile == null ? null : profile.getLearningGoal();
-        Map<Long, Double> readinessMap = loadReadinessMap(userId, courseIds);
-
-        List<ScoredNewCourse> scoredCourses = new ArrayList<>();
+        // readiness 来自 Neo4j，成本高于本地质量门槛；先用已批量取回的 MySQL 统计过滤，
+        // 避免明显不合格的新课继续触发用户画像和图谱查询。
+        List<QualityPassedCourse> qualityPassedCourses = new ArrayList<>();
         for (NewCourseBaseCandidateDTO base : baseCourses) {
             Long courseId = base.getCourseId();
             if (courseId == null) {
                 continue;
             }
             CourseTagSnapshot tagSnapshot = courseTagsMap.getOrDefault(courseId, CourseTagSnapshot.empty());
-            int tagCount = tagSnapshot.tagCount();
             int kpCount = kpCountMap.getOrDefault(courseId, 0);
             int learnerCount = learnerCountMap.getOrDefault(courseId, 0);
             int duration = base.getDuration() == null ? 0 : base.getDuration();
-            if (!passesQualityGate(tagCount, kpCount, duration, learnerCount)) {
+            if (!passesQualityGate(tagSnapshot.tagCount(), kpCount, duration, learnerCount)) {
                 continue;
             }
+            qualityPassedCourses.add(new QualityPassedCourse(base, tagSnapshot, kpCount, learnerCount, duration));
+        }
+        if (qualityPassedCourses.isEmpty()) {
+            // 质量门槛不依赖用户画像或 readiness；全部不合格时直接结束，保持“无可推荐新课”的语义。
+            return List.of();
+        }
+
+        Set<Long> userTagIds = new LinkedHashSet<>(
+                safeList(userInterestTagMapper.selectTagIdsByUserIdAndSource(userId, INIT_SOURCE)));
+        // 常规推荐里的新课候选也会受到 onboarding learningGoal 影响，但这里只做“分数接近时的轻量偏置”，
+        // 不把 learningGoal 当成硬过滤条件，避免新课池被压缩成单一类型课程。
+        UserOnboardingProfile profile = userOnboardingProfileMapper.selectByUserId(userId);
+        String learningGoal = profile == null ? null : profile.getLearningGoal();
+        List<Long> qualityPassedCourseIds = qualityPassedCourses.stream()
+                .map(course -> course.base().getCourseId())
+                .distinct()
+                .toList();
+        // readiness 只对最终会参与打分的新课有意义；缺失结果仍在打分处按既有规则回退为 1.0。
+        Map<Long, Double> readinessMap = loadReadinessMap(userId, qualityPassedCourseIds);
+
+        List<ScoredNewCourse> scoredCourses = new ArrayList<>();
+        for (QualityPassedCourse candidate : qualityPassedCourses) {
+            NewCourseBaseCandidateDTO base = candidate.base();
+            Long courseId = base.getCourseId();
+            CourseTagSnapshot tagSnapshot = candidate.tagSnapshot();
 
             List<String> matchedTagNames = tagSnapshot.matchedTagNames(userTagIds);
 
             double tagMatch = tagSnapshot.calcTagMatch(userTagIds);
             long daysSincePublish = calcDaysSincePublish(base.getPublishTime(), safeWindowDays);
             double freshness = calcFreshness(daysSincePublish, safeWindowDays);
-            double quality = calcQuality(kpCount, duration);
+            double quality = calcQuality(candidate.kpCount(), candidate.duration());
             double readiness = readinessMap.getOrDefault(courseId, 1.0);
-            double score = calcScore(tagMatch, freshness, quality, readiness);
             boolean goalFit = LearningGoalRuleSupport.isGoalFit(
                     learningGoal,
                     base.getDifficulty(),
                     base.getTitle(),
                     tagSnapshot.tagNames());
-            if (goalFit) {
-                score = Math.min(1.0, score + LEARNING_GOAL_BONUS);
-            }
+            double finalScore = calcFinalScore(tagMatch, freshness, quality, readiness, goalFit);
 
             HybridRecommendItemDTO item = new HybridRecommendItemDTO();
             item.setCourseId(courseId);
@@ -182,7 +197,7 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
             item.setCoverUrl(base.getCoverUrl());
             item.setDifficulty(base.getDifficulty());
             item.setReadiness(readiness);
-            item.setFinalScore(score);
+            item.setFinalScore(finalScore);
             item.setReason(buildReason(daysSincePublish, matchedTagNames, readiness, quality, goalFit, learningGoal));
             item.setRecommendSource(SOURCE_COLD_START_COURSE);
             item.setIsNewCourse(Boolean.TRUE);
@@ -316,13 +331,28 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
     }
 
     /**
-     * 综合评分：按配置权重加权平均。
+     * 新课最终排序分的唯一组装入口。
+     *
+     * 先计算 tag/freshness/quality/readiness 加权基础分，再在同一处处理 learningGoal 轻量 bonus。
+     * 后续如果继续增加分数修正因子，应优先收口到这里，避免在候选循环里零散改写 finalScore。
+     */
+    private double calcFinalScore(double tagMatch, double freshness, double quality, double readiness,
+            boolean goalFit) {
+        double score = calcWeightedScore(tagMatch, freshness, quality, readiness);
+        if (goalFit) {
+            return Math.min(1.0, score + LEARNING_GOAL_BONUS);
+        }
+        return score;
+    }
+
+    /**
+     * 基础加权分：按配置权重加权平均。
      *
      * 注意：
      * - 权重为负会被截断为 0；
      * - 总权重为 0 时返回 0，避免除零并显式暴露配置异常。
      */
-    private double calcScore(double tagMatch, double freshness, double quality, double readiness) {
+    private double calcWeightedScore(double tagMatch, double freshness, double quality, double readiness) {
         double safeTagWeight = Math.max(0.0, tagWeight);
         double safeFreshnessWeight = Math.max(0.0, freshnessWeight);
         double safeQualityWeight = Math.max(0.0, qualityWeight);
@@ -366,6 +396,16 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
      */
     private <T> List<T> safeList(List<T> rows) {
         return rows == null ? List.of() : rows;
+    }
+
+    /**
+     * 保存质量门槛后仍要复用的中间结果，避免后续打分阶段重复从 Map 中组装上下文。
+     */
+    private record QualityPassedCourse(NewCourseBaseCandidateDTO base,
+            CourseTagSnapshot tagSnapshot,
+            int kpCount,
+            int learnerCount,
+            int duration) {
     }
 
     /**
