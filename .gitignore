@@ -1,0 +1,47 @@
+# macOS and system files
+.DS_Store
+Thumbs.db
+
+# Editor and IDE files
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+*.swp
+*.swo
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Logs and temporary files
+logs/
+*.log
+*.tmp
+*.temp
+
+# Codex local state
+.codex/
+
+# Frontend build artifacts
+/frontend/node_modules/
+/frontend/dist/
+/frontend/dist-ssr/
+/frontend/*.local
+
+# Backend build artifacts
+/backend/target/
+/backend/build/
+
+# Python service artifacts
+/recommend-service/.venv/
+/recommend-service/venv/
+/recommend-service/env/
+/recommend-service/__pycache__/
+/recommend-service/.pytest_cache/
+/recommend-service/.mypy_cache/
+/recommend-service/.ruff_cache/
+/recommend-service/htmlcov/
+/recommend-service/.coverage
