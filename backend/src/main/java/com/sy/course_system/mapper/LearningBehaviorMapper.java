@@ -34,27 +34,36 @@ public interface LearningBehaviorMapper extends BaseMapper<LearningBehavior> {
     // 聚合用户课程分数
     // 计算公式：基础分值 * 衰减系数(业务层计算)
     // LOG(1 + LEAST(lb.duration, 10800)) 限制单次最多算 180 分钟。
+    // 收藏分不再从历史 FAVORITE 行为读取，改为读取 user_course_relation.is_favorite 当前状态。
     @Select("""
                 SELECT
-                    lb.user_id,
-                    lb.course_id,
+                    inner_t.user_id,
+                    inner_t.course_id,
                     (
-                      -- STUDY:log(1+总时长)
-                      MAX(CASE WHEN lb.behavior_type = 'STUDY' THEN bw.weight ELSE 0 END)
-                      * LOG(1 + LEAST(SUM(CASE WHEN lb.behavior_type = 'STUDY' THEN lb.duration ELSE 0 END), 10800))
-                      -- VIEW:按次数累计
-                      + SUM(CASE WHEN lb.behavior_type = 'VIEW' THEN bw.weight ELSE 0 END)
-                      -- FAVORITE:幂等
-                      + MAX(CASE WHEN lb.behavior_type = 'FAVORITE' THEN bw.weight ELSE 0 END)
-                      -- FINISH:幂等
-                      + MAX(CASE WHEN lb.behavior_type = 'FINISH' THEN bw.weight ELSE 0 END)
+                      inner_t.study_score
+                      + inner_t.view_score
+                      + CASE WHEN COALESCE(ucr.is_favorite, 0) = 1 THEN COALESCE(fav_bw.weight, 0) ELSE 0 END
+                      + inner_t.finish_score
                     ) AS base_score,
-                    -- 不让 VIEW/FAVORITE 刷新 last_time
-                    MAX(CASE WHEN lb.behavior_type IN ('STUDY', 'FINISH') THEN lb.create_time ELSE NULL END) AS last_time
-                FROM learning_behavior lb
-                JOIN behavior_weight bw
-                  ON lb.behavior_type = bw.behavior_type
-                GROUP BY lb.user_id, lb.course_id
+                    inner_t.last_time
+                FROM (
+                    SELECT
+                        lb.user_id,
+                        lb.course_id,
+                        MAX(CASE WHEN lb.behavior_type = 'STUDY' THEN bw.weight ELSE 0 END)
+                        * LOG(1 + LEAST(SUM(CASE WHEN lb.behavior_type = 'STUDY' THEN lb.duration ELSE 0 END), 10800)) AS study_score,
+                        SUM(CASE WHEN lb.behavior_type = 'VIEW' THEN bw.weight ELSE 0 END) AS view_score,
+                        MAX(CASE WHEN lb.behavior_type = 'FINISH' THEN bw.weight ELSE 0 END) AS finish_score,
+                        MAX(CASE WHEN lb.behavior_type IN ('STUDY', 'FINISH') THEN lb.create_time ELSE NULL END) AS last_time
+                    FROM learning_behavior lb
+                    JOIN behavior_weight bw
+                      ON lb.behavior_type = bw.behavior_type
+                    GROUP BY lb.user_id, lb.course_id
+                ) inner_t
+                LEFT JOIN user_course_relation ucr
+                  ON inner_t.user_id = ucr.user_id AND inner_t.course_id = ucr.course_id
+                LEFT JOIN behavior_weight fav_bw
+                  ON fav_bw.behavior_type = 'FAVORITE'
             """)
     List<UserCourseBaseScoreDTO> listUserCourseBaseScores();
 
@@ -74,22 +83,34 @@ public interface LearningBehaviorMapper extends BaseMapper<LearningBehavior> {
     // - finishCount 单独暴露，是因为“一次完课”通常比若干浅层行为更能说明用户已脱离冷启动。
     ColdStartSignalDTO selectColdStartSignal(@Param("userId") Long userId);
 
-    // 获取单个用户单个课程的基础分数
+    // 获取单个用户单个课程的基础分数（与 listUserCourseBaseScores 公式一致）
     @Select("""
                 SELECT
                   IFNULL(
-                    MAX(CASE WHEN lb.behavior_type = 'STUDY' THEN bw.weight ELSE 0 END)
-                    * LOG(1 + LEAST(SUM(CASE WHEN lb.behavior_type = 'STUDY' THEN lb.duration ELSE 0 END), 10800))
-                    + SUM(CASE WHEN lb.behavior_type = 'VIEW' THEN bw.weight ELSE 0 END)
-                    + MAX(CASE WHEN lb.behavior_type = 'FAVORITE' THEN bw.weight ELSE 0 END)
-                    + MAX(CASE WHEN lb.behavior_type = 'FINISH' THEN bw.weight ELSE 0 END)
+                    inner_t.study_score
+                    + inner_t.view_score
+                    + CASE WHEN COALESCE(ucr.is_favorite, 0) = 1 THEN COALESCE(fav_bw.weight, 0) ELSE 0 END
+                    + inner_t.finish_score
                   , 0) AS base_score
-                FROM learning_behavior lb
-                JOIN behavior_weight bw
-                  ON lb.behavior_type = bw.behavior_type
-                WHERE lb.user_id = #{userId}
-                  AND lb.course_id = #{courseId}
-                GROUP BY lb.user_id, lb.course_id
+                FROM (
+                    SELECT
+                        lb.user_id,
+                        lb.course_id,
+                        MAX(CASE WHEN lb.behavior_type = 'STUDY' THEN bw.weight ELSE 0 END)
+                        * LOG(1 + LEAST(SUM(CASE WHEN lb.behavior_type = 'STUDY' THEN lb.duration ELSE 0 END), 10800)) AS study_score,
+                        SUM(CASE WHEN lb.behavior_type = 'VIEW' THEN bw.weight ELSE 0 END) AS view_score,
+                        MAX(CASE WHEN lb.behavior_type = 'FINISH' THEN bw.weight ELSE 0 END) AS finish_score
+                    FROM learning_behavior lb
+                    JOIN behavior_weight bw
+                      ON lb.behavior_type = bw.behavior_type
+                    WHERE lb.user_id = #{userId}
+                      AND lb.course_id = #{courseId}
+                    GROUP BY lb.user_id, lb.course_id
+                ) inner_t
+                LEFT JOIN user_course_relation ucr
+                  ON inner_t.user_id = ucr.user_id AND inner_t.course_id = ucr.course_id
+                LEFT JOIN behavior_weight fav_bw
+                  ON fav_bw.behavior_type = 'FAVORITE'
             """)
     Double getUserCourseBaseScore(@Param("userId") Long userId,
             @Param("courseId") Long courseId);
