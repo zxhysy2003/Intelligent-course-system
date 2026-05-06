@@ -1,6 +1,7 @@
 package com.sy.course_system.service.impl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -49,6 +50,7 @@ import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.LearningAnalysisService;
 import com.sy.course_system.service.NewCourseRecommendService;
 import com.sy.course_system.service.RecommendService;
+import com.sy.course_system.service.UserCourseService;
 import com.sy.course_system.vo.ColdStartRecommendItemVO;
 import com.sy.course_system.vo.KnowledgeMasteryVO;
 
@@ -76,6 +78,8 @@ class HybridRecommendServiceImplTest {
     @Mock
     private LearningAnalysisService learningAnalysisService;
     @Mock
+    private UserCourseService userCourseService;
+    @Mock
     private Executor recommendTaskExecutor;
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper();
@@ -99,6 +103,8 @@ class HybridRecommendServiceImplTest {
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(neo4jClient.query(anyString()).bindAll(anyMap()).fetch().all()).thenReturn(List.of());
         lenient().when(courseGraphRepository.findCourseKnowledgePointsBatch(anyList())).thenReturn(List.of());
+        // 默认用户未选任何课程，需要"已选过滤"行为的测试自行覆盖。
+        lenient().when(userCourseService.listSelectedCourseIds(any(), anyList())).thenReturn(List.of());
 
         // 异步测试中 executor 直接在当前线程执行，既模拟并行语义又保证断言确定性。
         lenient().doAnswer(invocation -> {
@@ -480,6 +486,105 @@ class HybridRecommendServiceImplTest {
         assertTrue(result.getItems().isEmpty());
         verify(valueOperations).set(eq("recommend:user:2"), any(HybridRecommendResponseDTO.class), eq(30L),
                 eq(TimeUnit.MINUTES));
+    }
+
+    @Test
+    void recommendShouldFilterOutOfflineAndSelectedCoursesBeforeTakingTopN() {
+        // CF 返回 100 条候选：前排有已选和下线课程，过滤后从后续补齐。
+        List<RecommendItemDTO> allItems = new java.util.ArrayList<>();
+        // 前 5 名：第 1 名已选，第 3 名下线（不在 courseSummary），第 5 名已选
+        allItems.add(cfItem(1L, 100.0d));  // 已选
+        allItems.add(cfItem(2L, 95.0d));   // 正常
+        allItems.add(cfItem(3L, 90.0d));   // 下线
+        allItems.add(cfItem(4L, 85.0d));   // 正常
+        allItems.add(cfItem(5L, 80.0d));   // 已选
+        // 后续 95 条正常候选
+        for (long i = 10; i < 105; i++) {
+            allItems.add(cfItem(i, 70.0d));
+        }
+
+        when(coldStartSupportService.isColdStartUser(1L)).thenReturn(false);
+        when(valueOperations.get("recommend:user:1")).thenReturn((Object) null, (Object) null);
+        when(valueOperations.setIfAbsent("recommend:lock:user:1", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
+        when(recommendService.recommend(1L)).thenReturn(recommendResponseDto(allItems));
+        when(newCourseRecommendService.recommendForRegularUser(1L, 30)).thenReturn(List.of());
+        // 已选课程：1 和 5
+        when(userCourseService.listSelectedCourseIds(eq(1L), anyList()))
+                .thenReturn(List.of(1L, 5L));
+        // 课程摘要：包含所有 CF 候选（除下线课程 3）
+        when(courseService.getRecommendCourseSummaryMapByIds(anyList())).thenAnswer(inv -> {
+            @SuppressWarnings("unchecked")
+            List<Long> ids = inv.getArgument(0);
+            Map<Long, Course> map = new java.util.LinkedHashMap<>();
+            for (Long id : ids) {
+                if (!id.equals(3L)) { // 3 是下线课程
+                    map.put(id, courseSummary(id, "课程 " + id, "cover-" + id, 1));
+                }
+            }
+            return map;
+        });
+        when(courseGraphRepository.getCourseReadinessBatch(eq(1L), anyList(), eq(0.7d))).thenReturn(List.of());
+
+        HybridRecommendResponseDTO result = hybridRecommendService.recommend(1L);
+
+        List<Long> resultIds = result.getItems().stream().map(HybridRecommendItemDTO::getCourseId).toList();
+        // 不应包含已选课程 1、5 和下线课程 3
+        assertFalse(resultIds.contains(1L), "should not contain selected course 1");
+        assertFalse(resultIds.contains(3L), "should not contain offline course 3");
+        assertFalse(resultIds.contains(5L), "should not contain selected course 5");
+        // 第一个应为正常课程 2
+        assertEquals(2L, resultIds.get(0));
+        // 最多取 20 条
+        assertTrue(resultIds.size() <= 20);
+        verify(userCourseService).listSelectedCourseIds(eq(1L), anyList());
+    }
+
+    @Test
+    void recommendShouldFallbackToNewCourseWhenAllCfItemsFilteredOut() {
+        // CF 有返回但全部已被选或下线时，走新课兜底。
+        when(coldStartSupportService.isColdStartUser(2L)).thenReturn(false);
+        when(valueOperations.get("recommend:user:2")).thenReturn((Object) null, (Object) null);
+        when(valueOperations.setIfAbsent("recommend:lock:user:2", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
+        when(recommendService.recommend(2L)).thenReturn(recommendResponseDto(List.of(
+                cfItem(1L, 100.0d), cfItem(2L, 95.0d))));
+        // 两个 CF 课程都已被选
+        when(userCourseService.listSelectedCourseIds(eq(2L), anyList())).thenReturn(List.of(1L, 2L));
+        when(courseService.getRecommendCourseSummaryMapByIds(anyList())).thenReturn(Map.of(
+                1L, courseSummary(1L, "课程 1", "cover-1", 1),
+                2L, courseSummary(2L, "课程 2", "cover-2", 1)));
+        // 新课候选可用
+        HybridRecommendItemDTO newCourse = hybridItem(10L, "新课兜底");
+        newCourse.setRecommendSource("COLD_START_COURSE");
+        newCourse.setIsNewCourse(Boolean.TRUE);
+        when(newCourseRecommendService.recommendForRegularUser(2L, 30)).thenReturn(List.of(newCourse));
+
+        HybridRecommendResponseDTO result = hybridRecommendService.recommend(2L);
+
+        assertEquals(1, result.getItems().size());
+        assertEquals(10L, result.getItems().get(0).getCourseId());
+        assertEquals("COLD_START_COURSE", result.getItems().get(0).getRecommendSource());
+    }
+
+    @Test
+    void recommendShouldFallbackToHotWhenCfFilteredEmptyAndNoNewCourse() {
+        // CF 全部过滤且无新课候选，走热门兜底。
+        when(coldStartSupportService.isColdStartUser(3L)).thenReturn(false);
+        when(valueOperations.get("recommend:user:3")).thenReturn((Object) null, (Object) null);
+        when(valueOperations.setIfAbsent("recommend:lock:user:3", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
+        when(recommendService.recommend(3L)).thenReturn(recommendResponseDto(List.of(cfItem(1L, 100.0d))));
+        when(userCourseService.listSelectedCourseIds(eq(3L), anyList())).thenReturn(List.of(1L));
+        when(courseService.getRecommendCourseSummaryMapByIds(anyList())).thenReturn(Map.of(
+                1L, courseSummary(1L, "课程 1", "cover-1", 1)));
+        when(newCourseRecommendService.recommendForRegularUser(3L, 30)).thenReturn(List.of());
+        when(learningAnalysisService.getHotCoursesByRange(0, 10)).thenReturn(List.of(7L));
+        when(courseService.getOnlineRecommendCourseSummaryMapByIds(List.of(7L))).thenReturn(Map.of(
+                7L, courseSummary(7L, "热门课", "cover-7", 1)));
+
+        HybridRecommendResponseDTO result = hybridRecommendService.recommend(3L);
+
+        assertEquals(1, result.getItems().size());
+        assertEquals(7L, result.getItems().get(0).getCourseId());
+        assertEquals("HOT_FALLBACK", result.getItems().get(0).getRecommendSource());
     }
 
     private RecommendResponseDTO recommendResponseDto(List<RecommendItemDTO> items) {

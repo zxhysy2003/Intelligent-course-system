@@ -60,6 +60,7 @@ recommend:
   cf-service:
     connect-timeout-ms: ${RECOMMEND_CF_CONNECT_TIMEOUT_MS:5000}
     read-timeout-ms: ${RECOMMEND_CF_READ_TIMEOUT_MS:30000}
+    request-top-n: ${RECOMMEND_CF_REQUEST_TOP_N:100}
   score-matrix-cache:
     enabled: ${RECOMMEND_SCORE_MATRIX_CACHE_ENABLED:true}
     ttl-minutes: ${RECOMMEND_SCORE_MATRIX_CACHE_TTL_MINUTES:2}

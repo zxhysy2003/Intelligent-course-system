@@ -1,6 +1,7 @@
 package com.sy.course_system.service.impl;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -59,6 +60,14 @@ public class UserCourseServiceImpl extends ServiceImpl<UserCourseRelationMapper,
         } catch (DuplicateKeyException ex) {
             return false; // 已存在关联关系，返回false
         }
+    }
+
+    @Override
+    public List<Long> listSelectedCourseIds(Long userId, List<Long> courseIds) {
+        if (courseIds == null || courseIds.isEmpty()) {
+            return List.of();
+        }
+        return baseMapper.selectSelectedCourseIds(userId, courseIds);
     }
 
 }

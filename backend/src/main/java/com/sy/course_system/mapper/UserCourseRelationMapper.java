@@ -1,6 +1,7 @@
 package com.sy.course_system.mapper;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
@@ -40,5 +41,20 @@ public interface UserCourseRelationMapper extends BaseMapper<UserCourseRelation>
     int tryMarkFinished(@Param("userId") Long userId,
             @Param("courseId") Long courseId,
             @Param("now") LocalDateTime now);
+
+    // 从候选课程中查询当前用户已选的课程 ID 集合，用于推荐过滤
+    @Select("""
+            <script>
+            SELECT course_id
+            FROM user_course_relation
+            WHERE user_id = #{userId}
+              AND course_id IN
+              <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+                  #{id}
+              </foreach>
+            </script>
+            """)
+    List<Long> selectSelectedCourseIds(@Param("userId") Long userId,
+            @Param("courseIds") List<Long> courseIds);
 
 }

@@ -53,6 +53,9 @@ public class RecommendServiceImpl implements RecommendService {
     @Value("${recommend.score-matrix-cache.ttl-minutes:2}")
     private long scoreMatrixCacheTtlMinutes;
 
+    @Value("${recommend.cf-service.request-top-n:100}")
+    private int requestTopN;
+
     @Override
     public RecommendResponseDTO recommend(Long userId) {
 
@@ -62,7 +65,7 @@ public class RecommendServiceImpl implements RecommendService {
         RecommendRequestDTO request = new RecommendRequestDTO();
         request.setTargetUserId(userId);
         request.setData(scoreList);
-        request.setTopN(100); // 候选池大小
+        request.setTopN(requestTopN);
 
         return restTemplate.postForObject(
                 recommendServiceUrl + "/recommend",

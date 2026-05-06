@@ -2,6 +2,7 @@ package com.sy.course_system.service.impl;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -39,6 +40,7 @@ import com.sy.course_system.service.HybridRecommendService;
 import com.sy.course_system.service.LearningAnalysisService;
 import com.sy.course_system.service.NewCourseRecommendService;
 import com.sy.course_system.service.RecommendService;
+import com.sy.course_system.service.UserCourseService;
 import com.sy.course_system.vo.ColdStartRecommendItemVO;
 import com.sy.course_system.vo.KnowledgeMasteryVO;
 import com.sy.course_system.vo.KnowledgeVO;
@@ -79,6 +81,8 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     private NewCourseRecommendService newCourseRecommendService;
     @Autowired
     private LearningAnalysisService learningAnalysisService;
+    @Autowired
+    private UserCourseService userCourseService;
 
     // 常规推荐缓存 Key 前缀，完整 key 形如 recommend:user:{userId}
     private static final String RECOMMEND_COURSE_KEY = "recommend:user:";
@@ -240,21 +244,46 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
 
         List<RecommendItemDTO> items = cfResp == null ? List.of() : cfResp.getItems();
         if (items == null || items.isEmpty()) {
-            // CF 无数据时不直接返回空列表，优先使用新课候选保证结果可用。
-            List<HybridRecommendItemDTO> fallback = newCourseCandidates.stream()
-                    .limit(NEW_COURSE_FALLBACK_LIMIT)
-                    .collect(Collectors.toList());
-            if (fallback.isEmpty()) {
-                fallback = buildHotFallbackItems();
-            }
-            enrichGraphInfo(userId, fallback, null);
-            return new HybridRecommendResponseDTO(userId, fallback);
+            return buildFallbackResponse(userId, newCourseCandidates);
         }
 
-        List<RecommendItemDTO> topCourses = items.stream()
+        List<RecommendItemDTO> sortedItems = items.stream()
+                .filter(it -> it.getCourseId() != null && it.getScore() != null)
                 .sorted(Comparator.comparing(RecommendItemDTO::getScore).reversed())
+                .toList();
+
+        List<Long> allCfCourseIds = sortedItems.stream()
+                .map(RecommendItemDTO::getCourseId)
+                .distinct()
+                .toList();
+
+        Map<Long, Course> courseSummaryMap;
+        Set<Long> selectedCourseIds;
+        if (asyncEnabled) {
+            CompletableFuture<Map<Long, Course>> summaryFuture = CompletableFuture.supplyAsync(
+                    () -> courseService.getRecommendCourseSummaryMapByIds(allCfCourseIds), recommendTaskExecutor);
+            CompletableFuture<Set<Long>> selectedFuture = CompletableFuture.supplyAsync(
+                    () -> new HashSet<>(userCourseService.listSelectedCourseIds(userId, allCfCourseIds)),
+                    recommendTaskExecutor);
+            ConcurrentUtils.awaitAll(GRAPH_ASYNC_INTERRUPTED_MSG, summaryFuture, selectedFuture);
+            courseSummaryMap = summaryFuture.getNow(Map.of());
+            selectedCourseIds = selectedFuture.getNow(Set.of());
+        } else {
+            courseSummaryMap = courseService.getRecommendCourseSummaryMapByIds(allCfCourseIds);
+            selectedCourseIds = new HashSet<>(userCourseService.listSelectedCourseIds(userId, allCfCourseIds));
+        }
+
+        List<RecommendItemDTO> filteredItems = sortedItems.stream()
+                .filter(it -> isCourseAvailable(it.getCourseId(), courseSummaryMap, selectedCourseIds))
+                .toList();
+
+        if (filteredItems.isEmpty()) {
+            return buildFallbackResponse(userId, newCourseCandidates);
+        }
+
+        List<RecommendItemDTO> topCourses = filteredItems.stream()
                 .limit(CANDIDATE_POOL_SIZE)
-                .collect(Collectors.toList());
+                .toList();
 
         double min = topCourses.stream()
                 .mapToDouble(RecommendItemDTO::getScore)
@@ -266,43 +295,41 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
                 .orElse(1.0);
         double eps = 1e-9;
 
-        List<Long> courseIds = topCourses.stream()
+        List<Long> topCourseIds = topCourses.stream()
                 .map(RecommendItemDTO::getCourseId)
-                .collect(Collectors.toList());
+                .toList();
 
-        Map<Long, CourseReadinessDTO> readinessMap;
-        Map<Long, Course> courseSummaryMap;
-        if (asyncEnabled) {
-            // CF 候选的 readiness 和课程摘要来自 Neo4j / MySQL，互不依赖，先并行拉取再统一组装。
-            CompletableFuture<Map<Long, CourseReadinessDTO>> readinessFuture = CompletableFuture.supplyAsync(
-                    () -> toReadinessMap(courseGraphRepository.getCourseReadinessBatch(
-                            userId, courseIds, PREREQUISITE_THRESHOLD)),
-                    recommendTaskExecutor);
-            CompletableFuture<Map<Long, Course>> summaryFuture = CompletableFuture.supplyAsync(
-                    () -> courseService.getRecommendCourseSummaryMapByIds(courseIds), recommendTaskExecutor);
-            ConcurrentUtils.awaitAll(GRAPH_ASYNC_INTERRUPTED_MSG, readinessFuture, summaryFuture);
-            readinessMap = readinessFuture.getNow(Map.of());
-            courseSummaryMap = summaryFuture.getNow(Map.of());
-        } else {
-            readinessMap = toReadinessMap(courseGraphRepository.getCourseReadinessBatch(
-                    userId, courseIds, PREREQUISITE_THRESHOLD));
-            courseSummaryMap = courseService.getRecommendCourseSummaryMapByIds(courseIds);
-        }
+        Map<Long, CourseReadinessDTO> readinessMap = toReadinessMap(
+                courseGraphRepository.getCourseReadinessBatch(
+                        userId, topCourseIds, PREREQUISITE_THRESHOLD));
 
         List<HybridRecommendItemDTO> hybridItems = topCourses.stream()
                 .map(item -> buildHybridBaseItem(item, min, max, eps, courseSummaryMap, readinessMap))
-                // 过滤可学习性不足的课程
-                // .filter(dto -> dto.getReadiness() == null || dto.getReadiness() >=
-                // READINESS_THRESHOLD)
                 .sorted(Comparator.comparing(HybridRecommendItemDTO::getFinalScore).reversed())
-                .collect(Collectors.toList());
+                .toList();
 
-        // 新课注入数量由"绝对上限 + 暴光比例上限"共同约束，避免挤占原有个性化结果。
         int injectLimit = calculateNewCourseInjectLimit(hybridItems.size());
         List<HybridRecommendItemDTO> mergedItems = mergeWithNewCourseCandidates(hybridItems, newCourseCandidates,
                 injectLimit);
         enrichGraphInfo(userId, mergedItems, readinessMap);
         return new HybridRecommendResponseDTO(userId, mergedItems);
+    }
+
+    private static boolean isCourseAvailable(Long courseId, Map<Long, Course> courseSummaryMap,
+            Set<Long> selectedCourseIds) {
+        return courseSummaryMap.containsKey(courseId) && !selectedCourseIds.contains(courseId);
+    }
+
+    private HybridRecommendResponseDTO buildFallbackResponse(Long userId,
+            List<HybridRecommendItemDTO> newCourseCandidates) {
+        List<HybridRecommendItemDTO> fallback = newCourseCandidates.stream()
+                .limit(NEW_COURSE_FALLBACK_LIMIT)
+                .toList();
+        if (fallback.isEmpty()) {
+            fallback = buildHotFallbackItems();
+        }
+        enrichGraphInfo(userId, fallback, null);
+        return new HybridRecommendResponseDTO(userId, fallback);
     }
 
     /**

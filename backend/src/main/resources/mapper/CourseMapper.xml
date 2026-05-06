@@ -178,7 +178,8 @@
             cover_url AS coverUrl,
             difficulty
         FROM course
-        WHERE id IN
+        WHERE status = 1
+          AND id IN
         <foreach collection="courseIds" item="id" open="(" separator="," close=")">
             #{id}
         </foreach>

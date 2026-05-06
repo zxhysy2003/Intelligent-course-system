@@ -8,7 +8,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+
+import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -78,5 +81,30 @@ class UserCourseServiceImplTest {
 
         assertFalse(result);
         verify(userCourseService).save(any(UserCourseRelation.class));
+    }
+
+    @Test
+    void listSelectedCourseIdsShouldReturnEmptyWhenCourseIdsIsNull() {
+        List<Long> result = userCourseService.listSelectedCourseIds(9L, null);
+        assertTrue(result.isEmpty());
+        verify(userCourseRelationMapper, never()).selectSelectedCourseIds(any(), any());
+    }
+
+    @Test
+    void listSelectedCourseIdsShouldReturnEmptyWhenCourseIdsIsEmpty() {
+        List<Long> result = userCourseService.listSelectedCourseIds(9L, List.of());
+        assertTrue(result.isEmpty());
+        verify(userCourseRelationMapper, never()).selectSelectedCourseIds(any(), any());
+    }
+
+    @Test
+    void listSelectedCourseIdsShouldReturnMapperResultForNonEmptyInput() {
+        doReturn(List.of(1L, 3L))
+                .when(userCourseRelationMapper).selectSelectedCourseIds(9L, List.of(1L, 2L, 3L));
+
+        List<Long> result = userCourseService.listSelectedCourseIds(9L, List.of(1L, 2L, 3L));
+
+        assertEquals(List.of(1L, 3L), result);
+        verify(userCourseRelationMapper).selectSelectedCourseIds(9L, List.of(1L, 2L, 3L));
     }
 }

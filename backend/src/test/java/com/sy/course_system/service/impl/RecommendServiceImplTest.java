@@ -52,6 +52,7 @@ class RecommendServiceImplTest {
         ReflectionTestUtils.setField(recommendService, "recommendServiceUrl", "http://recommend-service");
         ReflectionTestUtils.setField(recommendService, "scoreMatrixCacheEnabled", true);
         ReflectionTestUtils.setField(recommendService, "scoreMatrixCacheTtlMinutes", 2L);
+        ReflectionTestUtils.setField(recommendService, "requestTopN", 100);
         ReflectionTestUtils.setField(recommendService, "objectMapper", objectMapper);
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
     }
@@ -143,6 +144,21 @@ class RecommendServiceImplTest {
         RecommendRequestDTO request = captureRequest();
         assertScore(request.getData().get(0), 1L, 10L, 0.8d);
         verify(learningBehaviorService, never()).listAggregatedScores();
+    }
+
+    @Test
+    void recommendShouldUseInjectedRequestTopN() {
+        List<UserCourseScoreDTO> scores = List.of(score(1L, 10L, 0.8d));
+        RecommendResponseDTO response = new RecommendResponseDTO();
+        ReflectionTestUtils.setField(recommendService, "requestTopN", 50);
+        when(learningBehaviorService.listAggregatedScores()).thenReturn(scores);
+        when(restTemplate.postForObject(eq("http://recommend-service/recommend"), any(RecommendRequestDTO.class),
+                eq(RecommendResponseDTO.class))).thenReturn(response);
+
+        recommendService.recommend(1L);
+
+        RecommendRequestDTO request = captureRequest();
+        assertEquals(50, request.getTopN());
     }
 
     private RecommendRequestDTO captureRequest() {
