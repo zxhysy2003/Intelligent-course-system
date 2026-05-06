@@ -1,186 +1,376 @@
-# Course System
+# Course System Backend
 
-智能课程学习系统后端项目，基于 Spring Boot 3 开发，提供课程管理、学习行为记录、学习分析、知识图谱展示和个性化推荐等能力。
+`backend` 是智能课程学习系统的 Spring Boot 后端服务，负责用户认证、课程管理、学习行为记录、学习分析、知识图谱查询、视频文件访问，以及融合推荐结果生成。
 
-该仓库当前主要包含后端服务代码，不包含完整前端工程。推荐功能依赖独立的 Python 推荐服务，后端通过 HTTP 调用该服务获取推荐结果。
+当前项目采用同仓多服务结构：
 
-## 系统组成
+- 后端服务：`backend`
+- 前端服务：[`../frontend`](../frontend)
+- FastAPI 推荐服务：[`../recommend-service`](../recommend-service)
+- 总操作手册：[`../docs/OPERATION_MANUAL.md`](../docs/OPERATION_MANUAL.md)
 
-当前完整系统由三个仓库共同组成：
+后端默认运行在 `http://127.0.0.1:8080`。前端通过 Vite 代理访问后端，后端通过 `RECOMMEND_SERVICE_URL` 调用推荐服务。
 
-- 后端服务（当前仓库）：`https://github.com/zxhysy2003/course-system`
-- 前端项目：`https://github.com/zxhysy2003/course-system-frontend`
-- Python 推荐服务：`https://github.com/zxhysy2003/recommend_service`
+## 功能概览
 
-其中，本仓库负责课程、用户、学习行为、学习分析、知识图谱和推荐结果融合等后端业务逻辑；前端仓库负责页面展示与交互；推荐服务仓库负责基于 Python 的推荐算法计算。
-
-## 项目特点
-
-- 支持用户注册、登录与 JWT 鉴权
-- 支持课程查询、选课、视频学习与断点续学
-- 支持后台课程管理与视频上传
-- 支持学习行为记录、学习进度分析和能力雷达图
-- 支持基于 Neo4j 的知识图谱展示与学习路径辅助
-- 支持基于 `surprise` 库 `SVD` 算法的个性化推荐
+- 用户注册、登录、JWT 鉴权与当前用户信息获取
+- 前台课程分页、分类、详情、选课、视频学习和学习进度更新
+- 后台课程新增、编辑、上下线、删除和视频上传
+- 后台用户分页、详情、角色、状态和基础信息管理
+- 学习行为记录、课程热度同步、学习进度和能力雷达图分析
+- Neo4j 知识图谱展示与课程知识点关系查询
+- 个性化推荐、用户冷启动推荐、新课曝光和混合推荐结果融合
+- 通过 `/videos/**` 暴露本地课程视频静态资源
 
 ## 技术栈
 
 - Java 17
-- Spring Boot 3.2.5
+- Spring Boot 3.5.14
 - Spring MVC
-- MyBatis-Plus
+- Spring Boot Actuator
+- MyBatis-Plus 3.5.5
 - MySQL 8
 - Redis 7
 - Neo4j 5
 - JWT
-- MapStruct
-- Maven
-
-## 项目结构
-
-```text
-course-system
-├── src/main/java/com/sy/course_system
-│   ├── common
-│   ├── config
-│   ├── controller
-│   ├── dto
-│   ├── entity
-│   ├── enums
-│   ├── graph
-│   ├── mapper
-│   ├── repository
-│   ├── service
-│   └── vo
-├── src/main/resources
-│   ├── application.yaml
-│   ├── application-dev.yaml
-│   ├── application-prod.yaml
-│   └── mapper
-├── course_db.sql
-├── docker-compose.yml
-└── docs
-```
-
-## 快速开始
-
-如果你只打算运行当前后端仓库，可以直接按下面步骤完成环境准备和后端启动。如果你要联调完整系统，建议同时准备前端仓库和 Python 推荐服务仓库。
-
-### 1. 准备依赖环境
-
-请先准备以下环境：
-
-- JDK 17
-- MySQL 8
-- Redis 7
-- Neo4j 5
+- MapStruct 1.5.5
+- Maven Wrapper
 - ffprobe
 
-也可以直接使用仓库中的 Docker Compose 启动依赖服务：
+## 目录结构
+
+```text
+backend
+├── src/main/java/com/sy/course_system
+│   ├── common              # 通用返回体、上下文、工具类
+│   ├── config              # JWT、CORS、Redis、Neo4j、视频、推荐异步配置
+│   ├── controller
+│   │   ├── client          # 用户端接口
+│   │   └── server          # 管理端接口
+│   ├── converter           # MapStruct 转换器
+│   ├── dto                 # 请求与内部传输对象
+│   ├── entity              # MySQL 实体
+│   ├── enums               # 业务枚举
+│   ├── graph               # Neo4j 节点模型
+│   ├── mapper              # MyBatis Mapper
+│   ├── recommend/support   # 推荐辅助规则
+│   ├── repository          # Neo4j Repository
+│   ├── service             # 业务接口与实现
+│   └── vo                  # 响应视图对象
+├── src/main/resources
+│   ├── application.yaml
+│   ├── META-INF
+│   └── mapper              # MyBatis XML
+├── src/test                # 单元测试
+├── course_db.sql           # MySQL 初始化脚本
+├── docker-compose.yml      # MySQL、Redis、Neo4j 本地依赖
+├── mvnw
+└── pom.xml
+```
+
+## 环境要求
+
+- JDK 17
+- Docker 和 Docker Compose，或自行准备 MySQL、Redis、Neo4j
+- ffprobe
+- 可访问的推荐服务，默认地址为 `http://127.0.0.1:8000`
+
+如果需要完整联调，还需要启动：
+
+- `../recommend-service`：FastAPI 推荐服务
+- `../frontend`：Vue 3 + Vite 前端
+
+## 快速启动
+
+下面的快速启动命令默认从仓库根目录执行。
+
+### 1. 启动基础依赖
+
+`docker-compose.yml` 位于后端目录：
 
 ```bash
+cd backend
+docker compose up -d
+docker compose ps
+```
+
+默认依赖信息：
+
+| 服务 | 地址 | 默认配置 |
+| --- | --- | --- |
+| MySQL | `127.0.0.1:3306` | 数据库 `course_db`，用户 `dev`，密码 `dev123` |
+| Redis | `127.0.0.1:6379` | 密码 `redis123` |
+| Neo4j HTTP | `http://127.0.0.1:7474` | 见 Neo4j 认证说明 |
+| Neo4j Bolt | `bolt://127.0.0.1:7687` | 见 Neo4j 认证说明 |
+
+### 2. 处理 Neo4j 认证
+
+当前 `docker-compose.yml` 中 Neo4j 为无认证：
+
+```yaml
+NEO4J_AUTH: none
+```
+
+但 `application.yaml` 默认使用用户名和密码连接：
+
+```text
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=neo4j123
+```
+
+本地联调前需要统一两边配置。推荐把 `docker-compose.yml` 改成：
+
+```yaml
+NEO4J_AUTH: neo4j/neo4j123
+```
+
+然后重建 Neo4j 数据卷：
+
+```bash
+cd backend
+docker compose down -v
 docker compose up -d
 ```
 
-### 2. 初始化数据库
+如果继续使用无认证 Neo4j，则需要同步调整后端 Neo4j 配置。
+
+### 3. 初始化数据库
+
+从仓库根目录执行：
 
 ```bash
+cd backend
 mysql -u dev -p course_db < course_db.sql
 ```
 
-### 3. 配置环境变量
-
-常用配置包括：
-
-- `DB_HOST`
-- `DB_PORT`
-- `DB_NAME`
-- `DB_USERNAME`
-- `DB_PASSWORD`
-- `REDIS_HOST`
-- `REDIS_PORT`
-- `REDIS_PASSWORD`
-- `NEO4J_URI`
-- `NEO4J_USERNAME`
-- `NEO4J_PASSWORD`
-- `RECOMMEND_SERVICE_URL`
-- `VIDEO_DIR`
-- `VIDEO_BASE_URL`
-- `FFPROBE_PATH`
-
-### 4. 启动项目
+如果使用 Docker MySQL：
 
 ```bash
+docker exec -i mysql8-dev mysql -udev -pdev123 course_db < course_db.sql
+```
+
+### 4. 启动推荐服务
+
+后端默认调用：
+
+```text
+POST http://127.0.0.1:8000/recommend
+```
+
+推荐服务代码在 `../recommend-service`，常用启动方式：
+
+```bash
+cd recommend-service
+conda env create -f environment.yml
+conda activate lab_autumn
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
+```
+
+### 5. 启动后端
+
+从仓库根目录执行：
+
+```bash
+cd backend
+RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 ./mvnw spring-boot:run
+```
+
+也可以显式指定常用本地环境变量：
+
+```bash
+cd backend
+DB_HOST=127.0.0.1 \
+REDIS_HOST=127.0.0.1 \
+NEO4J_URI=bolt://127.0.0.1:7687 \
+RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 \
+VIDEO_DIR=/data/course_videos \
+VIDEO_BASE_URL=http://127.0.0.1:8080 \
 ./mvnw spring-boot:run
 ```
 
-或先打包再运行：
+健康检查：
+
+```bash
+curl "http://127.0.0.1:8080/actuator/health"
+```
+
+## 构建与测试
+
+以下命令在 `backend` 目录执行。
+
+编译检查：
+
+```bash
+./mvnw -q -DskipTests compile
+```
+
+运行测试：
+
+```bash
+./mvnw test
+```
+
+打包：
 
 ```bash
 ./mvnw clean package
+```
+
+运行打包产物：
+
+```bash
 java -jar target/course-system-0.0.1-SNAPSHOT.jar
 ```
 
-服务默认运行在 `http://127.0.0.1:8080`。
+当前测试主要覆盖推荐、冷启动、新课推荐、学习行为、学习分析、用户、课程和用户选课等 service 层逻辑，以及推荐控制器。
 
-### 5. 联调整个系统
+## 配置说明
 
-如果你希望运行完整系统，建议按下面顺序启动：
+主配置文件为 [`src/main/resources/application.yaml`](src/main/resources/application.yaml)。
 
-1. 启动 MySQL、Redis、Neo4j 等基础依赖
-2. 启动推荐服务仓库：`https://github.com/zxhysy2003/recommend_service`
-3. 启动当前后端仓库
-4. 启动前端仓库：`https://github.com/zxhysy2003/course-system-frontend`
+### 基础配置
 
-前端仓库和推荐服务仓库的具体安装方式、依赖说明和运行命令，请以它们各自仓库中的 README 为准。
+| 变量名 | 说明 | 默认值 |
+| --- | --- | --- |
+| `DB_HOST` | MySQL 地址 | `localhost` |
+| `DB_PORT` | MySQL 端口 | `3306` |
+| `DB_NAME` | 数据库名 | `course_db` |
+| `DB_USERNAME` | MySQL 用户名 | `dev` |
+| `DB_PASSWORD` | MySQL 密码 | `dev123` |
+| `REDIS_HOST` | Redis 地址 | `localhost` |
+| `REDIS_PORT` | Redis 端口 | `6379` |
+| `REDIS_PASSWORD` | Redis 密码 | `redis123` |
+| `NEO4J_URI` | Neo4j Bolt 地址 | `bolt://localhost:7687` |
+| `NEO4J_USERNAME` | Neo4j 用户名 | `neo4j` |
+| `NEO4J_PASSWORD` | Neo4j 密码 | `neo4j123` |
+| `CORS_ALLOWED_ORIGIN_PATTERNS` | 前端跨域来源 | `http://localhost:5173,http://127.0.0.1:5173,http://192.168.*:5173` |
 
-## 重要说明
+### 视频配置
 
-### 1. 推荐服务是外部依赖
+| 变量名 | 说明 | 默认值 |
+| --- | --- | --- |
+| `VIDEO_DIR` | 视频文件存储目录 | `/Users/shiyang/Desktop/graduate_design/course_videos` |
+| `VIDEO_BASE_URL` | 视频访问基础地址 | `http://localhost:8080` |
+| `FFPROBE_PATH` | ffprobe 可执行文件路径 | `/opt/homebrew/bin/ffprobe` |
 
-本项目的推荐模块依赖一个独立的 Python 服务。推荐算法使用 `surprise` 库中的 `SVD` 算法，默认通过 `POST /recommend` 提供服务。该服务仓库地址为：
+### 推荐配置
 
-- `https://github.com/zxhysy2003/recommend_service`
+| 变量名 | 说明 | 默认值 |
+| --- | --- | --- |
+| `RECOMMEND_SERVICE_URL` | FastAPI 推荐服务地址 | `http://localhost:8000` |
+| `RECOMMEND_CF_CONNECT_TIMEOUT_MS` | 推荐服务连接超时 | `5000` |
+| `RECOMMEND_CF_READ_TIMEOUT_MS` | 推荐服务读取超时 | `30000` |
+| `RECOMMEND_SCORE_MATRIX_CACHE_ENABLED` | 评分矩阵缓存开关 | `true` |
+| `RECOMMEND_SCORE_MATRIX_CACHE_TTL_MINUTES` | 评分矩阵缓存时间 | `2` |
+| `RECOMMEND_ASYNC_ENABLED` | 混合推荐异步执行开关 | `true` |
+| `RECOMMEND_ASYNC_CORE_SIZE` | 推荐线程池核心线程数 | `2` |
+| `RECOMMEND_ASYNC_MAX_SIZE` | 推荐线程池最大线程数 | `4` |
+| `RECOMMEND_ASYNC_QUEUE_CAPACITY` | 推荐线程池队列容量 | `100` |
+| `RECOMMEND_HOT_SYNC_ENABLED` | 课程热度同步开关 | `true` |
+| `RECOMMEND_HOT_SYNC_FIXED_DELAY_MS` | 课程热度同步间隔 | `300000` |
+| `RECOMMEND_HOT_SYNC_BATCH_SIZE` | 课程热度同步批量大小 | `500` |
+| `RECOMMEND_NEW_COURSE_ENABLED` | 常规推荐中新课曝光开关 | `true` |
+| `RECOMMEND_NEW_COURSE_WINDOW_DAYS` | 新课时间窗 | `14` |
+| `RECOMMEND_NEW_COURSE_CANDIDATE_LIMIT` | 新课候选池大小 | `80` |
+| `RECOMMEND_NEW_COURSE_MAX_LEARNERS` | 新课学习人数上限 | `20` |
+| `RECOMMEND_NEW_COURSE_INJECT_LIMIT` | 单次最多注入新课数量 | `3` |
+| `RECOMMEND_NEW_COURSE_MAX_EXPOSURE_RATIO` | 新课最大曝光占比 | `0.30` |
+| `RECOMMEND_NEW_COURSE_MIN_TAG_COUNT` | 新课标签数量下限 | `1` |
+| `RECOMMEND_NEW_COURSE_MIN_KP_COUNT` | 新课知识点数量下限 | `1` |
+| `RECOMMEND_NEW_COURSE_MIN_DURATION_SECONDS` | 新课时长下限，单位秒 | `300` |
+| `RECOMMEND_NEW_COURSE_TAG_WEIGHT` | 新课标签匹配权重 | `0.45` |
+| `RECOMMEND_NEW_COURSE_FRESHNESS_WEIGHT` | 新课新鲜度权重 | `0.30` |
+| `RECOMMEND_NEW_COURSE_QUALITY_WEIGHT` | 新课质量权重 | `0.20` |
+| `RECOMMEND_NEW_COURSE_READINESS_WEIGHT` | 新课先修掌握度权重 | `0.05` |
+| `RECOMMEND_NEW_COURSE_READINESS_THRESHOLD` | 新课先修掌握阈值 | `0.7` |
 
-### 2. Neo4j 配置需要自行确认
+## 接口分组
 
-当前 [docker-compose.yml](./docker-compose.yml) 中 Neo4j 使用的是无认证配置，而后端默认按用户名密码连接。实际使用前，请先统一这两边的配置，否则后端可能无法连接 Neo4j。
-
-### 3. 视频目录需要自行指定
-
-请务必通过 `VIDEO_DIR` 指定一个可读写的视频存储目录，否则视频上传与播放功能无法正常工作。
-
-## 常用接口
-
-大部分接口都需要在请求头中携带 JWT：
+大部分业务接口需要携带 JWT：
 
 ```text
 Authorization: Bearer <your_token>
 ```
 
-- `POST /user/register` 用户注册
-- `POST /user/login` 用户登录
-- `GET /user/profile` 获取当前用户信息
-- `POST /course/list` 获取课程列表
-- `GET /course/attend/{courseId}` 选课
-- `POST /behavior/record` 记录学习行为
-- `GET /recommend/hybrid` 获取融合推荐结果
-- `GET /analysis/progress` 获取学习进度分析
-- `GET /analysis/ability-radar` 获取能力雷达图
-- `GET /analysis/knowledge-graph` 获取知识图谱
+### 用户端
 
-## 文档
+- `POST /user/register`：注册
+- `POST /user/login`：登录
+- `GET /user/profile`：当前用户信息
+- `GET /course/{courseId}`：课程详情
+- `POST /course/list`：课程分页
+- `GET /course/categories`：课程分类
+- `GET /course/attend/{courseId}`：选课
+- `GET /course/video/{courseId}`：课程视频地址
+- `POST /course/relation/updateProgressSeconds`：更新学习进度
+- `POST /behavior/record`：记录学习行为
+- `GET /recommend/hybrid`：混合推荐
+- `GET /onboarding/options`：冷启动问卷选项
+- `POST /onboarding/submit`：提交冷启动问卷
+- `GET /onboarding/status`：冷启动状态
+- `GET /analysis/progress`：学习进度
+- `GET /analysis/ability-radar`：能力雷达图
+- `GET /analysis/knowledge-graph`：知识图谱
 
-- 详细操作手册见 [docs/OPERATION_MANUAL.md](./docs/OPERATION_MANUAL.md)
-- 前端仓库：`https://github.com/zxhysy2003/course-system-frontend`
-- 推荐服务仓库：`https://github.com/zxhysy2003/recommend_service`
+### 管理端
+
+- `POST /admin/user/list`：用户分页
+- `GET /admin/user/detail/{userId}`：用户详情
+- `PUT /admin/user/role/{userId}`：修改用户角色
+- `PUT /admin/user/status/{userId}`：修改用户状态
+- `PUT /admin/user/update`：更新用户信息
+- `DELETE /admin/user/delete`：删除用户
+- `GET /admin/course/register-options`：课程注册选项
+- `POST /admin/course/register`：新增课程
+- `PUT /admin/course/update`：更新课程
+- `DELETE /admin/course/delete`：删除课程
+- `POST /admin/course/{courseId}/video`：上传课程视频
+- `GET /admin/course/detail/{courseId}`：后台课程详情
+- `PUT /admin/course/status/{courseId}`：更新课程状态
+
+### 静态资源
+
+- `GET /videos/**`：访问课程视频文件
+
+## 联调说明
+
+完整系统建议按下面顺序启动：
+
+1. `backend/docker-compose.yml` 中的 MySQL、Redis、Neo4j
+2. `../recommend-service` FastAPI 推荐服务
+3. 当前 `backend` Spring Boot 服务
+4. `../frontend` Vite 前端服务
+
+前端默认将 `/api` 和 `/videos` 代理到 `http://localhost:8080`。如果后端端口发生变化，需要同步修改 `../frontend/vite.config.js`。
+
+## 常见问题
+
+### 后端启动后无法连接 MySQL
+
+检查 MySQL 容器是否启动、`course_db` 是否已初始化、账号密码是否与 `application.yaml` 一致，以及本机 `3306` 端口是否被其他服务占用。
+
+### Redis 认证失败
+
+Docker Compose 中 Redis 使用 `redis123` 作为密码。若使用本机 Redis，需要保证 `REDIS_PASSWORD` 与实际配置一致。
+
+### Neo4j 连接失败
+
+优先检查 `NEO4J_AUTH` 与后端 `NEO4J_USERNAME`、`NEO4J_PASSWORD` 是否一致。修改 Neo4j 认证方式后，通常需要重建 Neo4j 数据卷。
+
+### 推荐接口失败
+
+确认 `../recommend-service` 已启动，并且 `RECOMMEND_SERVICE_URL` 指向它的实际地址。默认推荐接口为 `POST /recommend`。
+
+### 视频无法上传或播放
+
+确认 `VIDEO_DIR` 存在且后端进程有读写权限，`FFPROBE_PATH` 指向可执行文件，`VIDEO_BASE_URL` 与后端实际访问地址一致。
+
+## 更多文档
+
+- 总操作手册：[`../docs/OPERATION_MANUAL.md`](../docs/OPERATION_MANUAL.md)
+- 前端说明：[`../frontend/README.md`](../frontend/README.md)
+- 推荐服务配置：[`../recommend-service/environment.yml`](../recommend-service/environment.yml)
 
 ## License
 
-本项目采用 MIT License 开源，具体内容请见仓库根目录下的 [LICENSE](./LICENSE) 文件。
-
-## 声明
-
-本项目为本人毕业设计项目，主要用于学习、课程设计展示与技术交流。
-
-项目中如涉及第三方框架、依赖库、图片、图标、数据集或其他资源，其版权归原作者或原版权方所有。相关内容的使用须遵循各自对应的许可证或使用条款。
+本后端服务采用 MIT License，详见根目录 [`../LICENSE`](../LICENSE)。
