@@ -2,7 +2,7 @@ package com.sy.course_system.config;
 
 import java.util.concurrent.ThreadPoolExecutor;
 
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -19,21 +19,16 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 @Configuration
 public class RecommendAsyncConfig {
 
-    @Value("${recommend.async.core-size:2}")
-    private int coreSize;
-
-    @Value("${recommend.async.max-size:4}")
-    private int maxSize;
-
-    @Value("${recommend.async.queue-capacity:100}")
-    private int queueCapacity;
+    @Autowired
+    private RecommendProperties recommendProperties;
 
     @Bean("recommendTaskExecutor")
     public ThreadPoolTaskExecutor recommendTaskExecutor() {
+        RecommendProperties.Async async = recommendProperties.getAsync();
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(coreSize);
-        executor.setMaxPoolSize(maxSize);
-        executor.setQueueCapacity(queueCapacity);
+        executor.setCorePoolSize(async.getCoreSize());
+        executor.setMaxPoolSize(async.getMaxSize());
+        executor.setQueueCapacity(async.getQueueCapacity());
         executor.setThreadNamePrefix("recommend-async-");
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         executor.setWaitForTasksToCompleteOnShutdown(true);

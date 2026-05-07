@@ -7,12 +7,12 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import com.sy.course_system.config.RecommendProperties;
 import com.sy.course_system.dto.course.CourseHotScoreDTO;
 import com.sy.course_system.mapper.CourseHotScoreMapper;
 
@@ -27,15 +27,12 @@ public class CourseHotScoreSyncService {
     @Autowired
     private CourseHotScoreMapper courseHotScoreMapper;
 
-    @Value("${recommend.hot-sync.enabled:true}")
-    private boolean enabled;
+    @Autowired
+    private RecommendProperties recommendProperties;
 
-    @Value("${recommend.hot-sync.batch-size:500}")
-    private int batchSize;
-
-    @Scheduled(fixedDelayString = "${recommend.hot-sync.fixed-delay-ms:300000}")
+    @Scheduled(fixedDelayString = "#{@recommendProperties.hotSync.fixedDelayMs}")
     public void syncOnce() {
-        if (!enabled) {
+        if (!recommendProperties.getHotSync().isEnabled()) {
             return;
         }
         try {
@@ -47,7 +44,7 @@ public class CourseHotScoreSyncService {
     }
 
     private List<CourseHotScoreDTO> loadHotScoresFromRedis() {
-        int safeBatchSize = Math.max(batchSize, 1);
+        int safeBatchSize = Math.max(recommendProperties.getHotSync().getBatchSize(), 1);
         List<CourseHotScoreDTO> hotScores = new ArrayList<>();
         int start = 0;
         while (true) {
@@ -98,7 +95,7 @@ public class CourseHotScoreSyncService {
             courseHotScoreMapper.deleteAllHotScores();
             return;
         }
-        int safeBatchSize = Math.max(batchSize, 1);
+        int safeBatchSize = Math.max(recommendProperties.getHotSync().getBatchSize(), 1);
         for (int start = 0; start < hotScores.size(); start += safeBatchSize) {
             int end = Math.min(start + safeBatchSize, hotScores.size());
             courseHotScoreMapper.upsertHotScores(hotScores.subList(start, end));

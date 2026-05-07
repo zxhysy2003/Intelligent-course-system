@@ -48,22 +48,50 @@ mybatis-plus:
     map-underscore-to-camel-case: true
 
 recommend:
+  # 常规 CF 推荐主链路配置
+  regular:
+    service-url: ${RECOMMEND_SERVICE_URL:http://localhost:8000}
+    connect-timeout-ms: ${RECOMMEND_CF_CONNECT_TIMEOUT_MS:5000}
+    read-timeout-ms: ${RECOMMEND_CF_READ_TIMEOUT_MS:30000}
+    request-top-n: ${RECOMMEND_CF_REQUEST_TOP_N:100}
+    cold-start-limit: ${RECOMMEND_COLD_START_LIMIT:10}
+    candidate-pool-size: ${RECOMMEND_CANDIDATE_POOL_SIZE:20}
+    cf-weight: ${RECOMMEND_CF_WEIGHT:0.70}
+  # 缓存与防击穿配置
+  cache:
+    cold-start-ttl-minutes: ${RECOMMEND_COLD_START_CACHE_TTL_MINUTES:10}
+    regular-ttl-minutes: ${RECOMMEND_CACHE_TTL_MINUTES:30}
+    build-lock-ttl-seconds: ${RECOMMEND_CACHE_BUILD_LOCK_TTL_SECONDS:20}
+    wait-retry-times: ${RECOMMEND_CACHE_WAIT_RETRY_TIMES:3}
+    wait-millis: ${RECOMMEND_CACHE_WAIT_MILLIS:80}
+    score-matrix-enabled: ${RECOMMEND_SCORE_MATRIX_CACHE_ENABLED:true}
+    score-matrix-ttl-minutes: ${RECOMMEND_SCORE_MATRIX_CACHE_TTL_MINUTES:2}
+    score-matrix-lock-ttl-seconds: ${RECOMMEND_SCORE_MATRIX_LOCK_TTL_SECONDS:20}
+    score-matrix-wait-retry-times: ${RECOMMEND_SCORE_MATRIX_WAIT_RETRY_TIMES:3}
+    score-matrix-wait-millis: ${RECOMMEND_SCORE_MATRIX_WAIT_MILLIS:80}
+  # 前端展示分映射配置
+  score:
+    base: ${RECOMMEND_SCORE_BASE:60}
+    span: ${RECOMMEND_SCORE_SPAN:35}
+    cold-start-user-scale: ${RECOMMEND_COLD_START_USER_SCORE_SCALE:10.0}
+    hot-fallback-base: ${RECOMMEND_HOT_FALLBACK_SCORE_BASE:0.70}
+    hot-fallback-step: ${RECOMMEND_HOT_FALLBACK_SCORE_STEP:0.03}
+    hot-fallback-min: ${RECOMMEND_HOT_FALLBACK_SCORE_MIN:0.55}
+  # 热门兜底召回配置
+  hot-fallback:
+    limit: ${RECOMMEND_HOT_FALLBACK_LIMIT:10}
+    max-scan-count: ${RECOMMEND_HOT_FALLBACK_MAX_SCAN_COUNT:100}
+  # 图谱补全配置
+  graph:
+    prerequisite-threshold: ${RECOMMEND_GRAPH_PREREQUISITE_THRESHOLD:0.7}
+    learning-path-limit-per-course: ${RECOMMEND_GRAPH_LEARNING_PATH_LIMIT_PER_COURSE:5}
   # 推荐主链路异步开关与线程池配置
   async:
     enabled: ${RECOMMEND_ASYNC_ENABLED:true}
     core-size: ${RECOMMEND_ASYNC_CORE_SIZE:2}
     max-size: ${RECOMMEND_ASYNC_MAX_SIZE:4}
     queue-capacity: ${RECOMMEND_ASYNC_QUEUE_CAPACITY:100}
-  service:
-    url: ${RECOMMEND_SERVICE_URL:http://localhost:8000}
-  # CF 服务调用超时（毫秒）
-  cf-service:
-    connect-timeout-ms: ${RECOMMEND_CF_CONNECT_TIMEOUT_MS:5000}
-    read-timeout-ms: ${RECOMMEND_CF_READ_TIMEOUT_MS:30000}
-    request-top-n: ${RECOMMEND_CF_REQUEST_TOP_N:100}
-  score-matrix-cache:
-    enabled: ${RECOMMEND_SCORE_MATRIX_CACHE_ENABLED:true}
-    ttl-minutes: ${RECOMMEND_SCORE_MATRIX_CACHE_TTL_MINUTES:2}
+  # Redis 热榜同步到数据库快照
   hot-sync:
     enabled: ${RECOMMEND_HOT_SYNC_ENABLED:true}
     fixed-delay-ms: ${RECOMMEND_HOT_SYNC_FIXED_DELAY_MS:300000}
@@ -77,16 +105,25 @@ recommend:
     window-days: ${RECOMMEND_NEW_COURSE_WINDOW_DAYS:14}
     # 新课候选池大小（服务层还会结合 limit 再做截断）
     candidate-limit: ${RECOMMEND_NEW_COURSE_CANDIDATE_LIMIT:80}
+    # 常规 CF 链路并行准备的新课候选数量
+    regular-candidate-limit: ${RECOMMEND_NEW_COURSE_REGULAR_CANDIDATE_LIMIT:30}
+    # CF 为空时最多使用的新课兜底数量
+    fallback-limit: ${RECOMMEND_NEW_COURSE_FALLBACK_LIMIT:10}
     # 新课人数上限：超过该值通常视为已进入常规课程阶段
     max-learners: ${RECOMMEND_NEW_COURSE_MAX_LEARNERS:20}
     # 单次最多注入的新课条数
     inject-limit: ${RECOMMEND_NEW_COURSE_INJECT_LIMIT:3}
     # 新课最大曝光占比，防止挤占 CF 主链路结果
     max-exposure-ratio: ${RECOMMEND_NEW_COURSE_MAX_EXPOSURE_RATIO:0.30}
+    # 固定注入槽位，0 表示列表开头
+    inject-slots: ${RECOMMEND_NEW_COURSE_INJECT_SLOTS:2,7,12}
     # 质量门槛：标签数 / 知识点数 / 时长下限
     min-tag-count: ${RECOMMEND_NEW_COURSE_MIN_TAG_COUNT:1}
     min-kp-count: ${RECOMMEND_NEW_COURSE_MIN_KP_COUNT:1}
     min-duration-seconds: ${RECOMMEND_NEW_COURSE_MIN_DURATION_SECONDS:300}
+    min-limit: ${RECOMMEND_NEW_COURSE_MIN_LIMIT:1}
+    max-limit: ${RECOMMEND_NEW_COURSE_MAX_LIMIT:50}
+    default-limit: ${RECOMMEND_NEW_COURSE_DEFAULT_LIMIT:10}
     # 评分权重：tagMatch + freshness + quality + readiness(可选补充)
     # 当前权重分布用于在“相关性优先”的前提下，为新课提供适度曝光并控制质量风险：
     # 1) tag-weight 最高（0.45），因为标签匹配是新课与用户兴趣对齐的主信号；
@@ -100,6 +137,10 @@ recommend:
     readiness-weight: ${RECOMMEND_NEW_COURSE_READINESS_WEIGHT:0.05}
     # readiness 批量计算时使用的先修掌握阈值
     readiness-threshold: ${RECOMMEND_NEW_COURSE_READINESS_THRESHOLD:0.7}
+    learning-goal-bonus: ${RECOMMEND_NEW_COURSE_LEARNING_GOAL_BONUS:0.05}
+    quality-kp-full-score-count: ${RECOMMEND_NEW_COURSE_QUALITY_KP_FULL_SCORE_COUNT:4.0}
+    quality-duration-full-score-seconds: ${RECOMMEND_NEW_COURSE_QUALITY_DURATION_FULL_SCORE_SECONDS:1800.0}
+    quality-kp-weight: ${RECOMMEND_NEW_COURSE_QUALITY_KP_WEIGHT:0.5}
 
 logging:
   level:

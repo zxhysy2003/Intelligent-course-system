@@ -21,6 +21,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.sy.course_system.config.RecommendProperties;
 import com.sy.course_system.dto.course.CourseHotScoreDTO;
 import com.sy.course_system.mapper.CourseHotScoreMapper;
 
@@ -37,10 +38,14 @@ class CourseHotScoreSyncServiceTest {
     @InjectMocks
     private CourseHotScoreSyncService syncService;
 
+    private RecommendProperties recommendProperties;
+
     @BeforeEach
     void setUp() {
-        ReflectionTestUtils.setField(syncService, "enabled", true);
-        ReflectionTestUtils.setField(syncService, "batchSize", 2);
+        recommendProperties = new RecommendProperties();
+        recommendProperties.getHotSync().setEnabled(true);
+        recommendProperties.getHotSync().setBatchSize(2);
+        ReflectionTestUtils.setField(syncService, "recommendProperties", recommendProperties);
     }
 
     @Test

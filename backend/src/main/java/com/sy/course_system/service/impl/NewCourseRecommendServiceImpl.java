@@ -12,9 +12,9 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import com.sy.course_system.config.RecommendProperties;
 import com.sy.course_system.dto.recommend.CourseReadinessDTO;
 import com.sy.course_system.dto.recommend.HybridRecommendItemDTO;
 import com.sy.course_system.dto.recommend.NewCourseBaseCandidateDTO;
@@ -24,6 +24,7 @@ import com.sy.course_system.entity.UserOnboardingProfile;
 import com.sy.course_system.mapper.CourseMapper;
 import com.sy.course_system.mapper.UserInterestTagMapper;
 import com.sy.course_system.mapper.UserOnboardingProfileMapper;
+import com.sy.course_system.recommend.RecommendSource;
 import com.sy.course_system.recommend.support.LearningGoalRuleSupport;
 import com.sy.course_system.repository.CourseGraphRepository;
 import com.sy.course_system.service.NewCourseRecommendService;
@@ -47,11 +48,6 @@ import com.sy.course_system.service.NewCourseRecommendService;
 public class NewCourseRecommendServiceImpl implements NewCourseRecommendService {
 
     private static final String INIT_SOURCE = "INIT";
-    private static final String SOURCE_COLD_START_COURSE = "COLD_START_COURSE";
-    private static final int MIN_LIMIT = 1;
-    private static final int MAX_LIMIT = 50;
-    private static final int DEFAULT_LIMIT = 10;
-    private static final double LEARNING_GOAL_BONUS = 0.05;
 
     @Autowired
     private CourseMapper courseMapper;
@@ -61,37 +57,8 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
     private UserOnboardingProfileMapper userOnboardingProfileMapper;
     @Autowired
     private CourseGraphRepository courseGraphRepository;
-
-    @Value("${recommend.new-course.window-days:14}")
-    private int windowDays;
-    @Value("${recommend.new-course.max-learners:20}")
-    private int maxLearners;
-    @Value("${recommend.new-course.min-tag-count:1}")
-    private int minTagCount;
-    @Value("${recommend.new-course.min-kp-count:1}")
-    private int minKpCount;
-    @Value("${recommend.new-course.min-duration-seconds:300}")
-    private int minDurationSeconds;
-    /**
-     * 候选池深度（不是最终返回条数）。
-     *
-     * 语义说明：
-     * - 该值用于“预召回”阶段，目的是先取到足够多的新课候选，给后续质量门槛过滤和打分留出余量；
-     * - 最终返回条数仍受 safeLimit 控制（见流末的 .limit(safeLimit)）。
-     */
-    @Value("${recommend.new-course.candidate-limit:80}")
-    private int candidateLimit;
-
-    @Value("${recommend.new-course.tag-weight:0.45}")
-    private double tagWeight;
-    @Value("${recommend.new-course.freshness-weight:0.30}")
-    private double freshnessWeight;
-    @Value("${recommend.new-course.quality-weight:0.20}")
-    private double qualityWeight;
-    @Value("${recommend.new-course.readiness-weight:0.05}")
-    private double readinessWeight;
-    @Value("${recommend.new-course.readiness-threshold:0.7}")
-    private double readinessThreshold;
+    @Autowired
+    private RecommendProperties recommendProperties;
 
     /**
      * 为常规用户生成新课候选列表。
@@ -107,8 +74,9 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
             throw new IllegalArgumentException("userId 不能为空");
         }
 
+        RecommendProperties.NewCourse config = recommendProperties.getNewCourse();
         int safeLimit = normalizeLimit(limit);
-        int safeWindowDays = Math.max(windowDays, 1);
+        int safeWindowDays = Math.max(config.getWindowDays(), 1);
         LocalDateTime publishedAfter = LocalDateTime.now().minusDays(safeWindowDays);
 
         // 这里使用 max(candidateLimit, safeLimit) 是有意设计：
@@ -118,7 +86,7 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
         // 因此默认配置下常取 candidateLimit（如 80），并不是 bug。
         List<NewCourseBaseCandidateDTO> baseCourses = courseMapper.selectOnlineNewCourseBaseCandidates(
                 publishedAfter,
-                Math.max(candidateLimit, safeLimit));
+                Math.max(Math.max(config.getCandidateLimit(), 0), safeLimit));
         if (baseCourses == null || baseCourses.isEmpty()) {
             return List.of();
         }
@@ -148,7 +116,7 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
             int kpCount = kpCountMap.getOrDefault(courseId, 0);
             int learnerCount = learnerCountMap.getOrDefault(courseId, 0);
             int duration = base.getDuration() == null ? 0 : base.getDuration();
-            if (!passesQualityGate(tagSnapshot.tagCount(), kpCount, duration, learnerCount)) {
+            if (!passesQualityGate(tagSnapshot.tagCount(), kpCount, duration, learnerCount, config)) {
                 continue;
             }
             qualityPassedCourses.add(new QualityPassedCourse(base, tagSnapshot, kpCount, learnerCount, duration));
@@ -169,7 +137,7 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
                 .distinct()
                 .toList();
         // readiness 只对最终会参与打分的新课有意义；缺失结果仍在打分处按既有规则回退为 1.0。
-        Map<Long, Double> readinessMap = loadReadinessMap(userId, qualityPassedCourseIds);
+        Map<Long, Double> readinessMap = loadReadinessMap(userId, qualityPassedCourseIds, config);
 
         List<ScoredNewCourse> scoredCourses = new ArrayList<>();
         for (QualityPassedCourse candidate : qualityPassedCourses) {
@@ -182,14 +150,14 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
             double tagMatch = tagSnapshot.calcTagMatch(userTagIds);
             long daysSincePublish = calcDaysSincePublish(base.getPublishTime(), safeWindowDays);
             double freshness = calcFreshness(daysSincePublish, safeWindowDays);
-            double quality = calcQuality(candidate.kpCount(), candidate.duration());
+            double quality = calcQuality(candidate.kpCount(), candidate.duration(), config);
             double readiness = readinessMap.getOrDefault(courseId, 1.0);
             boolean goalFit = LearningGoalRuleSupport.isGoalFit(
                     learningGoal,
                     base.getDifficulty(),
                     base.getTitle(),
                     tagSnapshot.tagNames());
-            double finalScore = calcFinalScore(tagMatch, freshness, quality, readiness, goalFit);
+            double finalScore = calcFinalScore(tagMatch, freshness, quality, readiness, goalFit, config);
 
             HybridRecommendItemDTO item = new HybridRecommendItemDTO();
             item.setCourseId(courseId);
@@ -199,7 +167,7 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
             item.setReadiness(readiness);
             item.setFinalScore(finalScore);
             item.setReason(buildReason(daysSincePublish, matchedTagNames, readiness, quality, goalFit, learningGoal));
-            item.setRecommendSource(SOURCE_COLD_START_COURSE);
+            item.setRecommendSource(RecommendSource.COLD_START_COURSE.code());
             item.setIsNewCourse(Boolean.TRUE);
             scoredCourses.add(new ScoredNewCourse(item, base.getPublishTime()));
         }
@@ -218,11 +186,14 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
      * 规范返回条数，防止过小或过大的 limit 影响服务稳定性。
      */
     private int normalizeLimit(Integer limit) {
+        RecommendProperties.NewCourse config = recommendProperties.getNewCourse();
+        int minLimit = Math.max(config.getMinLimit(), 1);
+        int maxLimit = Math.max(config.getMaxLimit(), minLimit);
         if (limit == null) {
-            return DEFAULT_LIMIT;
+            return Math.max(minLimit, Math.min(config.getDefaultLimit(), maxLimit));
         }
-        int safe = Math.max(limit, MIN_LIMIT);
-        return Math.min(safe, MAX_LIMIT);
+        int safe = Math.max(limit, minLimit);
+        return Math.min(safe, maxLimit);
     }
 
     /**
@@ -234,11 +205,12 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
      * - 时长下限：减少明显不完整的视频内容；
      * - 学习人数上限：限制已沉淀课程误入“新课池”。
      */
-    private boolean passesQualityGate(int tagCount, int kpCount, int duration, int learnerCount) {
-        return tagCount >= minTagCount
-                && kpCount >= minKpCount
-                && duration >= minDurationSeconds
-                && learnerCount <= maxLearners;
+    private boolean passesQualityGate(int tagCount, int kpCount, int duration, int learnerCount,
+            RecommendProperties.NewCourse config) {
+        return tagCount >= config.getMinTagCount()
+                && kpCount >= config.getMinKpCount()
+                && duration >= config.getMinDurationSeconds()
+                && learnerCount <= config.getMaxLearners();
     }
 
     /**
@@ -277,11 +249,12 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
      * - 若图谱层无结果，则返回空 map，调用方按默认 1.0 处理；
      * - readiness 为 null 的课程同样按 1.0 兜底，避免“无数据即惩罚”。
      */
-    private Map<Long, Double> loadReadinessMap(Long userId, List<Long> courseIds) {
+    private Map<Long, Double> loadReadinessMap(Long userId, List<Long> courseIds,
+            RecommendProperties.NewCourse config) {
         List<CourseReadinessDTO> readinessList = courseGraphRepository.getCourseReadinessBatch(
                 userId,
                 courseIds,
-                readinessThreshold);
+                config.getReadinessThreshold());
         if (readinessList == null || readinessList.isEmpty()) {
             return Map.of();
         }
@@ -320,14 +293,15 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
     /**
      * 内容质量分：使用知识点数量与课程时长做简化归一化估计。
      *
-     * 第一版按等权聚合，保持策略简单可解释，便于后续替换为更细粒度质量模型。
+     * 默认按知识点数量与课程时长等权聚合，权重和满分阈值可通过配置调整。
      */
-    private double calcQuality(int kpCount, int durationSeconds) {
-        // TODO: 需要进一步解释为什么知识点数量和课程时长被选为质量指标，以及是否考虑引入其他维度（如课程评分、评论数等）来丰富质量评估。
-        double kpQuality = Math.min(1.0, kpCount / 4.0);
-        // TODO: 需要进一步解释为什么 30 分钟（1800 秒）被选为“优质内容”的:时长阈值，以及是否需要区分课程类型（如实操课可能更长，理论课可能更短）。
-        double durationQuality = Math.min(1.0, durationSeconds / 1800.0);
-        return 0.5 * kpQuality + 0.5 * durationQuality;
+    private double calcQuality(int kpCount, int durationSeconds, RecommendProperties.NewCourse config) {
+        double kpFullScoreCount = Math.max(config.getQualityKpFullScoreCount(), 1.0);
+        double durationFullScoreSeconds = Math.max(config.getQualityDurationFullScoreSeconds(), 1.0);
+        double kpWeight = Math.max(0.0, Math.min(1.0, config.getQualityKpWeight()));
+        double kpQuality = Math.min(1.0, kpCount / kpFullScoreCount);
+        double durationQuality = Math.min(1.0, durationSeconds / durationFullScoreSeconds);
+        return kpWeight * kpQuality + (1 - kpWeight) * durationQuality;
     }
 
     /**
@@ -337,10 +311,10 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
      * 后续如果继续增加分数修正因子，应优先收口到这里，避免在候选循环里零散改写 finalScore。
      */
     private double calcFinalScore(double tagMatch, double freshness, double quality, double readiness,
-            boolean goalFit) {
-        double score = calcWeightedScore(tagMatch, freshness, quality, readiness);
+            boolean goalFit, RecommendProperties.NewCourse config) {
+        double score = calcWeightedScore(tagMatch, freshness, quality, readiness, config);
         if (goalFit) {
-            return Math.min(1.0, score + LEARNING_GOAL_BONUS);
+            return Math.min(1.0, score + config.getLearningGoalBonus());
         }
         return score;
     }
@@ -352,11 +326,12 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
      * - 权重为负会被截断为 0；
      * - 总权重为 0 时返回 0，避免除零并显式暴露配置异常。
      */
-    private double calcWeightedScore(double tagMatch, double freshness, double quality, double readiness) {
-        double safeTagWeight = Math.max(0.0, tagWeight);
-        double safeFreshnessWeight = Math.max(0.0, freshnessWeight);
-        double safeQualityWeight = Math.max(0.0, qualityWeight);
-        double safeReadinessWeight = Math.max(0.0, readinessWeight);
+    private double calcWeightedScore(double tagMatch, double freshness, double quality, double readiness,
+            RecommendProperties.NewCourse config) {
+        double safeTagWeight = Math.max(0.0, config.getTagWeight());
+        double safeFreshnessWeight = Math.max(0.0, config.getFreshnessWeight());
+        double safeQualityWeight = Math.max(0.0, config.getQualityWeight());
+        double safeReadinessWeight = Math.max(0.0, config.getReadinessWeight());
         double totalWeight = safeTagWeight + safeFreshnessWeight + safeQualityWeight + safeReadinessWeight;
         if (totalWeight <= 0) {
             return 0.0;

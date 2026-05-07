@@ -26,6 +26,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.sy.course_system.config.RecommendProperties;
 import com.sy.course_system.dto.recommend.CourseReadinessDTO;
 import com.sy.course_system.dto.recommend.HybridRecommendItemDTO;
 import com.sy.course_system.dto.recommend.NewCourseBaseCandidateDTO;
@@ -53,19 +54,23 @@ class NewCourseRecommendServiceImplTest {
     @InjectMocks
     private NewCourseRecommendServiceImpl newCourseRecommendService;
 
+    private RecommendProperties recommendProperties;
+
     @BeforeEach
     void setUp() {
-        ReflectionTestUtils.setField(newCourseRecommendService, "windowDays", 14);
-        ReflectionTestUtils.setField(newCourseRecommendService, "maxLearners", 20);
-        ReflectionTestUtils.setField(newCourseRecommendService, "minTagCount", 1);
-        ReflectionTestUtils.setField(newCourseRecommendService, "minKpCount", 1);
-        ReflectionTestUtils.setField(newCourseRecommendService, "minDurationSeconds", 300);
-        ReflectionTestUtils.setField(newCourseRecommendService, "candidateLimit", 10);
-        ReflectionTestUtils.setField(newCourseRecommendService, "tagWeight", 0.45d);
-        ReflectionTestUtils.setField(newCourseRecommendService, "freshnessWeight", 0.30d);
-        ReflectionTestUtils.setField(newCourseRecommendService, "qualityWeight", 0.20d);
-        ReflectionTestUtils.setField(newCourseRecommendService, "readinessWeight", 0.05d);
-        ReflectionTestUtils.setField(newCourseRecommendService, "readinessThreshold", 0.7d);
+        recommendProperties = new RecommendProperties();
+        recommendProperties.getNewCourse().setWindowDays(14);
+        recommendProperties.getNewCourse().setMaxLearners(20);
+        recommendProperties.getNewCourse().setMinTagCount(1);
+        recommendProperties.getNewCourse().setMinKpCount(1);
+        recommendProperties.getNewCourse().setMinDurationSeconds(300);
+        recommendProperties.getNewCourse().setCandidateLimit(10);
+        recommendProperties.getNewCourse().setTagWeight(0.45d);
+        recommendProperties.getNewCourse().setFreshnessWeight(0.30d);
+        recommendProperties.getNewCourse().setQualityWeight(0.20d);
+        recommendProperties.getNewCourse().setReadinessWeight(0.05d);
+        recommendProperties.getNewCourse().setReadinessThreshold(0.7d);
+        ReflectionTestUtils.setField(newCourseRecommendService, "recommendProperties", recommendProperties);
     }
 
     @Test
@@ -154,7 +159,7 @@ class NewCourseRecommendServiceImplTest {
 
     @Test
     void recommendForRegularUserShouldNormalizeLimitAndUseMaxOfCandidateLimitAndSafeLimit() {
-        ReflectionTestUtils.setField(newCourseRecommendService, "candidateLimit", 2);
+        recommendProperties.getNewCourse().setCandidateLimit(2);
         List<NewCourseBaseCandidateDTO> baseCourses = buildBulkBaseCourses(60, LocalDateTime.now().minusHours(1));
         when(courseMapper.selectOnlineNewCourseBaseCandidates(any(LocalDateTime.class), anyInt())).thenReturn(baseCourses);
         when(courseMapper.selectCourseTagRowsByCourseIds(anyList())).thenReturn(buildBulkTagRows(60));
@@ -181,11 +186,11 @@ class NewCourseRecommendServiceImplTest {
 
     @Test
     void recommendForRegularUserShouldUseFreshnessThenCourseIdForTieBreaks() {
-        ReflectionTestUtils.setField(newCourseRecommendService, "tagWeight", 0.0d);
-        ReflectionTestUtils.setField(newCourseRecommendService, "freshnessWeight", 1.0d);
-        ReflectionTestUtils.setField(newCourseRecommendService, "qualityWeight", 0.0d);
-        ReflectionTestUtils.setField(newCourseRecommendService, "readinessWeight", 0.0d);
-        ReflectionTestUtils.setField(newCourseRecommendService, "candidateLimit", 10);
+        recommendProperties.getNewCourse().setTagWeight(0.0d);
+        recommendProperties.getNewCourse().setFreshnessWeight(1.0d);
+        recommendProperties.getNewCourse().setQualityWeight(0.0d);
+        recommendProperties.getNewCourse().setReadinessWeight(0.0d);
+        recommendProperties.getNewCourse().setCandidateLimit(10);
 
         LocalDateTime now = LocalDateTime.now();
         when(courseMapper.selectOnlineNewCourseBaseCandidates(any(LocalDateTime.class), eq(10))).thenReturn(List.of(
@@ -264,10 +269,10 @@ class NewCourseRecommendServiceImplTest {
 
     @Test
     void recommendForRegularUserShouldReturnZeroWhenAllWeightsAreNonPositive() {
-        ReflectionTestUtils.setField(newCourseRecommendService, "tagWeight", -1.0d);
-        ReflectionTestUtils.setField(newCourseRecommendService, "freshnessWeight", -1.0d);
-        ReflectionTestUtils.setField(newCourseRecommendService, "qualityWeight", -1.0d);
-        ReflectionTestUtils.setField(newCourseRecommendService, "readinessWeight", -1.0d);
+        recommendProperties.getNewCourse().setTagWeight(-1.0d);
+        recommendProperties.getNewCourse().setFreshnessWeight(-1.0d);
+        recommendProperties.getNewCourse().setQualityWeight(-1.0d);
+        recommendProperties.getNewCourse().setReadinessWeight(-1.0d);
 
         when(courseMapper.selectOnlineNewCourseBaseCandidates(any(LocalDateTime.class), eq(10))).thenReturn(List.of(
                 baseCourse(201L, "零权重新课", 1, 1800, LocalDateTime.now().minusDays(1))));

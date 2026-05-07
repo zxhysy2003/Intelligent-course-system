@@ -25,6 +25,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sy.course_system.config.RecommendProperties;
 import com.sy.course_system.dto.recommend.RecommendRequestDTO;
 import com.sy.course_system.dto.recommend.RecommendResponseDTO;
 import com.sy.course_system.dto.recommend.UserCourseScoreDTO;
@@ -43,17 +44,20 @@ class CfRecommendClientTest {
     private ValueOperations<String, Object> valueOperations;
 
     private ObjectMapper objectMapper = new ObjectMapper();
+    private RecommendProperties recommendProperties;
 
     @InjectMocks
     private CfRecommendClient cfRecommendClient;
 
     @BeforeEach
     void setUp() {
-        ReflectionTestUtils.setField(cfRecommendClient, "recommendServiceUrl", "http://recommend-service");
-        ReflectionTestUtils.setField(cfRecommendClient, "scoreMatrixCacheEnabled", true);
-        ReflectionTestUtils.setField(cfRecommendClient, "scoreMatrixCacheTtlMinutes", 2L);
-        ReflectionTestUtils.setField(cfRecommendClient, "requestTopN", 100);
+        recommendProperties = new RecommendProperties();
+        recommendProperties.getRegular().setServiceUrl("http://recommend-service");
+        recommendProperties.getCache().setScoreMatrixEnabled(true);
+        recommendProperties.getCache().setScoreMatrixTtlMinutes(2L);
+        recommendProperties.getRegular().setRequestTopN(100);
         ReflectionTestUtils.setField(cfRecommendClient, "objectMapper", objectMapper);
+        ReflectionTestUtils.setField(cfRecommendClient, "recommendProperties", recommendProperties);
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
     }
 
@@ -118,7 +122,7 @@ class CfRecommendClientTest {
     void recommendShouldBypassRedisWhenScoreMatrixCacheDisabled() {
         List<UserCourseScoreDTO> scores = List.of(score(1L, 10L, 0.8d));
         RecommendResponseDTO response = new RecommendResponseDTO();
-        ReflectionTestUtils.setField(cfRecommendClient, "scoreMatrixCacheEnabled", false);
+        recommendProperties.getCache().setScoreMatrixEnabled(false);
         when(learningBehaviorService.listAggregatedScores()).thenReturn(scores);
         when(restTemplate.postForObject(eq("http://recommend-service/recommend"), any(RecommendRequestDTO.class),
                 eq(RecommendResponseDTO.class))).thenReturn(response);
@@ -150,7 +154,7 @@ class CfRecommendClientTest {
     void recommendShouldUseInjectedRequestTopN() {
         List<UserCourseScoreDTO> scores = List.of(score(1L, 10L, 0.8d));
         RecommendResponseDTO response = new RecommendResponseDTO();
-        ReflectionTestUtils.setField(cfRecommendClient, "requestTopN", 50);
+        recommendProperties.getRegular().setRequestTopN(50);
         when(learningBehaviorService.listAggregatedScores()).thenReturn(scores);
         when(restTemplate.postForObject(eq("http://recommend-service/recommend"), any(RecommendRequestDTO.class),
                 eq(RecommendResponseDTO.class))).thenReturn(response);

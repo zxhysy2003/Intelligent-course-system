@@ -37,6 +37,12 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sy.course_system.client.CfRecommendClient;
+import com.sy.course_system.config.RecommendProperties;
+import com.sy.course_system.recommend.HotFallbackRecommendService;
+import com.sy.course_system.recommend.NewCourseInjector;
+import com.sy.course_system.recommend.RecommendGraphEnricher;
+import com.sy.course_system.recommend.RecommendResultCache;
+import com.sy.course_system.recommend.RecommendScoreNormalizer;
 import com.sy.course_system.dto.graph.CourseKnowledgePointDTO;
 import com.sy.course_system.dto.recommend.CourseReadinessDTO;
 import com.sy.course_system.dto.recommend.HybridRecommendItemDTO;
@@ -84,19 +90,45 @@ class HybridRecommendServiceImplTest {
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper();
 
+    private RecommendProperties recommendProperties;
+
     @InjectMocks
     private HybridRecommendServiceImpl hybridRecommendService;
 
     @BeforeEach
     void setUp() {
-        // 测试统一打开新课推荐，并把注入限制调成"容易观察"的配置，
-        // 这样不同用例都能稳定验证"新课注入是否影响最终顺序与展示分"。
-        ReflectionTestUtils.setField(hybridRecommendService, "newCourseRecommendEnabled", true);
-        ReflectionTestUtils.setField(hybridRecommendService, "newCourseInjectLimit", 2);
-        ReflectionTestUtils.setField(hybridRecommendService, "newCourseMaxExposureRatio", 1.0d);
+        recommendProperties = new RecommendProperties();
+        recommendProperties.getNewCourse().setInjectLimit(2);
+        recommendProperties.getNewCourse().setMaxExposureRatio(1.0d);
+        recommendProperties.getAsync().setEnabled(false);
+        ReflectionTestUtils.setField(hybridRecommendService, "recommendProperties", recommendProperties);
+
+        // 注入新课组件：手工创建实例并设定配置值，与默认配置等价。
+        NewCourseInjector newCourseInjector = new NewCourseInjector();
+        ReflectionTestUtils.setField(newCourseInjector, "recommendProperties", recommendProperties);
+        ReflectionTestUtils.setField(hybridRecommendService, "newCourseInjector", newCourseInjector);
+        // 注入缓存、热门兜底组件。
+        RecommendScoreNormalizer scoreNormalizer = new RecommendScoreNormalizer();
+        ReflectionTestUtils.setField(scoreNormalizer, "recommendProperties", recommendProperties);
+        RecommendResultCache recommendResultCache = new RecommendResultCache();
+        ReflectionTestUtils.setField(recommendResultCache, "redisTemplate", redisTemplate);
+        ReflectionTestUtils.setField(recommendResultCache, "objectMapper", objectMapper);
+        ReflectionTestUtils.setField(recommendResultCache, "scoreNormalizer", scoreNormalizer);
+        ReflectionTestUtils.setField(recommendResultCache, "recommendProperties", recommendProperties);
+        ReflectionTestUtils.setField(hybridRecommendService, "recommendResultCache", recommendResultCache);
+        HotFallbackRecommendService hotFallbackRecommendService = new HotFallbackRecommendService();
+        ReflectionTestUtils.setField(hotFallbackRecommendService, "learningAnalysisService", learningAnalysisService);
+        ReflectionTestUtils.setField(hotFallbackRecommendService, "courseService", courseService);
+        ReflectionTestUtils.setField(hotFallbackRecommendService, "recommendProperties", recommendProperties);
+        ReflectionTestUtils.setField(hybridRecommendService, "hotFallbackRecommendService", hotFallbackRecommendService);
+        RecommendGraphEnricher enricher = new RecommendGraphEnricher();
+        ReflectionTestUtils.setField(enricher, "courseGraphRepository", courseGraphRepository);
+        ReflectionTestUtils.setField(enricher, "neo4jClient", neo4jClient);
+        ReflectionTestUtils.setField(enricher, "recommendTaskExecutor", recommendTaskExecutor);
+        ReflectionTestUtils.setField(enricher, "recommendProperties", recommendProperties);
+        ReflectionTestUtils.setField(hybridRecommendService, "recommendGraphEnricher", enricher);
         // 默认走串行路径，让现有测试断言不受异步执行调度影响；
         // 异步分支由专用测试用例在启用 asyncEnabled 后单独验证。
-        ReflectionTestUtils.setField(hybridRecommendService, "asyncEnabled", false);
 
         // 缓存与 Neo4j 查询不是本测试关注点时，统一给出宽松默认桩，
         // 每个用例只覆盖自己真正关心的分支，避免样板 stub 淹没断言重点。
@@ -282,6 +314,33 @@ class HybridRecommendServiceImplTest {
     }
 
     @Test
+    void recommendShouldNormalizeNegativeCfScoresByActualRange() {
+        // CF 分数可能整体落在负区间，归一化仍必须使用真实 [min,max]，
+        // 否则高 CF/低 readiness 的课程会被错误压到低 CF/高 readiness 后面。
+        when(coldStartSupportService.isColdStartUser(7L)).thenReturn(false);
+        when(valueOperations.get("recommend:user:7")).thenReturn((Object) null, (Object) null);
+        when(valueOperations.setIfAbsent("recommend:lock:user:7", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
+        when(cfRecommendClient.recommend(7L)).thenReturn(recommendResponseDto(List.of(
+                cfItem(10L, -0.2d),
+                cfItem(11L, -0.8d))));
+        when(newCourseRecommendService.recommendForRegularUser(7L, 30)).thenReturn(List.of());
+        when(courseService.getRecommendCourseSummaryMapByIds(List.of(10L, 11L))).thenReturn(Map.of(
+                10L, courseSummary(10L, "负分高 CF", "cover-10", 1),
+                11L, courseSummary(11L, "负分低 CF", "cover-11", 1)));
+        when(courseGraphRepository.getCourseReadinessBatch(7L, List.of(10L, 11L), 0.7d)).thenReturn(List.of(
+                readiness(10L, 0.2d),
+                readiness(11L, 1.0d)));
+
+        HybridRecommendResponseDTO result = hybridRecommendService.recommend(7L);
+
+        assertEquals(List.of(10L, 11L), result.getItems().stream().map(HybridRecommendItemDTO::getCourseId).toList());
+        assertEquals(0.76d, result.getItems().get(0).getFinalScore(), 1e-6);
+        assertEquals(0.3d, result.getItems().get(1).getFinalScore(), 1e-6);
+        assertEquals(List.of(87, 71),
+                result.getItems().stream().map(HybridRecommendItemDTO::getRecommendScore).toList());
+    }
+
+    @Test
     void recommendShouldBatchLoadKnowledgePointsAndKeepMissingCoursesEmpty() {
         ColdStartRecommendItemVO first = coldStartItem(100L, "课程 A", 1, 0.9d, "匹配兴趣标签：Java");
         ColdStartRecommendItemVO second = coldStartItem(200L, "课程 B", 1, 0.8d, "兜底");
@@ -374,7 +433,7 @@ class HybridRecommendServiceImplTest {
     void recommendShouldProduceSameResultWhenAsyncEnabledForRegularPath() {
         // 开启异步后，executor 在当前线程同步执行，CF + 新课候选的并行结果
         // 必须与串行路径完全一致：包括排序、新课插槽注入和展示分。
-        ReflectionTestUtils.setField(hybridRecommendService, "asyncEnabled", true);
+        recommendProperties.getAsync().setEnabled(true);
 
         HybridRecommendItemDTO newCourse = hybridItem(4L, "新课注入");
         newCourse.setRecommendSource("COLD_START_COURSE");
@@ -424,7 +483,7 @@ class HybridRecommendServiceImplTest {
     void recommendShouldProduceSameResultWhenAsyncEnabledForColdStartPath() {
         // 冷启动分支也通过 enrichGraphInfo 做图谱补全；异步开启后 exec 同步执行，
         // 需保证 readiness 补查、知识点、学习路径的填充结果与串行路径一致。
-        ReflectionTestUtils.setField(hybridRecommendService, "asyncEnabled", true);
+        recommendProperties.getAsync().setEnabled(true);
 
         ColdStartRecommendItemVO first = coldStartItem(100L, "课程 A", 1, 0.9d, "匹配兴趣标签：Java");
         ColdStartRecommendItemVO second = coldStartItem(200L, "课程 B", 1, 0.8d, "兜底");
@@ -448,8 +507,8 @@ class HybridRecommendServiceImplTest {
     void recommendShouldNotCallNewCourseRecommendWhenNewCourseDisabledEvenIfAsyncEnabled() {
         // 新课开关关闭时，即使 asyncEnabled=true，也不创建异步任务，
         // 直接使用 List.of() 保持当前行为。
-        ReflectionTestUtils.setField(hybridRecommendService, "asyncEnabled", true);
-        ReflectionTestUtils.setField(hybridRecommendService, "newCourseRecommendEnabled", false);
+        recommendProperties.getAsync().setEnabled(true);
+        recommendProperties.getNewCourse().setEnabled(false);
 
         when(coldStartSupportService.isColdStartUser(3L)).thenReturn(false);
         when(valueOperations.get("recommend:user:3")).thenReturn((Object) null, (Object) null);
