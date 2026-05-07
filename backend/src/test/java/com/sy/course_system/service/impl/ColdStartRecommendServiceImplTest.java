@@ -10,9 +10,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.stream.IntStream;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -33,8 +33,13 @@ class ColdStartRecommendServiceImplTest {
     @Mock
     private CourseMapper courseMapper;
 
-    @InjectMocks
     private ColdStartRecommendServiceImpl coldStartRecommendService;
+
+    @BeforeEach
+    void setUp() {
+        coldStartRecommendService = new ColdStartRecommendServiceImpl(userOnboardingProfileMapper,
+                userInterestTagMapper, courseMapper);
+    }
 
     @Test
     void recommendShouldThrowWhenUserIdIsNull() {

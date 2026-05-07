@@ -13,13 +13,11 @@ import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.DefaultTypedTuple;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.sy.course_system.config.RecommendProperties;
 import com.sy.course_system.dto.course.CourseHotScoreDTO;
@@ -35,7 +33,6 @@ class CourseHotScoreSyncServiceTest {
     @Mock
     private CourseHotScoreMapper courseHotScoreMapper;
 
-    @InjectMocks
     private CourseHotScoreSyncService syncService;
 
     private RecommendProperties recommendProperties;
@@ -45,7 +42,7 @@ class CourseHotScoreSyncServiceTest {
         recommendProperties = new RecommendProperties();
         recommendProperties.getHotSync().setEnabled(true);
         recommendProperties.getHotSync().setBatchSize(2);
-        ReflectionTestUtils.setField(syncService, "recommendProperties", recommendProperties);
+        syncService = new CourseHotScoreSyncService(redisTemplate, courseHotScoreMapper, recommendProperties);
     }
 
     @Test

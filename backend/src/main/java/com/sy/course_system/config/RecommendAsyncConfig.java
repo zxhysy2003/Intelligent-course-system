@@ -2,7 +2,6 @@ package com.sy.course_system.config;
 
 import java.util.concurrent.ThreadPoolExecutor;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -19,8 +18,11 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 @Configuration
 public class RecommendAsyncConfig {
 
-    @Autowired
-    private RecommendProperties recommendProperties;
+    private final RecommendProperties recommendProperties;
+
+    public RecommendAsyncConfig(RecommendProperties recommendProperties) {
+        this.recommendProperties = recommendProperties;
+    }
 
     @Bean("recommendTaskExecutor")
     public ThreadPoolTaskExecutor recommendTaskExecutor() {

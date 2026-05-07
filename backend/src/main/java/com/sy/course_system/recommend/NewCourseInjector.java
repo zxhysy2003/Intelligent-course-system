@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import com.sy.course_system.config.RecommendProperties;
@@ -24,8 +23,11 @@ import com.sy.course_system.dto.recommend.HybridRecommendItemDTO;
 @Component
 public class NewCourseInjector {
 
-    @Autowired
-    private RecommendProperties recommendProperties;
+    private final RecommendProperties recommendProperties;
+
+    public NewCourseInjector(RecommendProperties recommendProperties) {
+        this.recommendProperties = recommendProperties;
+    }
 
     public boolean isEnabled() {
         return recommendProperties.getNewCourse().isEnabled();

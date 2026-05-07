@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.sy.course_system.dto.coldstart.ColdStartCourseCandidateDTO;
@@ -41,12 +40,17 @@ public class ColdStartRecommendServiceImpl implements ColdStartRecommendService 
     /** learningGoal 命中时的小幅加权。 */
     private static final double LEARNING_GOAL_BONUS = 1.5;
 
-    @Autowired
-    private UserOnboardingProfileMapper userOnboardingProfileMapper;
-    @Autowired
-    private UserInterestTagMapper userInterestTagMapper;
-    @Autowired
-    private CourseMapper courseMapper;
+    private final UserOnboardingProfileMapper userOnboardingProfileMapper;
+    private final UserInterestTagMapper userInterestTagMapper;
+    private final CourseMapper courseMapper;
+
+    public ColdStartRecommendServiceImpl(UserOnboardingProfileMapper userOnboardingProfileMapper,
+            UserInterestTagMapper userInterestTagMapper,
+            CourseMapper courseMapper) {
+        this.userOnboardingProfileMapper = userOnboardingProfileMapper;
+        this.userInterestTagMapper = userInterestTagMapper;
+        this.courseMapper = courseMapper;
+    }
 
     /**
      * 生成冷启动推荐结果。

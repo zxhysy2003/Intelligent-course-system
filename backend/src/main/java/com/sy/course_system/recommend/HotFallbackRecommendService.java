@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.sy.course_system.config.RecommendProperties;
@@ -27,12 +26,17 @@ import com.sy.course_system.service.LearningAnalysisService;
 @Service
 public class HotFallbackRecommendService {
 
-    @Autowired
-    private LearningAnalysisService learningAnalysisService;
-    @Autowired
-    private CourseService courseService;
-    @Autowired
-    private RecommendProperties recommendProperties;
+    private final LearningAnalysisService learningAnalysisService;
+    private final CourseService courseService;
+    private final RecommendProperties recommendProperties;
+
+    public HotFallbackRecommendService(LearningAnalysisService learningAnalysisService,
+            CourseService courseService,
+            RecommendProperties recommendProperties) {
+        this.learningAnalysisService = learningAnalysisService;
+        this.courseService = courseService;
+        this.recommendProperties = recommendProperties;
+    }
 
     public List<HybridRecommendItemDTO> buildHotFallbackItems() {
         List<HybridRecommendItemDTO> results = new ArrayList<>();

@@ -13,10 +13,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mapstruct.factory.Mappers;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,18 +35,13 @@ class RecommendControllerTest {
     @Mock
     private HybridRecommendService hybridRecommendService;
 
-    @InjectMocks
     private RecommendController recommendController;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
-        // 控制器层测试只关心“DTO 是否在边界被正确裁剪成 VO”，
-        // 因此直接注入真实 MapStruct 实现，避免把映射行为也 mock 掉。
-        ReflectionTestUtils.setField(
-                recommendController,
-                "hybridRecommendMapperStruct",
+        recommendController = new RecommendController(hybridRecommendService,
                 Mappers.getMapper(HybridRecommendMapperStruct.class));
         UserContext.set(new UserInfo(1L, "tester", "USER"));
     }

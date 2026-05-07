@@ -11,7 +11,6 @@ import java.util.concurrent.Executor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
@@ -47,30 +46,18 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
 
     private static final Logger log = LoggerFactory.getLogger(HybridRecommendServiceImpl.class);
 
-    @Autowired
-    private CfRecommendClient cfRecommendClient;
-    @Autowired
-    private CourseGraphRepository courseGraphRepository;
-    @Autowired
-    private CourseService courseService;
-    @Autowired
-    private ColdStartSupportService coldStartSupportService;
-    @Autowired
-    private ColdStartRecommendService coldStartRecommendService;
-    @Autowired
-    private NewCourseRecommendService newCourseRecommendService;
-    @Autowired
-    private UserCourseService userCourseService;
-    @Autowired
-    private NewCourseInjector newCourseInjector;
-    @Autowired
-    private RecommendResultCache recommendResultCache;
-    @Autowired
-    private HotFallbackRecommendService hotFallbackRecommendService;
-    @Autowired
-    private RecommendGraphEnricher recommendGraphEnricher;
-    @Autowired
-    private RecommendProperties recommendProperties;
+    private final CfRecommendClient cfRecommendClient;
+    private final CourseGraphRepository courseGraphRepository;
+    private final CourseService courseService;
+    private final ColdStartSupportService coldStartSupportService;
+    private final ColdStartRecommendService coldStartRecommendService;
+    private final NewCourseRecommendService newCourseRecommendService;
+    private final UserCourseService userCourseService;
+    private final NewCourseInjector newCourseInjector;
+    private final RecommendResultCache recommendResultCache;
+    private final HotFallbackRecommendService hotFallbackRecommendService;
+    private final RecommendGraphEnricher recommendGraphEnricher;
+    private final RecommendProperties recommendProperties;
 
     private static final String RECOMMEND_COURSE_KEY = "recommend:user:";
     private static final String RECOMMEND_COLD_START_KEY = "recommend:cold:user:";
@@ -80,9 +67,35 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     private static final String ASYNC_INTERRUPTED_MSG = "推荐异步执行被中断";
     private static final String GRAPH_ASYNC_INTERRUPTED_MSG = "图谱补全异步执行被中断";
 
-    @Autowired
-    @Qualifier("recommendTaskExecutor")
-    private Executor recommendTaskExecutor;
+    private final Executor recommendTaskExecutor;
+
+    public HybridRecommendServiceImpl(CfRecommendClient cfRecommendClient,
+            CourseGraphRepository courseGraphRepository,
+            CourseService courseService,
+            ColdStartSupportService coldStartSupportService,
+            ColdStartRecommendService coldStartRecommendService,
+            NewCourseRecommendService newCourseRecommendService,
+            UserCourseService userCourseService,
+            NewCourseInjector newCourseInjector,
+            RecommendResultCache recommendResultCache,
+            HotFallbackRecommendService hotFallbackRecommendService,
+            RecommendGraphEnricher recommendGraphEnricher,
+            RecommendProperties recommendProperties,
+            @Qualifier("recommendTaskExecutor") Executor recommendTaskExecutor) {
+        this.cfRecommendClient = cfRecommendClient;
+        this.courseGraphRepository = courseGraphRepository;
+        this.courseService = courseService;
+        this.coldStartSupportService = coldStartSupportService;
+        this.coldStartRecommendService = coldStartRecommendService;
+        this.newCourseRecommendService = newCourseRecommendService;
+        this.userCourseService = userCourseService;
+        this.newCourseInjector = newCourseInjector;
+        this.recommendResultCache = recommendResultCache;
+        this.hotFallbackRecommendService = hotFallbackRecommendService;
+        this.recommendGraphEnricher = recommendGraphEnricher;
+        this.recommendProperties = recommendProperties;
+        this.recommendTaskExecutor = recommendTaskExecutor;
+    }
 
     /**
      * 融合推荐主入口。

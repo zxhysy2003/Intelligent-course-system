@@ -1,6 +1,5 @@
 package com.sy.course_system.controller.client;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -15,10 +14,14 @@ import com.sy.course_system.vo.HybridRecommendResponseVO;
 @RequestMapping("/recommend")
 public class RecommendController {
 
-    @Autowired
-    private HybridRecommendService hybridRecommendService;
-    @Autowired
-    private HybridRecommendMapperStruct hybridRecommendMapperStruct;
+    private final HybridRecommendService hybridRecommendService;
+    private final HybridRecommendMapperStruct hybridRecommendMapperStruct;
+
+    public RecommendController(HybridRecommendService hybridRecommendService,
+            HybridRecommendMapperStruct hybridRecommendMapperStruct) {
+        this.hybridRecommendService = hybridRecommendService;
+        this.hybridRecommendMapperStruct = hybridRecommendMapperStruct;
+    }
 
     @GetMapping("/hybrid")
     public Result<HybridRecommendResponseVO> hybridRecommend() {

@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.neo4j.core.Neo4jClient;
 import org.springframework.stereotype.Component;
@@ -39,15 +38,20 @@ public class RecommendGraphEnricher {
 
     private static final String GRAPH_ASYNC_INTERRUPTED_MSG = "图谱补全异步执行被中断";
 
-    @Autowired
-    private CourseGraphRepository courseGraphRepository;
-    @Autowired
-    private Neo4jClient neo4jClient;
-    @Autowired
-    @Qualifier("recommendTaskExecutor")
-    private Executor recommendTaskExecutor;
-    @Autowired
-    private RecommendProperties recommendProperties;
+    private final CourseGraphRepository courseGraphRepository;
+    private final Neo4jClient neo4jClient;
+    private final Executor recommendTaskExecutor;
+    private final RecommendProperties recommendProperties;
+
+    public RecommendGraphEnricher(CourseGraphRepository courseGraphRepository,
+            Neo4jClient neo4jClient,
+            @Qualifier("recommendTaskExecutor") Executor recommendTaskExecutor,
+            RecommendProperties recommendProperties) {
+        this.courseGraphRepository = courseGraphRepository;
+        this.neo4jClient = neo4jClient;
+        this.recommendTaskExecutor = recommendTaskExecutor;
+        this.recommendProperties = recommendProperties;
+    }
 
     public void enrichGraphInfo(Long userId, List<HybridRecommendItemDTO> items,
             Map<Long, CourseReadinessDTO> readinessMap) {

@@ -11,7 +11,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.sy.course_system.config.RecommendProperties;
@@ -30,10 +29,10 @@ import com.sy.course_system.repository.CourseGraphRepository;
 import com.sy.course_system.service.NewCourseRecommendService;
 
 /**
- * 新课冷启动推荐实现（仅作用于“常规用户”推荐链路）。
+ * 新课冷启动推荐实现（仅作用于”常规用户”推荐链路）。
  *
  * 设计约束：
- * 1) 不改动用户冷启动分支，只在常规推荐中提供“新课候选补充”能力。
+ * 1) 不改动用户冷启动分支，只在常规推荐中提供”新课候选补充”能力。
  * 2) SQL 采用分层查询：先拉课程基础信息，再按 courseIds 补查标签与统计数据，避免大 join。
  * 3) 第一版评分聚焦 tagMatch / freshness / quality，readiness 作为可复用的轻量补充信号。
  *
@@ -49,16 +48,23 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
 
     private static final String INIT_SOURCE = "INIT";
 
-    @Autowired
-    private CourseMapper courseMapper;
-    @Autowired
-    private UserInterestTagMapper userInterestTagMapper;
-    @Autowired
-    private UserOnboardingProfileMapper userOnboardingProfileMapper;
-    @Autowired
-    private CourseGraphRepository courseGraphRepository;
-    @Autowired
-    private RecommendProperties recommendProperties;
+    private final CourseMapper courseMapper;
+    private final UserInterestTagMapper userInterestTagMapper;
+    private final UserOnboardingProfileMapper userOnboardingProfileMapper;
+    private final CourseGraphRepository courseGraphRepository;
+    private final RecommendProperties recommendProperties;
+
+    public NewCourseRecommendServiceImpl(CourseMapper courseMapper,
+            UserInterestTagMapper userInterestTagMapper,
+            UserOnboardingProfileMapper userOnboardingProfileMapper,
+            CourseGraphRepository courseGraphRepository,
+            RecommendProperties recommendProperties) {
+        this.courseMapper = courseMapper;
+        this.userInterestTagMapper = userInterestTagMapper;
+        this.userOnboardingProfileMapper = userOnboardingProfileMapper;
+        this.courseGraphRepository = courseGraphRepository;
+        this.recommendProperties = recommendProperties;
+    }
 
     /**
      * 为常规用户生成新课候选列表。

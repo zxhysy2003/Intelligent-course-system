@@ -6,7 +6,6 @@ import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -21,14 +20,17 @@ public class CourseHotScoreSyncService {
     private static final Logger log = LoggerFactory.getLogger(CourseHotScoreSyncService.class);
     private static final String HOT_COURSE_KEY = "course:hot";
 
-    @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final CourseHotScoreMapper courseHotScoreMapper;
+    private final RecommendProperties recommendProperties;
 
-    @Autowired
-    private CourseHotScoreMapper courseHotScoreMapper;
-
-    @Autowired
-    private RecommendProperties recommendProperties;
+    public CourseHotScoreSyncService(RedisTemplate<String, Object> redisTemplate,
+            CourseHotScoreMapper courseHotScoreMapper,
+            RecommendProperties recommendProperties) {
+        this.redisTemplate = redisTemplate;
+        this.courseHotScoreMapper = courseHotScoreMapper;
+        this.recommendProperties = recommendProperties;
+    }
 
     @Scheduled(fixedDelayString = "#{@recommendProperties.hotSync.fixedDelayMs}")
     public void syncOnce() {

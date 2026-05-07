@@ -26,14 +26,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.neo4j.core.Neo4jClient;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sy.course_system.client.CfRecommendClient;
@@ -92,7 +90,6 @@ class HybridRecommendServiceImplTest {
 
     private RecommendProperties recommendProperties;
 
-    @InjectMocks
     private HybridRecommendServiceImpl hybridRecommendService;
 
     @BeforeEach
@@ -101,34 +98,30 @@ class HybridRecommendServiceImplTest {
         recommendProperties.getNewCourse().setInjectLimit(2);
         recommendProperties.getNewCourse().setMaxExposureRatio(1.0d);
         recommendProperties.getAsync().setEnabled(false);
-        ReflectionTestUtils.setField(hybridRecommendService, "recommendProperties", recommendProperties);
 
-        // 注入新课组件：手工创建实例并设定配置值，与默认配置等价。
-        NewCourseInjector newCourseInjector = new NewCourseInjector();
-        ReflectionTestUtils.setField(newCourseInjector, "recommendProperties", recommendProperties);
-        ReflectionTestUtils.setField(hybridRecommendService, "newCourseInjector", newCourseInjector);
-        // 注入缓存、热门兜底组件。
-        RecommendScoreNormalizer scoreNormalizer = new RecommendScoreNormalizer();
-        ReflectionTestUtils.setField(scoreNormalizer, "recommendProperties", recommendProperties);
-        RecommendResultCache recommendResultCache = new RecommendResultCache();
-        ReflectionTestUtils.setField(recommendResultCache, "redisTemplate", redisTemplate);
-        ReflectionTestUtils.setField(recommendResultCache, "objectMapper", objectMapper);
-        ReflectionTestUtils.setField(recommendResultCache, "scoreNormalizer", scoreNormalizer);
-        ReflectionTestUtils.setField(recommendResultCache, "recommendProperties", recommendProperties);
-        ReflectionTestUtils.setField(hybridRecommendService, "recommendResultCache", recommendResultCache);
-        HotFallbackRecommendService hotFallbackRecommendService = new HotFallbackRecommendService();
-        ReflectionTestUtils.setField(hotFallbackRecommendService, "learningAnalysisService", learningAnalysisService);
-        ReflectionTestUtils.setField(hotFallbackRecommendService, "courseService", courseService);
-        ReflectionTestUtils.setField(hotFallbackRecommendService, "recommendProperties", recommendProperties);
-        ReflectionTestUtils.setField(hybridRecommendService, "hotFallbackRecommendService", hotFallbackRecommendService);
-        RecommendGraphEnricher enricher = new RecommendGraphEnricher();
-        ReflectionTestUtils.setField(enricher, "courseGraphRepository", courseGraphRepository);
-        ReflectionTestUtils.setField(enricher, "neo4jClient", neo4jClient);
-        ReflectionTestUtils.setField(enricher, "recommendTaskExecutor", recommendTaskExecutor);
-        ReflectionTestUtils.setField(enricher, "recommendProperties", recommendProperties);
-        ReflectionTestUtils.setField(hybridRecommendService, "recommendGraphEnricher", enricher);
-        // 默认走串行路径，让现有测试断言不受异步执行调度影响；
-        // 异步分支由专用测试用例在启用 asyncEnabled 后单独验证。
+        NewCourseInjector newCourseInjector = new NewCourseInjector(recommendProperties);
+        RecommendScoreNormalizer scoreNormalizer = new RecommendScoreNormalizer(recommendProperties);
+        RecommendResultCache recommendResultCache = new RecommendResultCache(redisTemplate, objectMapper, scoreNormalizer,
+                recommendProperties);
+        HotFallbackRecommendService hotFallbackRecommendService = new HotFallbackRecommendService(learningAnalysisService,
+                courseService, recommendProperties);
+        RecommendGraphEnricher enricher = new RecommendGraphEnricher(courseGraphRepository, neo4jClient,
+                recommendTaskExecutor, recommendProperties);
+
+        hybridRecommendService = new HybridRecommendServiceImpl(
+                cfRecommendClient,
+                courseGraphRepository,
+                courseService,
+                coldStartSupportService,
+                coldStartRecommendService,
+                newCourseRecommendService,
+                userCourseService,
+                newCourseInjector,
+                recommendResultCache,
+                hotFallbackRecommendService,
+                enricher,
+                recommendProperties,
+                recommendTaskExecutor);
 
         // 缓存与 Neo4j 查询不是本测试关注点时，统一给出宽松默认桩，
         // 每个用例只覆盖自己真正关心的分支，避免样板 stub 淹没断言重点。

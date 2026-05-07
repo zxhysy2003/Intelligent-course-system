@@ -5,7 +5,6 @@ import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
@@ -34,20 +33,23 @@ public class CfRecommendClient {
     private static final TypeReference<List<UserCourseScoreDTO>> SCORE_MATRIX_TYPE = new TypeReference<>() {
     };
 
-    @Autowired
-    private RestTemplate restTemplate;
+    private final RestTemplate restTemplate;
+    private final LearningBehaviorService learningBehaviorService;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final ObjectMapper objectMapper;
+    private final RecommendProperties recommendProperties;
 
-    @Autowired
-    private LearningBehaviorService learningBehaviorService;
-
-    @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
-
-    @Autowired
-    private ObjectMapper objectMapper;
-
-    @Autowired
-    private RecommendProperties recommendProperties;
+    public CfRecommendClient(RestTemplate restTemplate,
+            LearningBehaviorService learningBehaviorService,
+            RedisTemplate<String, Object> redisTemplate,
+            ObjectMapper objectMapper,
+            RecommendProperties recommendProperties) {
+        this.restTemplate = restTemplate;
+        this.learningBehaviorService = learningBehaviorService;
+        this.redisTemplate = redisTemplate;
+        this.objectMapper = objectMapper;
+        this.recommendProperties = recommendProperties;
+    }
 
     public RecommendResponseDTO recommend(Long userId) {
 

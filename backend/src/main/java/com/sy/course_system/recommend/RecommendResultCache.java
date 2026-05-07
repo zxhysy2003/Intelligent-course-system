@@ -3,7 +3,6 @@ package com.sy.course_system.recommend;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -25,14 +24,20 @@ import com.sy.course_system.dto.recommend.HybridRecommendResponseDTO;
 @Component
 public class RecommendResultCache {
 
-    @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
-    @Autowired
-    private ObjectMapper objectMapper;
-    @Autowired
-    private RecommendScoreNormalizer scoreNormalizer;
-    @Autowired
-    private RecommendProperties recommendProperties;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final ObjectMapper objectMapper;
+    private final RecommendScoreNormalizer scoreNormalizer;
+    private final RecommendProperties recommendProperties;
+
+    public RecommendResultCache(RedisTemplate<String, Object> redisTemplate,
+            ObjectMapper objectMapper,
+            RecommendScoreNormalizer scoreNormalizer,
+            RecommendProperties recommendProperties) {
+        this.redisTemplate = redisTemplate;
+        this.objectMapper = objectMapper;
+        this.scoreNormalizer = scoreNormalizer;
+        this.recommendProperties = recommendProperties;
+    }
 
     /**
      * 先读缓存，未命中时通过短锁防击穿后回源构建并写缓存。

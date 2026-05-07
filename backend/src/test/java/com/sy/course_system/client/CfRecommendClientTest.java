@@ -16,12 +16,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -46,7 +44,6 @@ class CfRecommendClientTest {
     private ObjectMapper objectMapper = new ObjectMapper();
     private RecommendProperties recommendProperties;
 
-    @InjectMocks
     private CfRecommendClient cfRecommendClient;
 
     @BeforeEach
@@ -56,8 +53,8 @@ class CfRecommendClientTest {
         recommendProperties.getCache().setScoreMatrixEnabled(true);
         recommendProperties.getCache().setScoreMatrixTtlMinutes(2L);
         recommendProperties.getRegular().setRequestTopN(100);
-        ReflectionTestUtils.setField(cfRecommendClient, "objectMapper", objectMapper);
-        ReflectionTestUtils.setField(cfRecommendClient, "recommendProperties", recommendProperties);
+        cfRecommendClient = new CfRecommendClient(restTemplate, learningBehaviorService, redisTemplate,
+                objectMapper, recommendProperties);
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
     }
 

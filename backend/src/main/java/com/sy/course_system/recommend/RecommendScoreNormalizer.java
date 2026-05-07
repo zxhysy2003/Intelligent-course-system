@@ -2,7 +2,6 @@ package com.sy.course_system.recommend;
 
 import java.util.List;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import com.sy.course_system.config.RecommendProperties;
@@ -12,7 +11,7 @@ import com.sy.course_system.dto.recommend.HybridRecommendResponseDTO;
 /**
  * 展示分归一化组件：将不同推荐来源的内部打分统一映射到同一展示区间。
  *
- * 这里刻意把“后端排序分”和“前端展示分”拆开：
+ * 这里刻意把”后端排序分”和”前端展示分”拆开：
  * - finalScore 继续服务排序，不要求不同推荐来源天然同分布；
  * - recommendScore 只服务前端展示，统一落在中高位区间，表达相对推荐度。
  *
@@ -29,8 +28,11 @@ import com.sy.course_system.dto.recommend.HybridRecommendResponseDTO;
 @Component
 public class RecommendScoreNormalizer {
 
-    @Autowired
-    private RecommendProperties recommendProperties;
+    private final RecommendProperties recommendProperties;
+
+    public RecommendScoreNormalizer(RecommendProperties recommendProperties) {
+        this.recommendProperties = recommendProperties;
+    }
 
     /**
      * 给整批推荐结果补齐展示分。

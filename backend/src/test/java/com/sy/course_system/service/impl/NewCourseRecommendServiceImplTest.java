@@ -21,10 +21,8 @@ import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.sy.course_system.config.RecommendProperties;
 import com.sy.course_system.dto.recommend.CourseReadinessDTO;
@@ -51,7 +49,6 @@ class NewCourseRecommendServiceImplTest {
     @Mock
     private CourseGraphRepository courseGraphRepository;
 
-    @InjectMocks
     private NewCourseRecommendServiceImpl newCourseRecommendService;
 
     private RecommendProperties recommendProperties;
@@ -70,7 +67,8 @@ class NewCourseRecommendServiceImplTest {
         recommendProperties.getNewCourse().setQualityWeight(0.20d);
         recommendProperties.getNewCourse().setReadinessWeight(0.05d);
         recommendProperties.getNewCourse().setReadinessThreshold(0.7d);
-        ReflectionTestUtils.setField(newCourseRecommendService, "recommendProperties", recommendProperties);
+        newCourseRecommendService = new NewCourseRecommendServiceImpl(courseMapper, userInterestTagMapper,
+                userOnboardingProfileMapper, courseGraphRepository, recommendProperties);
     }
 
     @Test
