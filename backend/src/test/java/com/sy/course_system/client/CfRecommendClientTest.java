@@ -1,4 +1,4 @@
-package com.sy.course_system.service.impl;
+package com.sy.course_system.client;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -31,7 +31,7 @@ import com.sy.course_system.dto.recommend.UserCourseScoreDTO;
 import com.sy.course_system.service.LearningBehaviorService;
 
 @ExtendWith(MockitoExtension.class)
-class RecommendServiceImplTest {
+class CfRecommendClientTest {
 
     @Mock
     private RestTemplate restTemplate;
@@ -45,15 +45,15 @@ class RecommendServiceImplTest {
     private ObjectMapper objectMapper = new ObjectMapper();
 
     @InjectMocks
-    private RecommendServiceImpl recommendService;
+    private CfRecommendClient cfRecommendClient;
 
     @BeforeEach
     void setUp() {
-        ReflectionTestUtils.setField(recommendService, "recommendServiceUrl", "http://recommend-service");
-        ReflectionTestUtils.setField(recommendService, "scoreMatrixCacheEnabled", true);
-        ReflectionTestUtils.setField(recommendService, "scoreMatrixCacheTtlMinutes", 2L);
-        ReflectionTestUtils.setField(recommendService, "requestTopN", 100);
-        ReflectionTestUtils.setField(recommendService, "objectMapper", objectMapper);
+        ReflectionTestUtils.setField(cfRecommendClient, "recommendServiceUrl", "http://recommend-service");
+        ReflectionTestUtils.setField(cfRecommendClient, "scoreMatrixCacheEnabled", true);
+        ReflectionTestUtils.setField(cfRecommendClient, "scoreMatrixCacheTtlMinutes", 2L);
+        ReflectionTestUtils.setField(cfRecommendClient, "requestTopN", 100);
+        ReflectionTestUtils.setField(cfRecommendClient, "objectMapper", objectMapper);
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
     }
 
@@ -65,7 +65,7 @@ class RecommendServiceImplTest {
         when(restTemplate.postForObject(eq("http://recommend-service/recommend"), any(RecommendRequestDTO.class),
                 eq(RecommendResponseDTO.class))).thenReturn(response);
 
-        recommendService.recommend(1L);
+        cfRecommendClient.recommend(1L);
 
         RecommendRequestDTO request = captureRequest();
         assertEquals(1L, request.getTargetUserId());
@@ -85,7 +85,7 @@ class RecommendServiceImplTest {
         when(restTemplate.postForObject(eq("http://recommend-service/recommend"), any(RecommendRequestDTO.class),
                 eq(RecommendResponseDTO.class))).thenReturn(response);
 
-        recommendService.recommend(1L);
+        cfRecommendClient.recommend(1L);
 
         RecommendRequestDTO request = captureRequest();
         assertScore(request.getData().get(0), 1L, 10L, 0.8d);
@@ -104,7 +104,7 @@ class RecommendServiceImplTest {
         when(restTemplate.postForObject(eq("http://recommend-service/recommend"), any(RecommendRequestDTO.class),
                 eq(RecommendResponseDTO.class))).thenReturn(response);
 
-        recommendService.recommend(1L);
+        cfRecommendClient.recommend(1L);
 
         RecommendRequestDTO request = captureRequest();
         assertEquals(1, request.getData().size());
@@ -118,12 +118,12 @@ class RecommendServiceImplTest {
     void recommendShouldBypassRedisWhenScoreMatrixCacheDisabled() {
         List<UserCourseScoreDTO> scores = List.of(score(1L, 10L, 0.8d));
         RecommendResponseDTO response = new RecommendResponseDTO();
-        ReflectionTestUtils.setField(recommendService, "scoreMatrixCacheEnabled", false);
+        ReflectionTestUtils.setField(cfRecommendClient, "scoreMatrixCacheEnabled", false);
         when(learningBehaviorService.listAggregatedScores()).thenReturn(scores);
         when(restTemplate.postForObject(eq("http://recommend-service/recommend"), any(RecommendRequestDTO.class),
                 eq(RecommendResponseDTO.class))).thenReturn(response);
 
-        recommendService.recommend(1L);
+        cfRecommendClient.recommend(1L);
 
         RecommendRequestDTO request = captureRequest();
         assertScore(request.getData().get(0), 1L, 10L, 0.8d);
@@ -139,7 +139,7 @@ class RecommendServiceImplTest {
         when(restTemplate.postForObject(eq("http://recommend-service/recommend"), any(RecommendRequestDTO.class),
                 eq(RecommendResponseDTO.class))).thenReturn(response);
 
-        recommendService.recommend(1L);
+        cfRecommendClient.recommend(1L);
 
         RecommendRequestDTO request = captureRequest();
         assertScore(request.getData().get(0), 1L, 10L, 0.8d);
@@ -150,12 +150,12 @@ class RecommendServiceImplTest {
     void recommendShouldUseInjectedRequestTopN() {
         List<UserCourseScoreDTO> scores = List.of(score(1L, 10L, 0.8d));
         RecommendResponseDTO response = new RecommendResponseDTO();
-        ReflectionTestUtils.setField(recommendService, "requestTopN", 50);
+        ReflectionTestUtils.setField(cfRecommendClient, "requestTopN", 50);
         when(learningBehaviorService.listAggregatedScores()).thenReturn(scores);
         when(restTemplate.postForObject(eq("http://recommend-service/recommend"), any(RecommendRequestDTO.class),
                 eq(RecommendResponseDTO.class))).thenReturn(response);
 
-        recommendService.recommend(1L);
+        cfRecommendClient.recommend(1L);
 
         RecommendRequestDTO request = captureRequest();
         assertEquals(50, request.getTopN());

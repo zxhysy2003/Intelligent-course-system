@@ -1,4 +1,4 @@
-package com.sy.course_system.service.impl;
+package com.sy.course_system.client;
 
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -8,7 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -17,12 +17,17 @@ import com.sy.course_system.dto.recommend.RecommendRequestDTO;
 import com.sy.course_system.dto.recommend.RecommendResponseDTO;
 import com.sy.course_system.dto.recommend.UserCourseScoreDTO;
 import com.sy.course_system.service.LearningBehaviorService;
-import com.sy.course_system.service.RecommendService;
 
-@Service
-public class RecommendServiceImpl implements RecommendService {
+/**
+ * 外部协同过滤推荐服务客户端。
+ *
+ * 负责准备 CF 服务请求所需的评分矩阵快照，并封装 HTTP 调用细节；
+ * 推荐融合、过滤和图谱解释仍由 HybridRecommendServiceImpl 负责。
+ */
+@Component
+public class CfRecommendClient {
 
-    private static final Logger log = LoggerFactory.getLogger(RecommendServiceImpl.class);
+    private static final Logger log = LoggerFactory.getLogger(CfRecommendClient.class);
 
     private static final String SCORE_MATRIX_CACHE_KEY = "recommend:score-matrix";
     private static final String SCORE_MATRIX_LOCK_KEY = "recommend:score-matrix:lock";
@@ -56,12 +61,11 @@ public class RecommendServiceImpl implements RecommendService {
     @Value("${recommend.cf-service.request-top-n:100}")
     private int requestTopN;
 
-    @Override
     public RecommendResponseDTO recommend(Long userId) {
 
         List<UserCourseScoreDTO> scoreList = loadScoreMatrixSnapshot();
 
-        // 3. 调用推荐服务
+        // 调用外部 CF 推荐服务。
         RecommendRequestDTO request = new RecommendRequestDTO();
         request.setTargetUserId(userId);
         request.setData(scoreList);

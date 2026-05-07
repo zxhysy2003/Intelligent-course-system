@@ -24,6 +24,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sy.course_system.client.CfRecommendClient;
 import com.sy.course_system.common.util.ConcurrentUtils;
 import com.sy.course_system.dto.graph.CourseKnowledgePointDTO;
 import com.sy.course_system.dto.recommend.CourseReadinessDTO;
@@ -39,7 +40,6 @@ import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.HybridRecommendService;
 import com.sy.course_system.service.LearningAnalysisService;
 import com.sy.course_system.service.NewCourseRecommendService;
-import com.sy.course_system.service.RecommendService;
 import com.sy.course_system.service.UserCourseService;
 import com.sy.course_system.vo.ColdStartRecommendItemVO;
 import com.sy.course_system.vo.KnowledgeMasteryVO;
@@ -62,7 +62,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     private static final Logger log = LoggerFactory.getLogger(HybridRecommendServiceImpl.class);
 
     @Autowired
-    private RecommendService recommendService;
+    private CfRecommendClient cfRecommendClient;
     @Autowired
     private CourseGraphRepository courseGraphRepository;
     @Autowired
@@ -229,14 +229,14 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
         // 异步开关开启且新课开关也开启时，CF 与新课候选并行执行，减少串行 IO 等待。
         if (asyncEnabled && newCourseRecommendEnabled) {
             CompletableFuture<RecommendResponseDTO> cfFuture = CompletableFuture.supplyAsync(
-                    () -> recommendService.recommend(userId), recommendTaskExecutor);
+                    () -> cfRecommendClient.recommend(userId), recommendTaskExecutor);
             CompletableFuture<List<HybridRecommendItemDTO>> ncFuture = CompletableFuture.supplyAsync(
                     () -> newCourseRecommendService.recommendForRegularUser(userId, NEW_COURSE_CANDIDATE_LIMIT),
                     recommendTaskExecutor);
             cfResp = ConcurrentUtils.await(cfFuture, ASYNC_INTERRUPTED_MSG);
             newCourseCandidates = ConcurrentUtils.await(ncFuture, ASYNC_INTERRUPTED_MSG);
         } else {
-            cfResp = recommendService.recommend(userId);
+            cfResp = cfRecommendClient.recommend(userId);
             newCourseCandidates = newCourseRecommendEnabled
                     ? newCourseRecommendService.recommendForRegularUser(userId, NEW_COURSE_CANDIDATE_LIMIT)
                     : List.of();
