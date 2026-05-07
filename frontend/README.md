@@ -46,7 +46,6 @@
 - Element Plus Icons
 - Axios
 - ECharts 6
-- Windi CSS
 - jwt-decode
 
 ## 目录结构

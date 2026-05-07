@@ -40,6 +40,10 @@
                         <el-icon><Star /></el-icon>
                         <span>推荐</span>
                     </el-menu-item>
+                    <el-menu-item index="/onboarding">
+                        <el-icon><Collection /></el-icon>
+                        <span>学习偏好</span>
+                    </el-menu-item>
                     <el-menu-item index="/dashboard">
                         <el-icon><DataAnalysis /></el-icon>
                         <span>学习进度</span>
@@ -89,7 +93,7 @@
 import { ref, computed } from "vue"
 import { useUserStore } from "../store/user"
 import { useRouter } from "vue-router"
-import { Document, Star, DataAnalysis, MagicStick, User, UserFilled, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
+import { Document, Star, DataAnalysis, MagicStick, User, UserFilled, ArrowLeft, ArrowRight, Collection } from '@element-plus/icons-vue'
 
 
 const userStore = useUserStore();

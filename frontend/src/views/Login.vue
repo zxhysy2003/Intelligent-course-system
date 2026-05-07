@@ -49,10 +49,12 @@ import { reactive, ref } from "vue"
 import { useRouter } from "vue-router"
 import { login } from "../api/user"
 import { useUserStore } from "../store/user"
+import { useOnboardingStore } from "../store/onboarding"
 import { logger } from "../utils/logger"
 
 const router = useRouter();
 const userStore = useUserStore();
+const onboardingStore = useOnboardingStore();
 const formRef = ref(null);
 const submitting = ref(false);
 
@@ -85,6 +87,7 @@ const doLogin = async () => {
         const token = res.data.data;
         
         userStore.setToken(token);
+        onboardingStore.reset();
         logger.success("登录成功");
         router.push("/");
     } catch (error) {
