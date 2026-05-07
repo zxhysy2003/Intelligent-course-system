@@ -45,3 +45,6 @@ logs/
 /recommend-service/.ruff_cache/
 /recommend-service/htmlcov/
 /recommend-service/.coverage
+backend/PLAN.md
+frontend/PLAN.md
+recommend-service/PLAN.md
