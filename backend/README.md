@@ -260,8 +260,30 @@ java -jar target/course-system-0.0.1-SNAPSHOT.jar
 | `RECOMMEND_SERVICE_URL` | FastAPI 推荐服务地址 | `http://localhost:8000` |
 | `RECOMMEND_CF_CONNECT_TIMEOUT_MS` | 推荐服务连接超时 | `5000` |
 | `RECOMMEND_CF_READ_TIMEOUT_MS` | 推荐服务读取超时 | `30000` |
+| `RECOMMEND_CF_REQUEST_TOP_N` | CF 服务候选返回数量 | `100` |
+| `RECOMMEND_COLD_START_LIMIT` | 用户冷启动推荐数量 | `10` |
+| `RECOMMEND_CANDIDATE_POOL_SIZE` | 常规推荐候选池大小 | `20` |
+| `RECOMMEND_CF_WEIGHT` | CF 分数融合权重 | `0.70` |
+| `RECOMMEND_COLD_START_CACHE_TTL_MINUTES` | 冷启动推荐缓存时间，单位分钟 | `10` |
+| `RECOMMEND_CACHE_TTL_MINUTES` | 常规推荐缓存时间，单位分钟 | `30` |
+| `RECOMMEND_CACHE_BUILD_LOCK_TTL_SECONDS` | 推荐缓存构建锁时间，单位秒 | `20` |
+| `RECOMMEND_CACHE_WAIT_RETRY_TIMES` | 推荐缓存等待重试次数 | `3` |
+| `RECOMMEND_CACHE_WAIT_MILLIS` | 推荐缓存每次等待时间，单位毫秒 | `80` |
 | `RECOMMEND_SCORE_MATRIX_CACHE_ENABLED` | 评分矩阵缓存开关 | `true` |
 | `RECOMMEND_SCORE_MATRIX_CACHE_TTL_MINUTES` | 评分矩阵缓存时间 | `2` |
+| `RECOMMEND_SCORE_MATRIX_LOCK_TTL_SECONDS` | 评分矩阵构建锁时间，单位秒 | `20` |
+| `RECOMMEND_SCORE_MATRIX_WAIT_RETRY_TIMES` | 评分矩阵缓存等待重试次数 | `3` |
+| `RECOMMEND_SCORE_MATRIX_WAIT_MILLIS` | 评分矩阵缓存每次等待时间，单位毫秒 | `80` |
+| `RECOMMEND_SCORE_BASE` | 推荐展示分基础值 | `60` |
+| `RECOMMEND_SCORE_SPAN` | 推荐展示分跨度 | `35` |
+| `RECOMMEND_COLD_START_USER_SCORE_SCALE` | 用户冷启动展示分缩放系数 | `10.0` |
+| `RECOMMEND_HOT_FALLBACK_SCORE_BASE` | 热门兜底展示分基础值 | `0.70` |
+| `RECOMMEND_HOT_FALLBACK_SCORE_STEP` | 热门兜底展示分递减步长 | `0.03` |
+| `RECOMMEND_HOT_FALLBACK_SCORE_MIN` | 热门兜底展示分下限 | `0.55` |
+| `RECOMMEND_HOT_FALLBACK_LIMIT` | 热门兜底推荐数量 | `10` |
+| `RECOMMEND_HOT_FALLBACK_MAX_SCAN_COUNT` | 热门兜底最大扫描数量 | `100` |
+| `RECOMMEND_GRAPH_PREREQUISITE_THRESHOLD` | 图谱先修掌握阈值 | `0.7` |
+| `RECOMMEND_GRAPH_LEARNING_PATH_LIMIT_PER_COURSE` | 单课程学习路径数量 | `5` |
 | `RECOMMEND_ASYNC_ENABLED` | 混合推荐异步执行开关 | `true` |
 | `RECOMMEND_ASYNC_CORE_SIZE` | 推荐线程池核心线程数 | `2` |
 | `RECOMMEND_ASYNC_MAX_SIZE` | 推荐线程池最大线程数 | `4` |
@@ -272,17 +294,27 @@ java -jar target/course-system-0.0.1-SNAPSHOT.jar
 | `RECOMMEND_NEW_COURSE_ENABLED` | 常规推荐中新课曝光开关 | `true` |
 | `RECOMMEND_NEW_COURSE_WINDOW_DAYS` | 新课时间窗 | `14` |
 | `RECOMMEND_NEW_COURSE_CANDIDATE_LIMIT` | 新课候选池大小 | `80` |
+| `RECOMMEND_NEW_COURSE_REGULAR_CANDIDATE_LIMIT` | 常规推荐新课候选数量 | `30` |
+| `RECOMMEND_NEW_COURSE_FALLBACK_LIMIT` | CF 为空时新课兜底数量 | `10` |
 | `RECOMMEND_NEW_COURSE_MAX_LEARNERS` | 新课学习人数上限 | `20` |
 | `RECOMMEND_NEW_COURSE_INJECT_LIMIT` | 单次最多注入新课数量 | `3` |
 | `RECOMMEND_NEW_COURSE_MAX_EXPOSURE_RATIO` | 新课最大曝光占比 | `0.30` |
+| `RECOMMEND_NEW_COURSE_INJECT_SLOTS` | 新课注入槽位 | `2,7,12` |
 | `RECOMMEND_NEW_COURSE_MIN_TAG_COUNT` | 新课标签数量下限 | `1` |
 | `RECOMMEND_NEW_COURSE_MIN_KP_COUNT` | 新课知识点数量下限 | `1` |
 | `RECOMMEND_NEW_COURSE_MIN_DURATION_SECONDS` | 新课时长下限，单位秒 | `300` |
+| `RECOMMEND_NEW_COURSE_MIN_LIMIT` | 新课推荐最小返回数量 | `1` |
+| `RECOMMEND_NEW_COURSE_MAX_LIMIT` | 新课推荐最大返回数量 | `50` |
+| `RECOMMEND_NEW_COURSE_DEFAULT_LIMIT` | 新课推荐默认返回数量 | `10` |
 | `RECOMMEND_NEW_COURSE_TAG_WEIGHT` | 新课标签匹配权重 | `0.45` |
 | `RECOMMEND_NEW_COURSE_FRESHNESS_WEIGHT` | 新课新鲜度权重 | `0.30` |
 | `RECOMMEND_NEW_COURSE_QUALITY_WEIGHT` | 新课质量权重 | `0.20` |
 | `RECOMMEND_NEW_COURSE_READINESS_WEIGHT` | 新课先修掌握度权重 | `0.05` |
 | `RECOMMEND_NEW_COURSE_READINESS_THRESHOLD` | 新课先修掌握阈值 | `0.7` |
+| `RECOMMEND_NEW_COURSE_LEARNING_GOAL_BONUS` | 学习目标匹配加分 | `0.05` |
+| `RECOMMEND_NEW_COURSE_QUALITY_KP_FULL_SCORE_COUNT` | 新课质量知识点满分数量 | `4.0` |
+| `RECOMMEND_NEW_COURSE_QUALITY_DURATION_FULL_SCORE_SECONDS` | 新课质量时长满分秒数 | `1800.0` |
+| `RECOMMEND_NEW_COURSE_QUALITY_KP_WEIGHT` | 新课质量知识点权重 | `0.5` |
 
 ## 接口分组
 
