@@ -1,36 +1,487 @@
-{"properties": [
-  {"name": "recommend.regular.service-url", "type": "java.lang.String", "description": "外部协同过滤推荐服务地址", "defaultValue": "http://localhost:8000"},
-  {"name": "recommend.regular.connect-timeout-ms", "type": "java.lang.Integer", "description": "CF 服务连接超时（毫秒）", "defaultValue": 5000},
-  {"name": "recommend.regular.read-timeout-ms", "type": "java.lang.Integer", "description": "CF 服务读取超时（毫秒）", "defaultValue": 30000},
-  {"name": "recommend.regular.request-top-n", "type": "java.lang.Integer", "description": "请求外部 CF 服务时的候选数量", "defaultValue": 100},
-  {"name": "recommend.regular.cold-start-limit", "type": "java.lang.Integer", "description": "用户冷启动推荐返回上限", "defaultValue": 10},
-  {"name": "recommend.regular.candidate-pool-size", "type": "java.lang.Integer", "description": "常规 CF 过滤后参与图谱打分的候选池大小", "defaultValue": 20},
-  {"name": "recommend.regular.cf-weight", "type": "java.lang.Double", "description": "常规 CF 分数在融合排序中的权重", "defaultValue": 0.7},
-  {"name": "recommend.cache.cold-start-ttl-minutes", "type": "java.lang.Long", "description": "冷启动推荐结果缓存时间（分钟）", "defaultValue": 10},
-  {"name": "recommend.cache.regular-ttl-minutes", "type": "java.lang.Long", "description": "常规推荐结果缓存时间（分钟）", "defaultValue": 30},
-  {"name": "recommend.cache.build-lock-ttl-seconds", "type": "java.lang.Long", "description": "推荐结果回源构建锁过期时间（秒）", "defaultValue": 20},
-  {"name": "recommend.cache.score-matrix-enabled", "type": "java.lang.Boolean", "description": "是否缓存 CF 评分矩阵快照", "defaultValue": true},
-  {"name": "recommend.cache.score-matrix-ttl-minutes", "type": "java.lang.Long", "description": "CF 评分矩阵快照缓存时间（分钟）", "defaultValue": 2},
-  {"name": "recommend.score.base", "type": "java.lang.Integer", "description": "前端展示分基础值", "defaultValue": 60},
-  {"name": "recommend.score.span", "type": "java.lang.Integer", "description": "前端展示分映射跨度", "defaultValue": 35},
-  {"name": "recommend.hot-fallback.limit", "type": "java.lang.Integer", "description": "热门兜底推荐返回上限", "defaultValue": 10},
-  {"name": "recommend.hot-fallback.max-scan-count", "type": "java.lang.Integer", "description": "热门兜底最多扫描热榜数量", "defaultValue": 100},
-  {"name": "recommend.graph.prerequisite-threshold", "type": "java.lang.Double", "description": "图谱先修掌握阈值", "defaultValue": 0.7},
-  {"name": "recommend.graph.learning-path-limit-per-course", "type": "java.lang.Integer", "description": "每门推荐课程返回的补齐路径上限", "defaultValue": 5},
-  {"name": "recommend.async.enabled", "type": "java.lang.Boolean", "description": "推荐主链路异步执行总开关，关闭后回退到串行执行", "defaultValue": true},
-  {"name": "recommend.async.core-size", "type": "java.lang.Integer", "description": "推荐异步线程池核心线程数", "defaultValue": 2},
-  {"name": "recommend.async.max-size", "type": "java.lang.Integer", "description": "推荐异步线程池最大线程数", "defaultValue": 4},
-  {"name": "recommend.async.queue-capacity", "type": "java.lang.Integer", "description": "推荐异步线程池队列容量", "defaultValue": 100},
-  {"name": "recommend.hot-sync.enabled", "type": "java.lang.Boolean", "description": "是否定时同步 Redis 课程热度到数据库快照", "defaultValue": true},
-  {"name": "recommend.hot-sync.fixed-delay-ms", "type": "java.lang.Long", "description": "课程热度同步间隔（毫秒）", "defaultValue": 300000},
-  {"name": "recommend.hot-sync.batch-size", "type": "java.lang.Integer", "description": "课程热度同步批次大小", "defaultValue": 500},
-  {"name": "recommend.new-course.enabled", "type": "java.lang.Boolean", "description": "是否启用常规推荐中的新课候选补充", "defaultValue": true},
-  {"name": "recommend.new-course.window-days", "type": "java.lang.Integer", "description": "新课发布时间窗口（天）", "defaultValue": 14},
-  {"name": "recommend.new-course.candidate-limit", "type": "java.lang.Integer", "description": "新课预召回候选池大小", "defaultValue": 80},
-  {"name": "recommend.new-course.regular-candidate-limit", "type": "java.lang.Integer", "description": "常规 CF 链路准备的新课候选数量", "defaultValue": 30},
-  {"name": "recommend.new-course.fallback-limit", "type": "java.lang.Integer", "description": "CF 为空时的新课兜底上限", "defaultValue": 10},
-  {"name": "recommend.new-course.inject-limit", "type": "java.lang.Integer", "description": "单次最多注入的新课数量", "defaultValue": 3},
-  {"name": "recommend.new-course.max-exposure-ratio", "type": "java.lang.Double", "description": "新课在常规推荐结果中的最大曝光占比", "defaultValue": 0.3},
-  {"name": "recommend.new-course.inject-slots", "type": "java.util.List<java.lang.Integer>", "description": "新课固定注入槽位", "defaultValue": [2, 7, 12]},
-  {"name": "recommend.new-course.readiness-threshold", "type": "java.lang.Double", "description": "新课 readiness 批量计算使用的先修掌握阈值", "defaultValue": 0.7}
-]}
+{
+  "groups": [
+    {
+      "name": "app",
+      "type": "java.util.Map",
+      "description": "应用自定义配置"
+    },
+    {
+      "name": "app.cors",
+      "type": "java.util.Map",
+      "description": "跨域配置"
+    },
+    {
+      "name": "app.upload",
+      "type": "java.util.Map",
+      "description": "文件上传配置"
+    },
+    {
+      "name": "app.video",
+      "type": "java.util.Map",
+      "description": "视频访问与处理配置"
+    },
+    {
+      "name": "mybatis-plus",
+      "type": "java.util.Map",
+      "description": "MyBatis-Plus 配置"
+    },
+    {
+      "name": "mybatis-plus.configuration",
+      "type": "java.util.Map",
+      "description": "MyBatis-Plus 原生配置"
+    },
+    {
+      "name": "recommend",
+      "type": "com.sy.course_system.config.RecommendProperties",
+      "description": "推荐链路统一配置"
+    },
+    {
+      "name": "recommend.regular",
+      "type": "com.sy.course_system.config.RecommendProperties$Regular",
+      "description": "常规 CF 推荐主链路配置"
+    },
+    {
+      "name": "recommend.cache",
+      "type": "com.sy.course_system.config.RecommendProperties$Cache",
+      "description": "推荐缓存与防击穿配置"
+    },
+    {
+      "name": "recommend.score",
+      "type": "com.sy.course_system.config.RecommendProperties$Score",
+      "description": "推荐分数映射配置"
+    },
+    {
+      "name": "recommend.hot-fallback",
+      "type": "com.sy.course_system.config.RecommendProperties$HotFallback",
+      "description": "热门兜底召回配置"
+    },
+    {
+      "name": "recommend.graph",
+      "type": "com.sy.course_system.config.RecommendProperties$Graph",
+      "description": "知识图谱补全配置"
+    },
+    {
+      "name": "recommend.async",
+      "type": "com.sy.course_system.config.RecommendProperties$Async",
+      "description": "推荐主链路异步执行配置"
+    },
+    {
+      "name": "recommend.hot-sync",
+      "type": "com.sy.course_system.config.RecommendProperties$HotSync",
+      "description": "Redis 热榜同步到数据库快照配置"
+    },
+    {
+      "name": "recommend.new-course",
+      "type": "com.sy.course_system.config.RecommendProperties$NewCourse",
+      "description": "新课冷启动与常规推荐增强配置"
+    }
+  ],
+  "properties": [
+    {
+      "name": "app.name",
+      "type": "java.lang.String",
+      "description": "应用名称",
+      "defaultValue": "course-system"
+    },
+    {
+      "name": "app.cors.allowed-origin-patterns",
+      "type": "java.lang.String",
+      "description": "允许跨域访问的来源模式，多个值用逗号分隔",
+      "defaultValue": "http://localhost:5173,http://127.0.0.1:5173,http://192.168.*:5173"
+    },
+    {
+      "name": "app.upload.video-dir",
+      "type": "java.lang.String",
+      "description": "视频文件本地存储目录",
+      "defaultValue": "/Users/shiyang/Desktop/graduate_design/course_videos"
+    },
+    {
+      "name": "app.video.base-url",
+      "type": "java.lang.String",
+      "description": "视频文件对外访问基础地址",
+      "defaultValue": "http://localhost:8080"
+    },
+    {
+      "name": "app.video.ffprobe-path",
+      "type": "java.lang.String",
+      "description": "ffprobe 可执行文件路径",
+      "defaultValue": "/opt/homebrew/bin/ffprobe"
+    },
+    {
+      "name": "mybatis-plus.mapper-locations",
+      "type": "java.lang.String",
+      "description": "MyBatis-Plus Mapper XML 位置",
+      "defaultValue": "classpath:/mapper/*.xml"
+    },
+    {
+      "name": "mybatis-plus.type-aliases-package",
+      "type": "java.lang.String",
+      "description": "MyBatis-Plus 类型别名扫描包",
+      "defaultValue": "com.sy.course_system.entity"
+    },
+    {
+      "name": "mybatis-plus.configuration.log-impl",
+      "type": "java.lang.Class",
+      "description": "MyBatis 日志实现类",
+      "defaultValue": "org.apache.ibatis.logging.stdout.StdOutImpl"
+    },
+    {
+      "name": "mybatis-plus.configuration.map-underscore-to-camel-case",
+      "type": "java.lang.Boolean",
+      "description": "是否启用下划线到驼峰字段映射",
+      "defaultValue": true
+    },
+    {
+      "name": "recommend.regular.service-url",
+      "type": "java.lang.String",
+      "description": "外部协同过滤推荐服务地址",
+      "defaultValue": "http://localhost:8000"
+    },
+    {
+      "name": "recommend.regular.connect-timeout-ms",
+      "type": "java.lang.Integer",
+      "description": "CF 服务连接超时（毫秒）",
+      "defaultValue": 5000
+    },
+    {
+      "name": "recommend.regular.read-timeout-ms",
+      "type": "java.lang.Integer",
+      "description": "CF 服务读取超时（毫秒）",
+      "defaultValue": 30000
+    },
+    {
+      "name": "recommend.regular.request-top-n",
+      "type": "java.lang.Integer",
+      "description": "请求外部 CF 服务时的候选数量",
+      "defaultValue": 100
+    },
+    {
+      "name": "recommend.regular.cold-start-limit",
+      "type": "java.lang.Integer",
+      "description": "用户冷启动推荐返回上限",
+      "defaultValue": 10
+    },
+    {
+      "name": "recommend.regular.candidate-pool-size",
+      "type": "java.lang.Integer",
+      "description": "常规 CF 过滤后参与图谱打分的候选池大小",
+      "defaultValue": 20
+    },
+    {
+      "name": "recommend.regular.cf-weight",
+      "type": "java.lang.Double",
+      "description": "常规 CF 分数在融合排序中的权重",
+      "defaultValue": 0.7
+    },
+    {
+      "name": "recommend.cache.cold-start-ttl-minutes",
+      "type": "java.lang.Long",
+      "description": "冷启动推荐结果缓存时间（分钟）",
+      "defaultValue": 10
+    },
+    {
+      "name": "recommend.cache.regular-ttl-minutes",
+      "type": "java.lang.Long",
+      "description": "常规推荐结果缓存时间（分钟）",
+      "defaultValue": 30
+    },
+    {
+      "name": "recommend.cache.build-lock-ttl-seconds",
+      "type": "java.lang.Long",
+      "description": "推荐结果回源构建锁过期时间（秒）",
+      "defaultValue": 20
+    },
+    {
+      "name": "recommend.cache.wait-retry-times",
+      "type": "java.lang.Integer",
+      "description": "推荐缓存构建锁等待重试次数",
+      "defaultValue": 3
+    },
+    {
+      "name": "recommend.cache.wait-millis",
+      "type": "java.lang.Long",
+      "description": "推荐缓存构建锁每次等待时间（毫秒）",
+      "defaultValue": 80
+    },
+    {
+      "name": "recommend.cache.score-matrix-enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否缓存 CF 评分矩阵快照",
+      "defaultValue": true
+    },
+    {
+      "name": "recommend.cache.score-matrix-ttl-minutes",
+      "type": "java.lang.Long",
+      "description": "CF 评分矩阵快照缓存时间（分钟）",
+      "defaultValue": 2
+    },
+    {
+      "name": "recommend.cache.score-matrix-lock-ttl-seconds",
+      "type": "java.lang.Long",
+      "description": "CF 评分矩阵快照构建锁过期时间（秒）",
+      "defaultValue": 20
+    },
+    {
+      "name": "recommend.cache.score-matrix-wait-retry-times",
+      "type": "java.lang.Integer",
+      "description": "CF 评分矩阵快照构建锁等待重试次数",
+      "defaultValue": 3
+    },
+    {
+      "name": "recommend.cache.score-matrix-wait-millis",
+      "type": "java.lang.Long",
+      "description": "CF 评分矩阵快照构建锁每次等待时间（毫秒）",
+      "defaultValue": 80
+    },
+    {
+      "name": "recommend.score.base",
+      "type": "java.lang.Integer",
+      "description": "前端展示分基础值",
+      "defaultValue": 60
+    },
+    {
+      "name": "recommend.score.span",
+      "type": "java.lang.Integer",
+      "description": "前端展示分映射跨度",
+      "defaultValue": 35
+    },
+    {
+      "name": "recommend.score.cold-start-user-scale",
+      "type": "java.lang.Double",
+      "description": "用户冷启动原始分到归一化分的缩放系数",
+      "defaultValue": 10.0
+    },
+    {
+      "name": "recommend.score.hot-fallback-base",
+      "type": "java.lang.Double",
+      "description": "热门兜底推荐的起始归一化分",
+      "defaultValue": 0.7
+    },
+    {
+      "name": "recommend.score.hot-fallback-step",
+      "type": "java.lang.Double",
+      "description": "热门兜底推荐按排序递减的分值步长",
+      "defaultValue": 0.03
+    },
+    {
+      "name": "recommend.score.hot-fallback-min",
+      "type": "java.lang.Double",
+      "description": "热门兜底推荐最低归一化分",
+      "defaultValue": 0.55
+    },
+    {
+      "name": "recommend.hot-fallback.limit",
+      "type": "java.lang.Integer",
+      "description": "热门兜底推荐返回上限",
+      "defaultValue": 10
+    },
+    {
+      "name": "recommend.hot-fallback.max-scan-count",
+      "type": "java.lang.Integer",
+      "description": "热门兜底最多扫描热榜数量",
+      "defaultValue": 100
+    },
+    {
+      "name": "recommend.graph.prerequisite-threshold",
+      "type": "java.lang.Double",
+      "description": "图谱先修掌握阈值",
+      "defaultValue": 0.7
+    },
+    {
+      "name": "recommend.graph.learning-path-limit-per-course",
+      "type": "java.lang.Integer",
+      "description": "每门推荐课程返回的补齐路径上限",
+      "defaultValue": 5
+    },
+    {
+      "name": "recommend.async.enabled",
+      "type": "java.lang.Boolean",
+      "description": "推荐主链路异步执行总开关，关闭后回退到串行执行",
+      "defaultValue": true
+    },
+    {
+      "name": "recommend.async.core-size",
+      "type": "java.lang.Integer",
+      "description": "推荐异步线程池核心线程数",
+      "defaultValue": 2
+    },
+    {
+      "name": "recommend.async.max-size",
+      "type": "java.lang.Integer",
+      "description": "推荐异步线程池最大线程数",
+      "defaultValue": 4
+    },
+    {
+      "name": "recommend.async.queue-capacity",
+      "type": "java.lang.Integer",
+      "description": "推荐异步线程池队列容量",
+      "defaultValue": 100
+    },
+    {
+      "name": "recommend.hot-sync.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否定时同步 Redis 课程热度到数据库快照",
+      "defaultValue": true
+    },
+    {
+      "name": "recommend.hot-sync.fixed-delay-ms",
+      "type": "java.lang.Long",
+      "description": "课程热度同步间隔（毫秒）",
+      "defaultValue": 300000
+    },
+    {
+      "name": "recommend.hot-sync.batch-size",
+      "type": "java.lang.Integer",
+      "description": "课程热度同步批次大小",
+      "defaultValue": 500
+    },
+    {
+      "name": "recommend.new-course.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用常规推荐中的新课候选补充",
+      "defaultValue": true
+    },
+    {
+      "name": "recommend.new-course.window-days",
+      "type": "java.lang.Integer",
+      "description": "新课发布时间窗口（天）",
+      "defaultValue": 14
+    },
+    {
+      "name": "recommend.new-course.candidate-limit",
+      "type": "java.lang.Integer",
+      "description": "新课预召回候选池大小",
+      "defaultValue": 80
+    },
+    {
+      "name": "recommend.new-course.regular-candidate-limit",
+      "type": "java.lang.Integer",
+      "description": "常规 CF 链路准备的新课候选数量",
+      "defaultValue": 30
+    },
+    {
+      "name": "recommend.new-course.fallback-limit",
+      "type": "java.lang.Integer",
+      "description": "CF 为空时的新课兜底上限",
+      "defaultValue": 10
+    },
+    {
+      "name": "recommend.new-course.max-learners",
+      "type": "java.lang.Integer",
+      "description": "新课人数上限，超过该值通常视为已进入常规课程阶段",
+      "defaultValue": 20
+    },
+    {
+      "name": "recommend.new-course.inject-limit",
+      "type": "java.lang.Integer",
+      "description": "单次最多注入的新课数量",
+      "defaultValue": 3
+    },
+    {
+      "name": "recommend.new-course.max-exposure-ratio",
+      "type": "java.lang.Double",
+      "description": "新课在常规推荐结果中的最大曝光占比",
+      "defaultValue": 0.3
+    },
+    {
+      "name": "recommend.new-course.inject-slots",
+      "type": "java.util.List<java.lang.Integer>",
+      "description": "新课固定注入槽位，0 表示列表开头",
+      "defaultValue": [
+        2,
+        7,
+        12
+      ]
+    },
+    {
+      "name": "recommend.new-course.min-tag-count",
+      "type": "java.lang.Integer",
+      "description": "新课质量门槛：最低标签数量",
+      "defaultValue": 1
+    },
+    {
+      "name": "recommend.new-course.min-kp-count",
+      "type": "java.lang.Integer",
+      "description": "新课质量门槛：最低知识点数量",
+      "defaultValue": 1
+    },
+    {
+      "name": "recommend.new-course.min-duration-seconds",
+      "type": "java.lang.Integer",
+      "description": "新课质量门槛：最低视频时长（秒）",
+      "defaultValue": 300
+    },
+    {
+      "name": "recommend.new-course.min-limit",
+      "type": "java.lang.Integer",
+      "description": "新课推荐接口允许的最小返回数量",
+      "defaultValue": 1
+    },
+    {
+      "name": "recommend.new-course.max-limit",
+      "type": "java.lang.Integer",
+      "description": "新课推荐接口允许的最大返回数量",
+      "defaultValue": 50
+    },
+    {
+      "name": "recommend.new-course.default-limit",
+      "type": "java.lang.Integer",
+      "description": "新课推荐接口默认返回数量",
+      "defaultValue": 10
+    },
+    {
+      "name": "recommend.new-course.tag-weight",
+      "type": "java.lang.Double",
+      "description": "新课评分中标签匹配分的权重",
+      "defaultValue": 0.45
+    },
+    {
+      "name": "recommend.new-course.freshness-weight",
+      "type": "java.lang.Double",
+      "description": "新课评分中新鲜度分的权重",
+      "defaultValue": 0.3
+    },
+    {
+      "name": "recommend.new-course.quality-weight",
+      "type": "java.lang.Double",
+      "description": "新课评分中质量分的权重",
+      "defaultValue": 0.2
+    },
+    {
+      "name": "recommend.new-course.readiness-weight",
+      "type": "java.lang.Double",
+      "description": "新课评分中可学习性分的权重",
+      "defaultValue": 0.05
+    },
+    {
+      "name": "recommend.new-course.readiness-threshold",
+      "type": "java.lang.Double",
+      "description": "新课 readiness 批量计算使用的先修掌握阈值",
+      "defaultValue": 0.7
+    },
+    {
+      "name": "recommend.new-course.learning-goal-bonus",
+      "type": "java.lang.Double",
+      "description": "新课与用户学习目标匹配时的额外加分",
+      "defaultValue": 0.05
+    },
+    {
+      "name": "recommend.new-course.quality-kp-full-score-count",
+      "type": "java.lang.Double",
+      "description": "新课质量分中知识点数量拿满分所需数量",
+      "defaultValue": 4.0
+    },
+    {
+      "name": "recommend.new-course.quality-duration-full-score-seconds",
+      "type": "java.lang.Double",
+      "description": "新课质量分中课程时长拿满分所需秒数",
+      "defaultValue": 1800.0
+    },
+    {
+      "name": "recommend.new-course.quality-kp-weight",
+      "type": "java.lang.Double",
+      "description": "新课质量分中知识点数量子项权重",
+      "defaultValue": 0.5
+    }
+  ]
+}
