@@ -22,6 +22,7 @@ import org.springframework.data.redis.core.ZSetOperations;
 import com.sy.course_system.config.RecommendProperties;
 import com.sy.course_system.dto.course.CourseHotScoreDTO;
 import com.sy.course_system.mapper.CourseHotScoreMapper;
+import com.sy.course_system.support.RecommendPropertiesFixture;
 
 @ExtendWith(MockitoExtension.class)
 class CourseHotScoreSyncServiceTest {
@@ -39,9 +40,9 @@ class CourseHotScoreSyncServiceTest {
 
     @BeforeEach
     void setUp() {
-        recommendProperties = new RecommendProperties();
-        recommendProperties.getHotSync().setEnabled(true);
-        recommendProperties.getHotSync().setBatchSize(2);
+        recommendProperties = RecommendPropertiesFixture.builder()
+                .hotSync(hotSync -> hotSync.enabled(true).batchSize(2))
+                .build();
         syncService = new CourseHotScoreSyncService(redisTemplate, courseHotScoreMapper, recommendProperties);
     }
 

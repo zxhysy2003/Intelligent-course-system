@@ -68,8 +68,8 @@ public class RecommendScoreNormalizer {
         } else if (normalized > 1.0) {
             normalized = 1.0;
         }
-        RecommendProperties.Score scoreConfig = recommendProperties.getScore();
-        return (int) Math.round(scoreConfig.getBase() + normalized * scoreConfig.getSpan());
+        RecommendProperties.Score scoreConfig = recommendProperties.score();
+        return (int) Math.round(scoreConfig.base() + normalized * scoreConfig.span());
     }
 
     /**
@@ -83,14 +83,14 @@ public class RecommendScoreNormalizer {
     private double normalize(HybridRecommendItemDTO item, int index) {
         String source = item.getRecommendSource();
         if (RecommendSource.HOT_FALLBACK.code().equals(source)) {
-            RecommendProperties.Score scoreConfig = recommendProperties.getScore();
-            return Math.max(scoreConfig.getHotFallbackMin(),
-                    scoreConfig.getHotFallbackBase() - index * scoreConfig.getHotFallbackStep());
+            RecommendProperties.Score scoreConfig = recommendProperties.score();
+            return Math.max(scoreConfig.hotFallbackMin(),
+                    scoreConfig.hotFallbackBase() - index * scoreConfig.hotFallbackStep());
         }
 
         double finalScore = safeFinalScore(item.getFinalScore());
         if (RecommendSource.COLD_START_USER.code().equals(source)) {
-            double scale = Math.max(recommendProperties.getScore().getColdStartUserScale(), 1e-9);
+            double scale = Math.max(recommendProperties.score().coldStartUserScale(), 1e-9);
             return 1.0 - Math.exp(-finalScore / scale);
         }
         return clamp01(finalScore);

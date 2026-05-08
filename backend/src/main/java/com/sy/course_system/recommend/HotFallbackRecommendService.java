@@ -40,8 +40,8 @@ public class HotFallbackRecommendService {
 
     public List<HybridRecommendItemDTO> buildHotFallbackItems() {
         List<HybridRecommendItemDTO> results = new ArrayList<>();
-        int limit = Math.max(recommendProperties.getHotFallback().getLimit(), 0);
-        int maxScanCount = Math.max(recommendProperties.getHotFallback().getMaxScanCount(), 0);
+        int limit = Math.max(recommendProperties.hotFallback().limit(), 0);
+        int maxScanCount = Math.max(recommendProperties.hotFallback().maxScanCount(), 0);
         if (limit <= 0 || maxScanCount <= 0) {
             return results;
         }

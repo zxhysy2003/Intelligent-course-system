@@ -77,10 +77,10 @@ public class RecommendGraphEnricher {
 
         Map<Long, List<KnowledgeVO>> knowledgePointsMap;
         Map<Long, List<List<KnowledgeVO>>> learningPathsMap;
-        double prerequisiteThreshold = recommendProperties.getGraph().getPrerequisiteThreshold();
-        int learningPathLimit = recommendProperties.getGraph().getLearningPathLimitPerCourse();
+        double prerequisiteThreshold = recommendProperties.graph().prerequisiteThreshold();
+        int learningPathLimit = recommendProperties.graph().learningPathLimitPerCourse();
 
-        if (recommendProperties.getAsync().isEnabled()) {
+        if (recommendProperties.async().enabled()) {
             CompletableFuture<Map<Long, CourseReadinessDTO>> readinessFuture;
             if (!missingReadinessCourseIds.isEmpty()) {
                 readinessFuture = CompletableFuture.supplyAsync(() -> {

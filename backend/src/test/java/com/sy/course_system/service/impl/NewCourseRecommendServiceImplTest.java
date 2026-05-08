@@ -16,6 +16,7 @@ import static org.mockito.Mockito.when;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +36,7 @@ import com.sy.course_system.mapper.CourseMapper;
 import com.sy.course_system.mapper.UserInterestTagMapper;
 import com.sy.course_system.mapper.UserOnboardingProfileMapper;
 import com.sy.course_system.repository.CourseGraphRepository;
+import com.sy.course_system.support.RecommendPropertiesFixture;
 import com.sy.course_system.vo.KnowledgeMasteryVO;
 
 @ExtendWith(MockitoExtension.class)
@@ -55,20 +57,8 @@ class NewCourseRecommendServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        recommendProperties = new RecommendProperties();
-        recommendProperties.getNewCourse().setWindowDays(14);
-        recommendProperties.getNewCourse().setMaxLearners(20);
-        recommendProperties.getNewCourse().setMinTagCount(1);
-        recommendProperties.getNewCourse().setMinKpCount(1);
-        recommendProperties.getNewCourse().setMinDurationSeconds(300);
-        recommendProperties.getNewCourse().setCandidateLimit(10);
-        recommendProperties.getNewCourse().setTagWeight(0.45d);
-        recommendProperties.getNewCourse().setFreshnessWeight(0.30d);
-        recommendProperties.getNewCourse().setQualityWeight(0.20d);
-        recommendProperties.getNewCourse().setReadinessWeight(0.05d);
-        recommendProperties.getNewCourse().setReadinessThreshold(0.7d);
-        newCourseRecommendService = new NewCourseRecommendServiceImpl(courseMapper, userInterestTagMapper,
-                userOnboardingProfileMapper, courseGraphRepository, recommendProperties);
+        recommendProperties = testProperties();
+        rebuildService();
     }
 
     @Test
@@ -157,7 +147,8 @@ class NewCourseRecommendServiceImplTest {
 
     @Test
     void recommendForRegularUserShouldNormalizeLimitAndUseMaxOfCandidateLimitAndSafeLimit() {
-        recommendProperties.getNewCourse().setCandidateLimit(2);
+        recommendProperties = testProperties(builder -> builder.candidateLimit(2));
+        rebuildService();
         List<NewCourseBaseCandidateDTO> baseCourses = buildBulkBaseCourses(60, LocalDateTime.now().minusHours(1));
         when(courseMapper.selectOnlineNewCourseBaseCandidates(any(LocalDateTime.class), anyInt())).thenReturn(baseCourses);
         when(courseMapper.selectCourseTagRowsByCourseIds(anyList())).thenReturn(buildBulkTagRows(60));
@@ -184,11 +175,13 @@ class NewCourseRecommendServiceImplTest {
 
     @Test
     void recommendForRegularUserShouldUseFreshnessThenCourseIdForTieBreaks() {
-        recommendProperties.getNewCourse().setTagWeight(0.0d);
-        recommendProperties.getNewCourse().setFreshnessWeight(1.0d);
-        recommendProperties.getNewCourse().setQualityWeight(0.0d);
-        recommendProperties.getNewCourse().setReadinessWeight(0.0d);
-        recommendProperties.getNewCourse().setCandidateLimit(10);
+        recommendProperties = testProperties(builder -> builder
+                .tagWeight(0.0d)
+                .freshnessWeight(1.0d)
+                .qualityWeight(0.0d)
+                .readinessWeight(0.0d)
+                .candidateLimit(10));
+        rebuildService();
 
         LocalDateTime now = LocalDateTime.now();
         when(courseMapper.selectOnlineNewCourseBaseCandidates(any(LocalDateTime.class), eq(10))).thenReturn(List.of(
@@ -267,10 +260,12 @@ class NewCourseRecommendServiceImplTest {
 
     @Test
     void recommendForRegularUserShouldReturnZeroWhenAllWeightsAreNonPositive() {
-        recommendProperties.getNewCourse().setTagWeight(-1.0d);
-        recommendProperties.getNewCourse().setFreshnessWeight(-1.0d);
-        recommendProperties.getNewCourse().setQualityWeight(-1.0d);
-        recommendProperties.getNewCourse().setReadinessWeight(-1.0d);
+        recommendProperties = testProperties(builder -> builder
+                .tagWeight(-1.0d)
+                .freshnessWeight(-1.0d)
+                .qualityWeight(-1.0d)
+                .readinessWeight(-1.0d));
+        rebuildService();
 
         when(courseMapper.selectOnlineNewCourseBaseCandidates(any(LocalDateTime.class), eq(10))).thenReturn(List.of(
                 baseCourse(201L, "零权重新课", 1, 1800, LocalDateTime.now().minusDays(1))));
@@ -284,6 +279,25 @@ class NewCourseRecommendServiceImplTest {
         List<HybridRecommendItemDTO> result = newCourseRecommendService.recommendForRegularUser(1L, 1);
 
         assertEquals(0.0d, result.get(0).getFinalScore());
+    }
+
+    private RecommendProperties testProperties() {
+        return testProperties(builder -> {
+        });
+    }
+
+    private RecommendProperties testProperties(Consumer<RecommendPropertiesFixture.NewCourseBuilder> customizer) {
+        return RecommendPropertiesFixture.builder()
+                .newCourse(builder -> {
+                    builder.candidateLimit(10);
+                    customizer.accept(builder);
+                })
+                .build();
+    }
+
+    private void rebuildService() {
+        newCourseRecommendService = new NewCourseRecommendServiceImpl(courseMapper, userInterestTagMapper,
+                userOnboardingProfileMapper, courseGraphRepository, recommendProperties);
     }
 
     private UserOnboardingProfile profile(String learningGoal) {

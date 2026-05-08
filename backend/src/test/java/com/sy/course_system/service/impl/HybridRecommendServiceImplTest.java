@@ -55,6 +55,7 @@ import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.LearningAnalysisService;
 import com.sy.course_system.service.NewCourseRecommendService;
 import com.sy.course_system.service.UserCourseService;
+import com.sy.course_system.support.RecommendPropertiesFixture;
 import com.sy.course_system.vo.ColdStartRecommendItemVO;
 import com.sy.course_system.vo.KnowledgeMasteryVO;
 
@@ -94,11 +95,35 @@ class HybridRecommendServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        recommendProperties = new RecommendProperties();
-        recommendProperties.getNewCourse().setInjectLimit(2);
-        recommendProperties.getNewCourse().setMaxExposureRatio(1.0d);
-        recommendProperties.getAsync().setEnabled(false);
+        recommendProperties = testProperties(false, true);
+        rebuildService();
 
+        // 缓存与 Neo4j 查询不是本测试关注点时，统一给出宽松默认桩，
+        // 每个用例只覆盖自己真正关心的分支，避免样板 stub 淹没断言重点。
+        lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        lenient().when(neo4jClient.query(anyString()).bindAll(anyMap()).fetch().all()).thenReturn(List.of());
+        lenient().when(courseGraphRepository.findCourseKnowledgePointsBatch(anyList())).thenReturn(List.of());
+        // 默认用户未选任何课程，需要"已选过滤"行为的测试自行覆盖。
+        lenient().when(userCourseService.listSelectedCourseIds(any(), anyList())).thenReturn(List.of());
+
+        // 异步测试中 executor 直接在当前线程执行，既模拟并行语义又保证断言确定性。
+        lenient().doAnswer(invocation -> {
+            ((Runnable) invocation.getArgument(0)).run();
+            return null;
+        }).when(recommendTaskExecutor).execute(any(Runnable.class));
+    }
+
+    private RecommendProperties testProperties(boolean asyncEnabled, boolean newCourseEnabled) {
+        return RecommendPropertiesFixture.builder()
+                .newCourse(newCourse -> newCourse
+                        .enabled(newCourseEnabled)
+                        .injectLimit(2)
+                        .maxExposureRatio(1.0d))
+                .async(async -> async.enabled(asyncEnabled))
+                .build();
+    }
+
+    private void rebuildService() {
         NewCourseInjector newCourseInjector = new NewCourseInjector(recommendProperties);
         RecommendScoreNormalizer scoreNormalizer = new RecommendScoreNormalizer(recommendProperties);
         RecommendResultCache recommendResultCache = new RecommendResultCache(redisTemplate, objectMapper, scoreNormalizer,
@@ -122,20 +147,6 @@ class HybridRecommendServiceImplTest {
                 enricher,
                 recommendProperties,
                 recommendTaskExecutor);
-
-        // 缓存与 Neo4j 查询不是本测试关注点时，统一给出宽松默认桩，
-        // 每个用例只覆盖自己真正关心的分支，避免样板 stub 淹没断言重点。
-        lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        lenient().when(neo4jClient.query(anyString()).bindAll(anyMap()).fetch().all()).thenReturn(List.of());
-        lenient().when(courseGraphRepository.findCourseKnowledgePointsBatch(anyList())).thenReturn(List.of());
-        // 默认用户未选任何课程，需要"已选过滤"行为的测试自行覆盖。
-        lenient().when(userCourseService.listSelectedCourseIds(any(), anyList())).thenReturn(List.of());
-
-        // 异步测试中 executor 直接在当前线程执行，既模拟并行语义又保证断言确定性。
-        lenient().doAnswer(invocation -> {
-            ((Runnable) invocation.getArgument(0)).run();
-            return null;
-        }).when(recommendTaskExecutor).execute(any(Runnable.class));
     }
 
     @Test
@@ -426,7 +437,8 @@ class HybridRecommendServiceImplTest {
     void recommendShouldProduceSameResultWhenAsyncEnabledForRegularPath() {
         // 开启异步后，executor 在当前线程同步执行，CF + 新课候选的并行结果
         // 必须与串行路径完全一致：包括排序、新课插槽注入和展示分。
-        recommendProperties.getAsync().setEnabled(true);
+        recommendProperties = testProperties(true, true);
+        rebuildService();
 
         HybridRecommendItemDTO newCourse = hybridItem(4L, "新课注入");
         newCourse.setRecommendSource("COLD_START_COURSE");
@@ -476,7 +488,8 @@ class HybridRecommendServiceImplTest {
     void recommendShouldProduceSameResultWhenAsyncEnabledForColdStartPath() {
         // 冷启动分支也通过 enrichGraphInfo 做图谱补全；异步开启后 exec 同步执行，
         // 需保证 readiness 补查、知识点、学习路径的填充结果与串行路径一致。
-        recommendProperties.getAsync().setEnabled(true);
+        recommendProperties = testProperties(true, true);
+        rebuildService();
 
         ColdStartRecommendItemVO first = coldStartItem(100L, "课程 A", 1, 0.9d, "匹配兴趣标签：Java");
         ColdStartRecommendItemVO second = coldStartItem(200L, "课程 B", 1, 0.8d, "兜底");
@@ -500,8 +513,8 @@ class HybridRecommendServiceImplTest {
     void recommendShouldNotCallNewCourseRecommendWhenNewCourseDisabledEvenIfAsyncEnabled() {
         // 新课开关关闭时，即使 asyncEnabled=true，也不创建异步任务，
         // 直接使用 List.of() 保持当前行为。
-        recommendProperties.getAsync().setEnabled(true);
-        recommendProperties.getNewCourse().setEnabled(false);
+        recommendProperties = testProperties(true, false);
+        rebuildService();
 
         when(coldStartSupportService.isColdStartUser(3L)).thenReturn(false);
         when(valueOperations.get("recommend:user:3")).thenReturn((Object) null, (Object) null);

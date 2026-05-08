@@ -30,22 +30,22 @@ public class NewCourseInjector {
     }
 
     public boolean isEnabled() {
-        return recommendProperties.getNewCourse().isEnabled();
+        return recommendProperties.newCourse().enabled();
     }
 
     /**
      * 计算本次结果可注入的新课上限。
      */
     public int calculateInjectLimit(int regularItemSize) {
-        RecommendProperties.NewCourse config = recommendProperties.getNewCourse();
-        if (!config.isEnabled()) {
+        RecommendProperties.NewCourse config = recommendProperties.newCourse();
+        if (!config.enabled()) {
             return 0;
         }
-        int safeInjectLimit = Math.max(config.getInjectLimit(), 0);
+        int safeInjectLimit = Math.max(config.injectLimit(), 0);
         if (safeInjectLimit == 0 || regularItemSize <= 0) {
             return 0;
         }
-        double safeExposureRatio = Math.max(config.getMaxExposureRatio(), 0.0);
+        double safeExposureRatio = Math.max(config.maxExposureRatio(), 0.0);
         int byRatio = (int) Math.floor(regularItemSize * safeExposureRatio);
         if (byRatio <= 0 && safeExposureRatio > 0) {
             byRatio = 1;
@@ -70,7 +70,7 @@ public class NewCourseInjector {
                 .map(HybridRecommendItemDTO::getCourseId)
                 .filter(id -> id != null)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-        List<Integer> injectSlots = recommendProperties.getNewCourse().getInjectSlots();
+        List<Integer> injectSlots = recommendProperties.newCourse().injectSlots();
 
         int injected = 0;
         for (HybridRecommendItemDTO candidate : newCourseCandidates) {

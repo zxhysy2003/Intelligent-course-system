@@ -59,10 +59,10 @@ public class CfRecommendClient {
         RecommendRequestDTO request = new RecommendRequestDTO();
         request.setTargetUserId(userId);
         request.setData(scoreList);
-        request.setTopN(recommendProperties.getRegular().getRequestTopN());
+        request.setTopN(recommendProperties.regular().requestTopN());
 
         return restTemplate.postForObject(
-                recommendProperties.getRegular().getServiceUrl() + "/recommend",
+                recommendProperties.regular().serviceUrl() + "/recommend",
                 request,
                 RecommendResponseDTO.class);
     }
@@ -74,8 +74,8 @@ public class CfRecommendClient {
      * learning_behavior；这里用短 TTL 缓存复用快照，避免多用户推荐缓存 miss 时重复扫表。
      */
     private List<UserCourseScoreDTO> loadScoreMatrixSnapshot() {
-        RecommendProperties.Cache cache = recommendProperties.getCache();
-        if (!cache.isScoreMatrixEnabled() || cache.getScoreMatrixTtlMinutes() <= 0) {
+        RecommendProperties.Cache cache = recommendProperties.cache();
+        if (!cache.scoreMatrixEnabled() || cache.scoreMatrixTtlMinutes() <= 0) {
             return buildScoreMatrixSnapshot();
         }
 
@@ -127,19 +127,19 @@ public class CfRecommendClient {
     private void writeScoreMatrixCache(List<UserCourseScoreDTO> snapshot) {
         List<UserCourseScoreDTO> safeSnapshot = snapshot == null ? List.of() : snapshot;
         redisTemplate.opsForValue().set(SCORE_MATRIX_CACHE_KEY, safeSnapshot,
-                recommendProperties.getCache().getScoreMatrixTtlMinutes(),
+                recommendProperties.cache().scoreMatrixTtlMinutes(),
                 TimeUnit.MINUTES);
     }
 
     private boolean tryAcquireScoreMatrixLock() {
         Boolean ok = redisTemplate.opsForValue().setIfAbsent(SCORE_MATRIX_LOCK_KEY, "1",
-                recommendProperties.getCache().getScoreMatrixLockTtlSeconds(), TimeUnit.SECONDS);
+                recommendProperties.cache().scoreMatrixLockTtlSeconds(), TimeUnit.SECONDS);
         return Boolean.TRUE.equals(ok);
     }
 
     private List<UserCourseScoreDTO> waitForScoreMatrixCache() {
-        int retryTimes = Math.max(recommendProperties.getCache().getScoreMatrixWaitRetryTimes(), 0);
-        long waitMillis = Math.max(recommendProperties.getCache().getScoreMatrixWaitMillis(), 0L);
+        int retryTimes = Math.max(recommendProperties.cache().scoreMatrixWaitRetryTimes(), 0);
+        long waitMillis = Math.max(recommendProperties.cache().scoreMatrixWaitMillis(), 0L);
         for (int i = 0; i < retryTimes; i++) {
             sleepQuietly(waitMillis);
             List<UserCourseScoreDTO> cached = readScoreMatrixCache();

@@ -32,9 +32,9 @@ public class CourseHotScoreSyncService {
         this.recommendProperties = recommendProperties;
     }
 
-    @Scheduled(fixedDelayString = "#{@recommendProperties.hotSync.fixedDelayMs}")
+    @Scheduled(fixedDelayString = "${recommend.hot-sync.fixed-delay-ms:300000}")
     public void syncOnce() {
-        if (!recommendProperties.getHotSync().isEnabled()) {
+        if (!recommendProperties.hotSync().enabled()) {
             return;
         }
         try {
@@ -46,7 +46,7 @@ public class CourseHotScoreSyncService {
     }
 
     private List<CourseHotScoreDTO> loadHotScoresFromRedis() {
-        int safeBatchSize = Math.max(recommendProperties.getHotSync().getBatchSize(), 1);
+        int safeBatchSize = Math.max(recommendProperties.hotSync().batchSize(), 1);
         List<CourseHotScoreDTO> hotScores = new ArrayList<>();
         int start = 0;
         while (true) {
@@ -97,7 +97,7 @@ public class CourseHotScoreSyncService {
             courseHotScoreMapper.deleteAllHotScores();
             return;
         }
-        int safeBatchSize = Math.max(recommendProperties.getHotSync().getBatchSize(), 1);
+        int safeBatchSize = Math.max(recommendProperties.hotSync().batchSize(), 1);
         for (int start = 0; start < hotScores.size(); start += safeBatchSize) {
             int end = Math.min(start + safeBatchSize, hotScores.size());
             courseHotScoreMapper.upsertHotScores(hotScores.subList(start, end));

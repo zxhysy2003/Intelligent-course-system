@@ -115,7 +115,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
             String coldCacheKey = RECOMMEND_COLD_START_KEY + userId;
             String coldLockKey = RECOMMEND_COLD_START_LOCK_KEY + userId;
             return recommendResultCache.getOrBuildWithCache(coldCacheKey, coldLockKey,
-                    recommendProperties.getCache().getColdStartTtlMinutes(),
+                    recommendProperties.cache().coldStartTtlMinutes(),
                     () -> buildColdStartResponse(userId));
         }
 
@@ -125,14 +125,14 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
         String cacheKey = RECOMMEND_COURSE_KEY + userId;
         String lockKey = RECOMMEND_COURSE_LOCK_KEY + userId;
         return recommendResultCache.getOrBuildWithCache(cacheKey, lockKey,
-                recommendProperties.getCache().getRegularTtlMinutes(),
+                recommendProperties.cache().regularTtlMinutes(),
                 () -> buildRegularResponse(userId));
     }
 
     private HybridRecommendResponseDTO buildColdStartResponse(Long userId) {
         log.info("User {} hit cold-start recommendation branch", userId);
         List<ColdStartRecommendItemVO> coldStartItems = coldStartRecommendService.recommend(userId,
-                recommendProperties.getRegular().getColdStartLimit());
+                recommendProperties.regular().coldStartLimit());
         // 冷启动结果统一转为 HybridRecommendItemDTO，后续走同一套图谱补全逻辑，减少分支差异。
         List<HybridRecommendItemDTO> hybridItems = toColdStartHybridItems(coldStartItems);
         recommendGraphEnricher.enrichGraphInfo(userId, hybridItems, null);
@@ -150,9 +150,9 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
      * 5) 最后统一做图谱字段补全，确保返回结构一致。
      */
     private HybridRecommendResponseDTO buildRegularResponse(Long userId) {
-        boolean asyncEnabled = recommendProperties.getAsync().isEnabled();
+        boolean asyncEnabled = recommendProperties.async().enabled();
         int newCourseCandidateLimit = Math.max(0,
-                recommendProperties.getNewCourse().getRegularCandidateLimit());
+                recommendProperties.newCourse().regularCandidateLimit());
         boolean loadNewCourses = newCourseInjector.isEnabled() && newCourseCandidateLimit > 0;
         RecommendResponseDTO cfResp;
         List<HybridRecommendItemDTO> newCourseCandidates;
@@ -217,7 +217,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
         }
 
         List<RecommendItemDTO> topCourses = filteredItems.stream()
-                .limit(Math.max(1, recommendProperties.getRegular().getCandidatePoolSize()))
+                .limit(Math.max(1, recommendProperties.regular().candidatePoolSize()))
                 .toList();
 
         DoubleSummaryStatistics stats = topCourses.stream()
@@ -233,7 +233,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
 
         Map<Long, CourseReadinessDTO> readinessMap = recommendGraphEnricher.toReadinessMap(
                 courseGraphRepository.getCourseReadinessBatch(
-                        userId, topCourseIds, recommendProperties.getGraph().getPrerequisiteThreshold()));
+                        userId, topCourseIds, recommendProperties.graph().prerequisiteThreshold()));
 
         List<HybridRecommendItemDTO> hybridItems = topCourses.stream()
                 .map(item -> buildHybridBaseItem(item, min, max, eps, courseSummaryMap, readinessMap))
@@ -255,7 +255,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     private HybridRecommendResponseDTO buildFallbackResponse(Long userId,
             List<HybridRecommendItemDTO> newCourseCandidates) {
         List<HybridRecommendItemDTO> fallback = newCourseCandidates.stream()
-                .limit(Math.max(0, recommendProperties.getNewCourse().getFallbackLimit()))
+                .limit(Math.max(0, recommendProperties.newCourse().fallbackLimit()))
                 .toList();
         if (fallback.isEmpty()) {
             fallback = hotFallbackRecommendService.buildHotFallbackItems();
@@ -318,7 +318,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
         double readiness = (readinessDTO == null || readinessDTO.getReadiness() == null) ? 1.0
                 : readinessDTO.getReadiness();
         double cfNorm = (cfScore - min) / (max - min + eps);
-        double cfWeight = recommendProperties.getRegular().getCfWeight();
+        double cfWeight = recommendProperties.regular().cfWeight();
         double finalScore = cfWeight * cfNorm + (1 - cfWeight) * readiness;
 
         HybridRecommendItemDTO dto = new HybridRecommendItemDTO();
@@ -347,7 +347,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
         if (readinessDTO == null || readinessDTO.getReadiness() == null) {
             return "根据你的学习行为推荐";
         }
-        if (readinessDTO.getReadiness() >= recommendProperties.getGraph().getPrerequisiteThreshold()) {
+        if (readinessDTO.getReadiness() >= recommendProperties.graph().prerequisiteThreshold()) {
             return "根据你的学习行为推荐；当前可直接学习";
         }
         return "根据你的学习行为推荐；建议先补齐先修知识";

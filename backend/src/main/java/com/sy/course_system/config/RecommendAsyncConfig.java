@@ -26,11 +26,11 @@ public class RecommendAsyncConfig {
 
     @Bean("recommendTaskExecutor")
     public ThreadPoolTaskExecutor recommendTaskExecutor() {
-        RecommendProperties.Async async = recommendProperties.getAsync();
+        RecommendProperties.Async async = recommendProperties.async();
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(async.getCoreSize());
-        executor.setMaxPoolSize(async.getMaxSize());
-        executor.setQueueCapacity(async.getQueueCapacity());
+        executor.setCorePoolSize(async.coreSize());
+        executor.setMaxPoolSize(async.maxSize());
+        executor.setQueueCapacity(async.queueCapacity());
         executor.setThreadNamePrefix("recommend-async-");
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         executor.setWaitForTasksToCompleteOnShutdown(true);

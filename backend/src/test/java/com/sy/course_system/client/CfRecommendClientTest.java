@@ -28,6 +28,7 @@ import com.sy.course_system.dto.recommend.RecommendRequestDTO;
 import com.sy.course_system.dto.recommend.RecommendResponseDTO;
 import com.sy.course_system.dto.recommend.UserCourseScoreDTO;
 import com.sy.course_system.service.LearningBehaviorService;
+import com.sy.course_system.support.RecommendPropertiesFixture;
 
 @ExtendWith(MockitoExtension.class)
 class CfRecommendClientTest {
@@ -48,13 +49,8 @@ class CfRecommendClientTest {
 
     @BeforeEach
     void setUp() {
-        recommendProperties = new RecommendProperties();
-        recommendProperties.getRegular().setServiceUrl("http://recommend-service");
-        recommendProperties.getCache().setScoreMatrixEnabled(true);
-        recommendProperties.getCache().setScoreMatrixTtlMinutes(2L);
-        recommendProperties.getRegular().setRequestTopN(100);
-        cfRecommendClient = new CfRecommendClient(restTemplate, learningBehaviorService, redisTemplate,
-                objectMapper, recommendProperties);
+        recommendProperties = defaultProperties();
+        rebuildClient();
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
     }
 
@@ -119,7 +115,11 @@ class CfRecommendClientTest {
     void recommendShouldBypassRedisWhenScoreMatrixCacheDisabled() {
         List<UserCourseScoreDTO> scores = List.of(score(1L, 10L, 0.8d));
         RecommendResponseDTO response = new RecommendResponseDTO();
-        recommendProperties.getCache().setScoreMatrixEnabled(false);
+        recommendProperties = RecommendPropertiesFixture.builder()
+                .regular(regular -> regular.serviceUrl("http://recommend-service"))
+                .cache(cache -> cache.scoreMatrixEnabled(false))
+                .build();
+        rebuildClient();
         when(learningBehaviorService.listAggregatedScores()).thenReturn(scores);
         when(restTemplate.postForObject(eq("http://recommend-service/recommend"), any(RecommendRequestDTO.class),
                 eq(RecommendResponseDTO.class))).thenReturn(response);
@@ -151,7 +151,10 @@ class CfRecommendClientTest {
     void recommendShouldUseInjectedRequestTopN() {
         List<UserCourseScoreDTO> scores = List.of(score(1L, 10L, 0.8d));
         RecommendResponseDTO response = new RecommendResponseDTO();
-        recommendProperties.getRegular().setRequestTopN(50);
+        recommendProperties = RecommendPropertiesFixture.builder()
+                .regular(regular -> regular.serviceUrl("http://recommend-service").requestTopN(50))
+                .build();
+        rebuildClient();
         when(learningBehaviorService.listAggregatedScores()).thenReturn(scores);
         when(restTemplate.postForObject(eq("http://recommend-service/recommend"), any(RecommendRequestDTO.class),
                 eq(RecommendResponseDTO.class))).thenReturn(response);
@@ -160,6 +163,18 @@ class CfRecommendClientTest {
 
         RecommendRequestDTO request = captureRequest();
         assertEquals(50, request.getTopN());
+    }
+
+    private RecommendProperties defaultProperties() {
+        return RecommendPropertiesFixture.builder()
+                .regular(regular -> regular.serviceUrl("http://recommend-service").requestTopN(100))
+                .cache(cache -> cache.scoreMatrixEnabled(true).scoreMatrixTtlMinutes(2L))
+                .build();
+    }
+
+    private void rebuildClient() {
+        cfRecommendClient = new CfRecommendClient(restTemplate, learningBehaviorService, redisTemplate,
+                objectMapper, recommendProperties);
     }
 
     private RecommendRequestDTO captureRequest() {

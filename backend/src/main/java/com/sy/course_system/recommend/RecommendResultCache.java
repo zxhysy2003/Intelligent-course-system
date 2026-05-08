@@ -104,14 +104,14 @@ public class RecommendResultCache {
 
     private boolean tryAcquireBuildLock(String lockKey) {
         Boolean ok = redisTemplate.opsForValue().setIfAbsent(lockKey, "1",
-                recommendProperties.getCache().getBuildLockTtlSeconds(),
+                recommendProperties.cache().buildLockTtlSeconds(),
                 TimeUnit.SECONDS);
         return Boolean.TRUE.equals(ok);
     }
 
     private HybridRecommendResponseDTO waitForCache(String cacheKey) {
-        int retryTimes = Math.max(recommendProperties.getCache().getWaitRetryTimes(), 0);
-        long waitMillis = Math.max(recommendProperties.getCache().getWaitMillis(), 0L);
+        int retryTimes = Math.max(recommendProperties.cache().waitRetryTimes(), 0);
+        long waitMillis = Math.max(recommendProperties.cache().waitMillis(), 0L);
         for (int i = 0; i < retryTimes; i++) {
             sleepQuietly(waitMillis);
             HybridRecommendResponseDTO waited = readCache(cacheKey);

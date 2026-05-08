@@ -80,9 +80,9 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
             throw new IllegalArgumentException("userId 不能为空");
         }
 
-        RecommendProperties.NewCourse config = recommendProperties.getNewCourse();
+        RecommendProperties.NewCourse config = recommendProperties.newCourse();
         int safeLimit = normalizeLimit(limit);
-        int safeWindowDays = Math.max(config.getWindowDays(), 1);
+        int safeWindowDays = Math.max(config.windowDays(), 1);
         LocalDateTime publishedAfter = LocalDateTime.now().minusDays(safeWindowDays);
 
         // 这里使用 max(candidateLimit, safeLimit) 是有意设计：
@@ -92,7 +92,7 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
         // 因此默认配置下常取 candidateLimit（如 80），并不是 bug。
         List<NewCourseBaseCandidateDTO> baseCourses = courseMapper.selectOnlineNewCourseBaseCandidates(
                 publishedAfter,
-                Math.max(Math.max(config.getCandidateLimit(), 0), safeLimit));
+                Math.max(Math.max(config.candidateLimit(), 0), safeLimit));
         if (baseCourses == null || baseCourses.isEmpty()) {
             return List.of();
         }
@@ -192,11 +192,11 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
      * 规范返回条数，防止过小或过大的 limit 影响服务稳定性。
      */
     private int normalizeLimit(Integer limit) {
-        RecommendProperties.NewCourse config = recommendProperties.getNewCourse();
-        int minLimit = Math.max(config.getMinLimit(), 1);
-        int maxLimit = Math.max(config.getMaxLimit(), minLimit);
+        RecommendProperties.NewCourse config = recommendProperties.newCourse();
+        int minLimit = Math.max(config.minLimit(), 1);
+        int maxLimit = Math.max(config.maxLimit(), minLimit);
         if (limit == null) {
-            return Math.max(minLimit, Math.min(config.getDefaultLimit(), maxLimit));
+            return Math.max(minLimit, Math.min(config.defaultLimit(), maxLimit));
         }
         int safe = Math.max(limit, minLimit);
         return Math.min(safe, maxLimit);
@@ -213,10 +213,10 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
      */
     private boolean passesQualityGate(int tagCount, int kpCount, int duration, int learnerCount,
             RecommendProperties.NewCourse config) {
-        return tagCount >= config.getMinTagCount()
-                && kpCount >= config.getMinKpCount()
-                && duration >= config.getMinDurationSeconds()
-                && learnerCount <= config.getMaxLearners();
+        return tagCount >= config.minTagCount()
+                && kpCount >= config.minKpCount()
+                && duration >= config.minDurationSeconds()
+                && learnerCount <= config.maxLearners();
     }
 
     /**
@@ -260,7 +260,7 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
         List<CourseReadinessDTO> readinessList = courseGraphRepository.getCourseReadinessBatch(
                 userId,
                 courseIds,
-                config.getReadinessThreshold());
+                config.readinessThreshold());
         if (readinessList == null || readinessList.isEmpty()) {
             return Map.of();
         }
@@ -302,9 +302,9 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
      * 默认按知识点数量与课程时长等权聚合，权重和满分阈值可通过配置调整。
      */
     private double calcQuality(int kpCount, int durationSeconds, RecommendProperties.NewCourse config) {
-        double kpFullScoreCount = Math.max(config.getQualityKpFullScoreCount(), 1.0);
-        double durationFullScoreSeconds = Math.max(config.getQualityDurationFullScoreSeconds(), 1.0);
-        double kpWeight = Math.max(0.0, Math.min(1.0, config.getQualityKpWeight()));
+        double kpFullScoreCount = Math.max(config.qualityKpFullScoreCount(), 1.0);
+        double durationFullScoreSeconds = Math.max(config.qualityDurationFullScoreSeconds(), 1.0);
+        double kpWeight = Math.max(0.0, Math.min(1.0, config.qualityKpWeight()));
         double kpQuality = Math.min(1.0, kpCount / kpFullScoreCount);
         double durationQuality = Math.min(1.0, durationSeconds / durationFullScoreSeconds);
         return kpWeight * kpQuality + (1 - kpWeight) * durationQuality;
@@ -320,7 +320,7 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
             boolean goalFit, RecommendProperties.NewCourse config) {
         double score = calcWeightedScore(tagMatch, freshness, quality, readiness, config);
         if (goalFit) {
-            return Math.min(1.0, score + config.getLearningGoalBonus());
+            return Math.min(1.0, score + config.learningGoalBonus());
         }
         return score;
     }
@@ -334,10 +334,10 @@ public class NewCourseRecommendServiceImpl implements NewCourseRecommendService 
      */
     private double calcWeightedScore(double tagMatch, double freshness, double quality, double readiness,
             RecommendProperties.NewCourse config) {
-        double safeTagWeight = Math.max(0.0, config.getTagWeight());
-        double safeFreshnessWeight = Math.max(0.0, config.getFreshnessWeight());
-        double safeQualityWeight = Math.max(0.0, config.getQualityWeight());
-        double safeReadinessWeight = Math.max(0.0, config.getReadinessWeight());
+        double safeTagWeight = Math.max(0.0, config.tagWeight());
+        double safeFreshnessWeight = Math.max(0.0, config.freshnessWeight());
+        double safeQualityWeight = Math.max(0.0, config.qualityWeight());
+        double safeReadinessWeight = Math.max(0.0, config.readinessWeight());
         double totalWeight = safeTagWeight + safeFreshnessWeight + safeQualityWeight + safeReadinessWeight;
         if (totalWeight <= 0) {
             return 0.0;
