@@ -28,7 +28,6 @@ import com.sy.course_system.recommend.RecommendSource;
 import com.sy.course_system.recommend.NewCourseInjector;
 import com.sy.course_system.recommend.RecommendGraphEnricher;
 import com.sy.course_system.recommend.RecommendResultCache;
-import com.sy.course_system.repository.CourseGraphRepository;
 import com.sy.course_system.service.ColdStartRecommendService;
 import com.sy.course_system.service.ColdStartSupportService;
 import com.sy.course_system.service.CourseService;
@@ -47,7 +46,6 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     private static final Logger log = LoggerFactory.getLogger(HybridRecommendServiceImpl.class);
 
     private final CfRecommendClient cfRecommendClient;
-    private final CourseGraphRepository courseGraphRepository;
     private final CourseService courseService;
     private final ColdStartSupportService coldStartSupportService;
     private final ColdStartRecommendService coldStartRecommendService;
@@ -70,7 +68,6 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     private final Executor recommendTaskExecutor;
 
     public HybridRecommendServiceImpl(CfRecommendClient cfRecommendClient,
-            CourseGraphRepository courseGraphRepository,
             CourseService courseService,
             ColdStartSupportService coldStartSupportService,
             ColdStartRecommendService coldStartRecommendService,
@@ -83,7 +80,6 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
             RecommendProperties recommendProperties,
             @Qualifier("recommendTaskExecutor") Executor recommendTaskExecutor) {
         this.cfRecommendClient = cfRecommendClient;
-        this.courseGraphRepository = courseGraphRepository;
         this.courseService = courseService;
         this.coldStartSupportService = coldStartSupportService;
         this.coldStartRecommendService = coldStartRecommendService;
@@ -158,20 +154,19 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
         List<HybridRecommendItemDTO> newCourseCandidates;
 
         // 异步开关开启且新课开关也开启时，CF 与新课候选并行执行，减少串行 IO 等待。
+        // CF/新课各自独立降级：任一侧失败不影响另一侧，保证主链路可用性优先。
         if (asyncEnabled && loadNewCourses) {
             CompletableFuture<RecommendResponseDTO> cfFuture = CompletableFuture.supplyAsync(
-                    () -> cfRecommendClient.recommend(userId), recommendTaskExecutor);
+                    () -> safeCfRecommend(userId), recommendTaskExecutor);
             CompletableFuture<List<HybridRecommendItemDTO>> ncFuture = CompletableFuture.supplyAsync(
-                    () -> newCourseRecommendService.recommendForRegularUser(userId,
-                            newCourseCandidateLimit),
+                    () -> safeNewCourseRecommend(userId, newCourseCandidateLimit),
                     recommendTaskExecutor);
             cfResp = ConcurrentUtils.await(cfFuture, ASYNC_INTERRUPTED_MSG);
             newCourseCandidates = ConcurrentUtils.await(ncFuture, ASYNC_INTERRUPTED_MSG);
         } else {
-            cfResp = cfRecommendClient.recommend(userId);
+            cfResp = safeCfRecommend(userId);
             newCourseCandidates = loadNewCourses
-                    ? newCourseRecommendService.recommendForRegularUser(userId,
-                            newCourseCandidateLimit)
+                    ? safeNewCourseRecommend(userId, newCourseCandidateLimit)
                     : List.of();
         }
 
@@ -231,9 +226,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
                 .map(RecommendItemDTO::getCourseId)
                 .toList();
 
-        Map<Long, CourseReadinessDTO> readinessMap = recommendGraphEnricher.toReadinessMap(
-                courseGraphRepository.getCourseReadinessBatch(
-                        userId, topCourseIds, recommendProperties.graph().prerequisiteThreshold()));
+        Map<Long, CourseReadinessDTO> readinessMap = safeReadinessMap(userId, topCourseIds);
 
         List<HybridRecommendItemDTO> hybridItems = topCourses.stream()
                 .map(item -> buildHybridBaseItem(item, min, max, eps, courseSummaryMap, readinessMap))
@@ -245,6 +238,38 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
                 injectLimit);
         recommendGraphEnricher.enrichGraphInfo(userId, mergedItems, readinessMap);
         return new HybridRecommendResponseDTO(userId, mergedItems);
+    }
+
+    /**
+     * 图谱 readiness 安全查询：委托 RecommendGraphEnricher 执行，Neo4j 失败时返回空 map。
+     */
+    private Map<Long, CourseReadinessDTO> safeReadinessMap(Long userId, List<Long> courseIds) {
+        return recommendGraphEnricher.safeLoadReadinessMap(
+                userId, courseIds, recommendProperties.graph().prerequisiteThreshold());
+    }
+
+    /**
+     * CF 推荐安全调用：外部 CF 失败时降级为空结果，触发新课/热门兜底。
+     */
+    private RecommendResponseDTO safeCfRecommend(Long userId) {
+        try {
+            return cfRecommendClient.recommend(userId);
+        } catch (RuntimeException e) {
+            log.warn("CF recommendation failed for user {}, degrading to fallback", userId, e);
+            return null;
+        }
+    }
+
+    /**
+     * 新课候选安全调用：失败时返回空列表，避免兜底增强项反向拖垮 CF 主结果。
+     */
+    private List<HybridRecommendItemDTO> safeNewCourseRecommend(Long userId, int limit) {
+        try {
+            return newCourseRecommendService.recommendForRegularUser(userId, limit);
+        } catch (RuntimeException e) {
+            log.warn("New course candidate loading failed for user {}, using empty list", userId, e);
+            return List.of();
+        }
     }
 
     private static boolean isCourseAvailable(Long courseId, Map<Long, Course> courseSummaryMap,

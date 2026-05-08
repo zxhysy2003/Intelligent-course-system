@@ -34,6 +34,12 @@ public class CfRecommendClient {
     private static final TypeReference<List<UserCourseScoreDTO>> SCORE_MATRIX_TYPE = new TypeReference<>() {
     };
 
+    private enum ScoreMatrixLockState {
+        ACQUIRED,
+        BUSY,
+        UNAVAILABLE
+    }
+
     private final RestTemplate restTemplate;
     private final LearningBehaviorService learningBehaviorService;
     private final RedisTemplate<String, Object> redisTemplate;
@@ -85,8 +91,12 @@ public class CfRecommendClient {
             return cached;
         }
 
-        boolean locked = tryAcquireScoreMatrixLock();
-        if (!locked) {
+        ScoreMatrixLockState lockState = tryAcquireScoreMatrixLock();
+        if (lockState == ScoreMatrixLockState.UNAVAILABLE) {
+            return buildScoreMatrixSnapshot();
+        }
+
+        if (lockState == ScoreMatrixLockState.BUSY) {
             List<UserCourseScoreDTO> waited = waitForScoreMatrixCache();
             if (waited != null) {
                 return waited;
@@ -107,7 +117,11 @@ public class CfRecommendClient {
             writeScoreMatrixCache(snapshot);
             return snapshot;
         } finally {
-            redisTemplate.delete(SCORE_MATRIX_LOCK_KEY);
+            try {
+                redisTemplate.delete(SCORE_MATRIX_LOCK_KEY);
+            } catch (RuntimeException e) {
+                log.warn("Failed to release score matrix lock, ignoring", e);
+            }
         }
     }
 
@@ -116,7 +130,11 @@ public class CfRecommendClient {
         try {
             cached = redisTemplate.opsForValue().get(SCORE_MATRIX_CACHE_KEY);
         } catch (SerializationException ex) {
-            return evictBadScoreMatrixCache("Failed to deserialize recommend score matrix cache, rebuilding snapshot", ex);
+            return evictBadScoreMatrixCache(
+                    "Failed to deserialize recommend score matrix cache, rebuilding snapshot", ex);
+        } catch (RuntimeException ex) {
+            log.warn("Failed to read recommend score matrix cache, rebuilding snapshot", ex);
+            return null;
         }
         if (cached == null) {
             return null;
@@ -129,23 +147,35 @@ public class CfRecommendClient {
     }
 
     private List<UserCourseScoreDTO> evictBadScoreMatrixCache(String message, RuntimeException ex) {
-        // 历史缓存结构或序列化类型异常时直接回源，避免推荐链路被单个坏缓存卡死。
         log.warn(message, ex);
-        redisTemplate.delete(SCORE_MATRIX_CACHE_KEY);
+        try {
+            redisTemplate.delete(SCORE_MATRIX_CACHE_KEY);
+        } catch (RuntimeException deleteEx) {
+            log.warn("Failed to delete bad score matrix cache key, ignoring", deleteEx);
+        }
         return null;
     }
 
     private void writeScoreMatrixCache(List<UserCourseScoreDTO> snapshot) {
-        List<UserCourseScoreDTO> safeSnapshot = snapshot == null ? List.of() : snapshot;
-        redisTemplate.opsForValue().set(SCORE_MATRIX_CACHE_KEY, safeSnapshot,
-                recommendProperties.cache().scoreMatrixTtlMinutes(),
-                TimeUnit.MINUTES);
+        try {
+            List<UserCourseScoreDTO> safeSnapshot = snapshot == null ? List.of() : snapshot;
+            redisTemplate.opsForValue().set(SCORE_MATRIX_CACHE_KEY, safeSnapshot,
+                    recommendProperties.cache().scoreMatrixTtlMinutes(),
+                    TimeUnit.MINUTES);
+        } catch (RuntimeException e) {
+            log.warn("Failed to write score matrix cache, result still returned", e);
+        }
     }
 
-    private boolean tryAcquireScoreMatrixLock() {
-        Boolean ok = redisTemplate.opsForValue().setIfAbsent(SCORE_MATRIX_LOCK_KEY, "1",
-                recommendProperties.cache().scoreMatrixLockTtlSeconds(), TimeUnit.SECONDS);
-        return Boolean.TRUE.equals(ok);
+    private ScoreMatrixLockState tryAcquireScoreMatrixLock() {
+        try {
+            Boolean ok = redisTemplate.opsForValue().setIfAbsent(SCORE_MATRIX_LOCK_KEY, "1",
+                    recommendProperties.cache().scoreMatrixLockTtlSeconds(), TimeUnit.SECONDS);
+            return Boolean.TRUE.equals(ok) ? ScoreMatrixLockState.ACQUIRED : ScoreMatrixLockState.BUSY;
+        } catch (RuntimeException e) {
+            log.warn("Failed to acquire score matrix lock, proceeding without lock", e);
+            return ScoreMatrixLockState.UNAVAILABLE;
+        }
     }
 
     private List<UserCourseScoreDTO> waitForScoreMatrixCache() {

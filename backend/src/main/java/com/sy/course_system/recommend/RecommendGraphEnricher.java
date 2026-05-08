@@ -7,6 +7,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.neo4j.core.Neo4jClient;
 import org.springframework.stereotype.Component;
@@ -35,6 +37,8 @@ import com.sy.course_system.vo.KnowledgeVO;
  */
 @Component
 public class RecommendGraphEnricher {
+
+    private static final Logger log = LoggerFactory.getLogger(RecommendGraphEnricher.class);
 
     private static final String GRAPH_ASYNC_INTERRUPTED_MSG = "图谱补全异步执行被中断";
 
@@ -81,22 +85,21 @@ public class RecommendGraphEnricher {
         int learningPathLimit = recommendProperties.graph().learningPathLimitPerCourse();
 
         if (recommendProperties.async().enabled()) {
+            // 异步模式下每个 Neo4j 查询独立降级，单个失败不影响其他图谱字段。
             CompletableFuture<Map<Long, CourseReadinessDTO>> readinessFuture;
             if (!missingReadinessCourseIds.isEmpty()) {
-                readinessFuture = CompletableFuture.supplyAsync(() -> {
-                    List<CourseReadinessDTO> readinessList = courseGraphRepository.getCourseReadinessBatch(
-                            userId, missingReadinessCourseIds, prerequisiteThreshold);
-                    return toReadinessMap(readinessList);
-                }, recommendTaskExecutor);
+                readinessFuture = CompletableFuture.supplyAsync(
+                        () -> safeLoadReadinessMap(userId, missingReadinessCourseIds, prerequisiteThreshold),
+                        recommendTaskExecutor);
             } else {
                 readinessFuture = CompletableFuture.completedFuture(Map.of());
             }
 
             CompletableFuture<Map<Long, List<KnowledgeVO>>> kpFuture = CompletableFuture.supplyAsync(
-                    () -> loadCourseKnowledgePointsMap(courseIds), recommendTaskExecutor);
+                    () -> safeLoadKnowledgePointsMap(courseIds), recommendTaskExecutor);
 
             CompletableFuture<Map<Long, List<List<KnowledgeVO>>>> pathFuture = CompletableFuture.supplyAsync(
-                    () -> loadLearningPathsMap(userId, courseIds, prerequisiteThreshold, learningPathLimit),
+                    () -> safeLoadLearningPathsMap(userId, courseIds, prerequisiteThreshold, learningPathLimit),
                     recommendTaskExecutor);
 
             ConcurrentUtils.awaitAll(GRAPH_ASYNC_INTERRUPTED_MSG, readinessFuture, kpFuture, pathFuture);
@@ -108,15 +111,14 @@ public class RecommendGraphEnricher {
             learningPathsMap = pathFuture.getNow(Map.of());
         } else {
             if (!missingReadinessCourseIds.isEmpty()) {
-                List<CourseReadinessDTO> readinessList = courseGraphRepository.getCourseReadinessBatch(
+                Map<Long, CourseReadinessDTO> fetchedReadinessMap = safeLoadReadinessMap(
                         userId, missingReadinessCourseIds, prerequisiteThreshold);
-                Map<Long, CourseReadinessDTO> fetchedReadinessMap = toReadinessMap(readinessList);
                 if (!fetchedReadinessMap.isEmpty()) {
                     effectiveReadinessMap.putAll(fetchedReadinessMap);
                 }
             }
-            knowledgePointsMap = loadCourseKnowledgePointsMap(courseIds);
-            learningPathsMap = loadLearningPathsMap(userId, courseIds, prerequisiteThreshold, learningPathLimit);
+            knowledgePointsMap = safeLoadKnowledgePointsMap(courseIds);
+            learningPathsMap = safeLoadLearningPathsMap(userId, courseIds, prerequisiteThreshold, learningPathLimit);
         }
 
         for (HybridRecommendItemDTO item : items) {
@@ -156,6 +158,37 @@ public class RecommendGraphEnricher {
             map.putIfAbsent(readiness.getCourseId(), readiness);
         }
         return map;
+    }
+
+    public Map<Long, CourseReadinessDTO> safeLoadReadinessMap(Long userId, List<Long> courseIds,
+            double prerequisiteThreshold) {
+        try {
+            List<CourseReadinessDTO> readinessList = courseGraphRepository.getCourseReadinessBatch(
+                    userId, courseIds, prerequisiteThreshold);
+            return toReadinessMap(readinessList);
+        } catch (RuntimeException e) {
+            log.warn("Readiness batch query failed for user {} on {} courses, skipping", userId, courseIds.size(), e);
+            return Map.of();
+        }
+    }
+
+    private Map<Long, List<KnowledgeVO>> safeLoadKnowledgePointsMap(List<Long> courseIds) {
+        try {
+            return loadCourseKnowledgePointsMap(courseIds);
+        } catch (RuntimeException e) {
+            log.warn("Knowledge points batch query failed for {} courses, skipping", courseIds.size(), e);
+            return Map.of();
+        }
+    }
+
+    private Map<Long, List<List<KnowledgeVO>>> safeLoadLearningPathsMap(Long userId, List<Long> courseIds,
+            double threshold, int limit) {
+        try {
+            return loadLearningPathsMap(userId, courseIds, threshold, limit);
+        } catch (RuntimeException e) {
+            log.warn("Learning paths query failed for user {} on {} courses, skipping", userId, courseIds.size(), e);
+            return Map.of();
+        }
     }
 
     private Map<Long, List<KnowledgeVO>> loadCourseKnowledgePointsMap(List<Long> courseIds) {

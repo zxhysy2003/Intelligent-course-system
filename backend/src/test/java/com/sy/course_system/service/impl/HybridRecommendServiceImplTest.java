@@ -135,7 +135,6 @@ class HybridRecommendServiceImplTest {
 
         hybridRecommendService = new HybridRecommendServiceImpl(
                 cfRecommendClient,
-                courseGraphRepository,
                 courseService,
                 coldStartSupportService,
                 coldStartRecommendService,
@@ -367,11 +366,10 @@ class HybridRecommendServiceImplTest {
 
     @Test
     void recommendShouldUseHotFallbackWhenCacheMissAndLockIsNotAcquired() {
-        // 这里故意模拟"没拿到构建锁且等待缓存也失败"的场景，
-        // 触发热点兜底路径，验证最终仍能回源构建并写缓存。
+        // 未拿到构建锁时先等待缓存；等不到再回源构建并写缓存。
+        // CF 为空、新课为空 -> 热门兜底。
         when(coldStartSupportService.isColdStartUser(1L)).thenReturn(false);
-        when(valueOperations.get("recommend:user:1")).thenReturn((Object) null, (Object) null, (Object) null,
-                (Object) null);
+        when(valueOperations.get("recommend:user:1")).thenReturn(null);
         when(valueOperations.setIfAbsent("recommend:lock:user:1", "1", 20L, TimeUnit.SECONDS)).thenReturn(false);
         when(cfRecommendClient.recommend(1L)).thenReturn(recommendResponseDto(List.of()));
         when(newCourseRecommendService.recommendForRegularUser(1L, 30)).thenReturn(List.of());
