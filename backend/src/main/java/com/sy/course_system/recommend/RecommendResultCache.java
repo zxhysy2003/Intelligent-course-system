@@ -1,5 +1,6 @@
 package com.sy.course_system.recommend;
 
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -35,19 +36,36 @@ public class RecommendResultCache {
         UNAVAILABLE
     }
 
+    private record BuildLock(BuildLockState state, String token) {
+        private static BuildLock acquired(String token) {
+            return new BuildLock(BuildLockState.ACQUIRED, token);
+        }
+
+        private static BuildLock busy() {
+            return new BuildLock(BuildLockState.BUSY, null);
+        }
+
+        private static BuildLock unavailable() {
+            return new BuildLock(BuildLockState.UNAVAILABLE, null);
+        }
+    }
+
     private final RedisTemplate<String, Object> redisTemplate;
     private final ObjectMapper objectMapper;
     private final RecommendScoreNormalizer scoreNormalizer;
     private final RecommendProperties recommendProperties;
+    private final RecommendRedisLock recommendRedisLock;
 
     public RecommendResultCache(RedisTemplate<String, Object> redisTemplate,
             ObjectMapper objectMapper,
             RecommendScoreNormalizer scoreNormalizer,
-            RecommendProperties recommendProperties) {
+            RecommendProperties recommendProperties,
+            RecommendRedisLock recommendRedisLock) {
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
         this.scoreNormalizer = scoreNormalizer;
         this.recommendProperties = recommendProperties;
+        this.recommendRedisLock = recommendRedisLock;
     }
 
     /**
@@ -61,14 +79,14 @@ public class RecommendResultCache {
             return cached;
         }
 
-        BuildLockState lockState = tryAcquireBuildLock(lockKey);
-        if (lockState == BuildLockState.UNAVAILABLE) {
+        BuildLock lock = tryAcquireBuildLock(lockKey);
+        if (lock.state() == BuildLockState.UNAVAILABLE) {
             HybridRecommendResponseDTO result = builder.get();
             scoreNormalizer.fillRecommendScores(result);
             return result;
         }
 
-        if (lockState == BuildLockState.BUSY) {
+        if (lock.state() == BuildLockState.BUSY) {
             HybridRecommendResponseDTO waited = waitForCache(cacheKey);
             if (waited != null) {
                 return waited;
@@ -88,7 +106,7 @@ public class RecommendResultCache {
             return result;
         } finally {
             try {
-                redisTemplate.delete(lockKey);
+                recommendRedisLock.release(lockKey, lock.token());
             } catch (RuntimeException e) {
                 log.warn("Failed to release build lock for key {}", lockKey, e);
             }
@@ -150,15 +168,13 @@ public class RecommendResultCache {
         }
     }
 
-    private BuildLockState tryAcquireBuildLock(String lockKey) {
+    private BuildLock tryAcquireBuildLock(String lockKey) {
         try {
-            Boolean ok = redisTemplate.opsForValue().setIfAbsent(lockKey, "1",
-                    recommendProperties.cache().buildLockTtlSeconds(),
-                    TimeUnit.SECONDS);
-            return Boolean.TRUE.equals(ok) ? BuildLockState.ACQUIRED : BuildLockState.BUSY;
+            Optional<String> token = recommendRedisLock.acquire(lockKey, recommendProperties.cache().buildLockTtlSeconds());
+            return token.map(BuildLock::acquired).orElseGet(BuildLock::busy);
         } catch (RuntimeException e) {
             log.warn("Failed to acquire build lock for key {}, proceeding without lock", lockKey, e);
-            return BuildLockState.UNAVAILABLE;
+            return BuildLock.unavailable();
         }
     }
 

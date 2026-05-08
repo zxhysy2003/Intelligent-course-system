@@ -19,6 +19,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
@@ -39,6 +40,7 @@ import com.sy.course_system.config.RecommendProperties;
 import com.sy.course_system.recommend.HotFallbackRecommendService;
 import com.sy.course_system.recommend.NewCourseInjector;
 import com.sy.course_system.recommend.RecommendGraphEnricher;
+import com.sy.course_system.recommend.RecommendRedisLock;
 import com.sy.course_system.recommend.RecommendResultCache;
 import com.sy.course_system.recommend.RecommendScoreNormalizer;
 import com.sy.course_system.dto.graph.CourseKnowledgePointDTO;
@@ -86,6 +88,8 @@ class HybridRecommendServiceImplTest {
     private UserCourseService userCourseService;
     @Mock
     private Executor recommendTaskExecutor;
+    @Mock
+    private RecommendRedisLock recommendRedisLock;
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper();
 
@@ -101,6 +105,7 @@ class HybridRecommendServiceImplTest {
         // 缓存与 Neo4j 查询不是本测试关注点时，统一给出宽松默认桩，
         // 每个用例只覆盖自己真正关心的分支，避免样板 stub 淹没断言重点。
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        lenient().when(recommendRedisLock.acquire(anyString(), eq(20L))).thenReturn(Optional.of("lock-token"));
         lenient().when(neo4jClient.query(anyString()).bindAll(anyMap()).fetch().all()).thenReturn(List.of());
         lenient().when(courseGraphRepository.findCourseKnowledgePointsBatch(anyList())).thenReturn(List.of());
         // 默认用户未选任何课程，需要"已选过滤"行为的测试自行覆盖。
@@ -127,7 +132,7 @@ class HybridRecommendServiceImplTest {
         NewCourseInjector newCourseInjector = new NewCourseInjector(recommendProperties);
         RecommendScoreNormalizer scoreNormalizer = new RecommendScoreNormalizer(recommendProperties);
         RecommendResultCache recommendResultCache = new RecommendResultCache(redisTemplate, objectMapper, scoreNormalizer,
-                recommendProperties);
+                recommendProperties, recommendRedisLock);
         HotFallbackRecommendService hotFallbackRecommendService = new HotFallbackRecommendService(learningAnalysisService,
                 courseService, recommendProperties);
         RecommendGraphEnricher enricher = new RecommendGraphEnricher(courseGraphRepository, neo4jClient,
@@ -175,7 +180,6 @@ class HybridRecommendServiceImplTest {
 
         when(coldStartSupportService.isColdStartUser(1L)).thenReturn(true);
         when(valueOperations.get("recommend:cold:user:1")).thenReturn((Object) null, (Object) null);
-        when(valueOperations.setIfAbsent("recommend:cold:lock:user:1", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
         when(coldStartRecommendService.recommend(1L, 10)).thenReturn(List.of(valid, broken));
         when(courseGraphRepository.getCourseReadinessBatch(1L, List.of(100L), 0.7d)).thenReturn(List.of(
                 readiness(100L, 0.6d)));
@@ -214,7 +218,6 @@ class HybridRecommendServiceImplTest {
 
         when(coldStartSupportService.isColdStartUser(1L)).thenReturn(false);
         when(valueOperations.get("recommend:user:1")).thenReturn((Object) null, (Object) null);
-        when(valueOperations.setIfAbsent("recommend:lock:user:1", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
         when(cfRecommendClient.recommend(1L)).thenReturn(recommendResponseDto(List.of()));
         when(newCourseRecommendService.recommendForRegularUser(1L, 30)).thenReturn(List.of(newCourse));
         when(courseGraphRepository.getCourseReadinessBatch(1L, List.of(5L), 0.7d)).thenReturn(List.of(readiness(5L, 0.6d)));
@@ -248,7 +251,6 @@ class HybridRecommendServiceImplTest {
 
         when(coldStartSupportService.isColdStartUser(1L)).thenReturn(false);
         when(valueOperations.get("recommend:user:1")).thenReturn((Object) null, (Object) null);
-        when(valueOperations.setIfAbsent("recommend:lock:user:1", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
         when(cfRecommendClient.recommend(1L)).thenReturn(recommendResponseDto(List.of(
                 cfItem(1L, 10.0d),
                 cfItem(2L, 8.0d),
@@ -300,7 +302,6 @@ class HybridRecommendServiceImplTest {
         // 但文案上不能误写成"当前可直接学习"，因此 reason 仍应保持通用描述。
         when(coldStartSupportService.isColdStartUser(3L)).thenReturn(false);
         when(valueOperations.get("recommend:user:3")).thenReturn((Object) null, (Object) null);
-        when(valueOperations.setIfAbsent("recommend:lock:user:3", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
         when(cfRecommendClient.recommend(3L)).thenReturn(recommendResponseDto(List.of(cfItem(30L, 9.0d))));
         when(newCourseRecommendService.recommendForRegularUser(3L, 30)).thenReturn(List.of());
         when(courseService.getRecommendCourseSummaryMapByIds(List.of(30L))).thenReturn(Map.of(
@@ -322,7 +323,6 @@ class HybridRecommendServiceImplTest {
         // 否则高 CF/低 readiness 的课程会被错误压到低 CF/高 readiness 后面。
         when(coldStartSupportService.isColdStartUser(7L)).thenReturn(false);
         when(valueOperations.get("recommend:user:7")).thenReturn((Object) null, (Object) null);
-        when(valueOperations.setIfAbsent("recommend:lock:user:7", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
         when(cfRecommendClient.recommend(7L)).thenReturn(recommendResponseDto(List.of(
                 cfItem(10L, -0.2d),
                 cfItem(11L, -0.8d))));
@@ -351,7 +351,6 @@ class HybridRecommendServiceImplTest {
 
         when(coldStartSupportService.isColdStartUser(6L)).thenReturn(true);
         when(valueOperations.get("recommend:cold:user:6")).thenReturn((Object) null, (Object) null);
-        when(valueOperations.setIfAbsent("recommend:cold:lock:user:6", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
         when(coldStartRecommendService.recommend(6L, 10)).thenReturn(List.of(first, second));
         when(courseGraphRepository.getCourseReadinessBatch(6L, List.of(100L, 200L), 0.7d)).thenReturn(List.of());
         when(courseGraphRepository.findCourseKnowledgePointsBatch(List.of(100L, 200L))).thenReturn(List.of(kp));
@@ -370,7 +369,7 @@ class HybridRecommendServiceImplTest {
         // CF 为空、新课为空 -> 热门兜底。
         when(coldStartSupportService.isColdStartUser(1L)).thenReturn(false);
         when(valueOperations.get("recommend:user:1")).thenReturn(null);
-        when(valueOperations.setIfAbsent("recommend:lock:user:1", "1", 20L, TimeUnit.SECONDS)).thenReturn(false);
+        when(recommendRedisLock.acquire("recommend:lock:user:1", 20L)).thenReturn(Optional.empty());
         when(cfRecommendClient.recommend(1L)).thenReturn(recommendResponseDto(List.of()));
         when(newCourseRecommendService.recommendForRegularUser(1L, 30)).thenReturn(List.of());
         when(learningAnalysisService.getHotCoursesByRange(0, 10)).thenReturn(List.of(9L, 10L, 8L));
@@ -401,7 +400,6 @@ class HybridRecommendServiceImplTest {
         // 必须按已扫描区间继续向后找，直到补够或热榜耗尽。
         when(coldStartSupportService.isColdStartUser(4L)).thenReturn(false);
         when(valueOperations.get("recommend:user:4")).thenReturn((Object) null, (Object) null);
-        when(valueOperations.setIfAbsent("recommend:lock:user:4", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
         when(cfRecommendClient.recommend(4L)).thenReturn(recommendResponseDto(List.of()));
         when(newCourseRecommendService.recommendForRegularUser(4L, 30)).thenReturn(List.of());
         when(learningAnalysisService.getHotCoursesByRange(0, 10)).thenReturn(List.of(9L, 10L, 8L));
@@ -444,7 +442,6 @@ class HybridRecommendServiceImplTest {
 
         when(coldStartSupportService.isColdStartUser(1L)).thenReturn(false);
         when(valueOperations.get("recommend:user:1")).thenReturn((Object) null, (Object) null);
-        when(valueOperations.setIfAbsent("recommend:lock:user:1", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
         when(cfRecommendClient.recommend(1L)).thenReturn(recommendResponseDto(List.of(
                 cfItem(1L, 10.0d),
                 cfItem(2L, 8.0d),
@@ -495,7 +492,6 @@ class HybridRecommendServiceImplTest {
 
         when(coldStartSupportService.isColdStartUser(6L)).thenReturn(true);
         when(valueOperations.get("recommend:cold:user:6")).thenReturn((Object) null, (Object) null);
-        when(valueOperations.setIfAbsent("recommend:cold:lock:user:6", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
         when(coldStartRecommendService.recommend(6L, 10)).thenReturn(List.of(first, second));
         when(courseGraphRepository.getCourseReadinessBatch(6L, List.of(100L, 200L), 0.7d)).thenReturn(List.of());
         when(courseGraphRepository.findCourseKnowledgePointsBatch(List.of(100L, 200L))).thenReturn(List.of(kp));
@@ -516,7 +512,6 @@ class HybridRecommendServiceImplTest {
 
         when(coldStartSupportService.isColdStartUser(3L)).thenReturn(false);
         when(valueOperations.get("recommend:user:3")).thenReturn((Object) null, (Object) null);
-        when(valueOperations.setIfAbsent("recommend:lock:user:3", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
         when(cfRecommendClient.recommend(3L)).thenReturn(recommendResponseDto(List.of(cfItem(30L, 9.0d))));
         when(courseService.getRecommendCourseSummaryMapByIds(List.of(30L))).thenReturn(Map.of(
                 30L, courseSummary(30L, "无图谱课程", "cover-30", 2)));
@@ -537,7 +532,6 @@ class HybridRecommendServiceImplTest {
         // 这个行为先保留，不在"统一展示分"这次改动里擅自改成其他兜底语义。
         when(coldStartSupportService.isColdStartUser(2L)).thenReturn(false);
         when(valueOperations.get("recommend:user:2")).thenReturn((Object) null, (Object) null);
-        when(valueOperations.setIfAbsent("recommend:lock:user:2", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
         when(cfRecommendClient.recommend(2L)).thenReturn(recommendResponseDto(List.of()));
         when(newCourseRecommendService.recommendForRegularUser(2L, 30)).thenReturn(List.of());
         when(learningAnalysisService.getHotCoursesByRange(0, 10)).thenReturn(List.of(7L, 6L));
@@ -568,7 +562,6 @@ class HybridRecommendServiceImplTest {
 
         when(coldStartSupportService.isColdStartUser(1L)).thenReturn(false);
         when(valueOperations.get("recommend:user:1")).thenReturn((Object) null, (Object) null);
-        when(valueOperations.setIfAbsent("recommend:lock:user:1", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
         when(cfRecommendClient.recommend(1L)).thenReturn(recommendResponseDto(allItems));
         when(newCourseRecommendService.recommendForRegularUser(1L, 30)).thenReturn(List.of());
         // 已选课程：1 和 5
@@ -607,7 +600,6 @@ class HybridRecommendServiceImplTest {
         // CF 有返回但全部已被选或下线时，走新课兜底。
         when(coldStartSupportService.isColdStartUser(2L)).thenReturn(false);
         when(valueOperations.get("recommend:user:2")).thenReturn((Object) null, (Object) null);
-        when(valueOperations.setIfAbsent("recommend:lock:user:2", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
         when(cfRecommendClient.recommend(2L)).thenReturn(recommendResponseDto(List.of(
                 cfItem(1L, 100.0d), cfItem(2L, 95.0d))));
         // 两个 CF 课程都已被选
@@ -633,7 +625,6 @@ class HybridRecommendServiceImplTest {
         // CF 全部过滤且无新课候选，走热门兜底。
         when(coldStartSupportService.isColdStartUser(3L)).thenReturn(false);
         when(valueOperations.get("recommend:user:3")).thenReturn((Object) null, (Object) null);
-        when(valueOperations.setIfAbsent("recommend:lock:user:3", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
         when(cfRecommendClient.recommend(3L)).thenReturn(recommendResponseDto(List.of(cfItem(1L, 100.0d))));
         when(userCourseService.listSelectedCourseIds(eq(3L), anyList())).thenReturn(List.of(1L));
         when(courseService.getRecommendCourseSummaryMapByIds(anyList())).thenReturn(Map.of(

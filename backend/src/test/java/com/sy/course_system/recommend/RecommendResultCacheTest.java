@@ -15,6 +15,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -42,6 +43,8 @@ class RecommendResultCacheTest {
     private ValueOperations<String, Object> valueOperations;
     @Mock
     private RecommendScoreNormalizer scoreNormalizer;
+    @Mock
+    private RecommendRedisLock recommendRedisLock;
 
     private RecommendResultCache recommendResultCache;
 
@@ -51,7 +54,7 @@ class RecommendResultCacheTest {
                 .cache(cache -> cache.waitRetryTimes(1).waitMillis(0L))
                 .build();
         recommendResultCache = new RecommendResultCache(redisTemplate, new ObjectMapper(), scoreNormalizer,
-                recommendProperties);
+                recommendProperties, recommendRedisLock);
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
     }
 
@@ -60,7 +63,7 @@ class RecommendResultCacheTest {
         HybridRecommendResponseDTO cached = response(1L);
         Supplier<HybridRecommendResponseDTO> builder = mockBuilder();
         when(valueOperations.get("recommend:user:1")).thenReturn(null, cached);
-        when(valueOperations.setIfAbsent("recommend:lock:user:1", "1", 20L, TimeUnit.SECONDS)).thenReturn(false);
+        when(recommendRedisLock.acquire("recommend:lock:user:1", 20L)).thenReturn(Optional.empty());
 
         HybridRecommendResponseDTO result = recommendResultCache.getOrBuildWithCache(
                 "recommend:user:1", "recommend:lock:user:1", 30L, builder);
@@ -76,7 +79,7 @@ class RecommendResultCacheTest {
         Supplier<HybridRecommendResponseDTO> builder = mockBuilder();
         when(builder.get()).thenReturn(fallback);
         when(valueOperations.get("recommend:user:2")).thenReturn(null);
-        when(valueOperations.setIfAbsent("recommend:lock:user:2", "1", 20L, TimeUnit.SECONDS)).thenReturn(false);
+        when(recommendRedisLock.acquire("recommend:lock:user:2", 20L)).thenReturn(Optional.empty());
 
         HybridRecommendResponseDTO result = recommendResultCache.getOrBuildWithCache(
                 "recommend:user:2", "recommend:lock:user:2", 30L, builder);
@@ -92,7 +95,7 @@ class RecommendResultCacheTest {
         Supplier<HybridRecommendResponseDTO> builder = mockBuilder();
         when(builder.get()).thenReturn(fallback);
         when(valueOperations.get("recommend:user:3")).thenReturn(null);
-        when(valueOperations.setIfAbsent("recommend:lock:user:3", "1", 20L, TimeUnit.SECONDS))
+        when(recommendRedisLock.acquire("recommend:lock:user:3", 20L))
                 .thenThrow(new RuntimeException("redis unavailable"));
 
         HybridRecommendResponseDTO result = recommendResultCache.getOrBuildWithCache(
@@ -102,6 +105,22 @@ class RecommendResultCacheTest {
         verify(builder).get();
         verify(valueOperations, times(1)).get("recommend:user:3");
         verify(valueOperations, never()).set(eq("recommend:user:3"), any(), eq(30L), eq(TimeUnit.MINUTES));
+        verify(recommendRedisLock, never()).release(eq("recommend:lock:user:3"), any());
+    }
+
+    @Test
+    void getOrBuildShouldReleaseBuildLockWithAcquiredToken() {
+        HybridRecommendResponseDTO response = response(9L);
+        Supplier<HybridRecommendResponseDTO> builder = mockBuilder();
+        when(builder.get()).thenReturn(response);
+        when(valueOperations.get("recommend:user:9")).thenReturn(null);
+        when(recommendRedisLock.acquire("recommend:lock:user:9", 20L)).thenReturn(Optional.of("token-9"));
+
+        HybridRecommendResponseDTO result = recommendResultCache.getOrBuildWithCache(
+                "recommend:user:9", "recommend:lock:user:9", 30L, builder);
+
+        assertSame(response, result);
+        verify(recommendRedisLock).release("recommend:lock:user:9", "token-9");
     }
 
     @Test

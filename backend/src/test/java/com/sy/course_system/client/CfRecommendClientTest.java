@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +29,7 @@ import com.sy.course_system.config.RecommendProperties;
 import com.sy.course_system.dto.recommend.RecommendRequestDTO;
 import com.sy.course_system.dto.recommend.RecommendResponseDTO;
 import com.sy.course_system.dto.recommend.UserCourseScoreDTO;
+import com.sy.course_system.recommend.RecommendRedisLock;
 import com.sy.course_system.service.LearningBehaviorService;
 import com.sy.course_system.support.RecommendPropertiesFixture;
 
@@ -42,6 +44,8 @@ class CfRecommendClientTest {
     private RedisTemplate<String, Object> redisTemplate;
     @Mock
     private ValueOperations<String, Object> valueOperations;
+    @Mock
+    private RecommendRedisLock recommendRedisLock;
 
     private ObjectMapper objectMapper = new ObjectMapper();
     private RecommendProperties recommendProperties;
@@ -78,7 +82,7 @@ class CfRecommendClientTest {
         List<UserCourseScoreDTO> scores = List.of(score(1L, 10L, 0.8d));
         RecommendResponseDTO response = new RecommendResponseDTO();
         when(valueOperations.get("recommend:score-matrix")).thenReturn(null, (Object) null);
-        when(valueOperations.setIfAbsent("recommend:score-matrix:lock", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
+        when(recommendRedisLock.acquire("recommend:score-matrix:lock", 20L)).thenReturn(Optional.of("token-1"));
         when(learningBehaviorService.listAggregatedScores()).thenReturn(scores);
         when(restTemplate.postForObject(eq("http://recommend-service/recommend"), any(RecommendRequestDTO.class),
                 eq(RecommendResponseDTO.class))).thenReturn(response);
@@ -88,7 +92,7 @@ class CfRecommendClientTest {
         RecommendRequestDTO request = captureRequest();
         assertScore(request.getData().get(0), 1L, 10L, 0.8d);
         verify(valueOperations).set("recommend:score-matrix", scores, 2L, TimeUnit.MINUTES);
-        verify(redisTemplate).delete("recommend:score-matrix:lock");
+        verify(recommendRedisLock).release("recommend:score-matrix:lock", "token-1");
     }
 
     @Test
@@ -119,7 +123,7 @@ class CfRecommendClientTest {
         when(valueOperations.get("recommend:score-matrix"))
                 .thenThrow(new SerializationException("bad cache"))
                 .thenReturn(null);
-        when(valueOperations.setIfAbsent("recommend:score-matrix:lock", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
+        when(recommendRedisLock.acquire("recommend:score-matrix:lock", 20L)).thenReturn(Optional.of("token-1"));
         when(learningBehaviorService.listAggregatedScores()).thenReturn(scores);
         when(restTemplate.postForObject(eq("http://recommend-service/recommend"), any(RecommendRequestDTO.class),
                 eq(RecommendResponseDTO.class))).thenReturn(response);
@@ -137,7 +141,7 @@ class CfRecommendClientTest {
         List<UserCourseScoreDTO> scores = List.of(score(1L, 10L, 0.8d));
         RecommendResponseDTO response = new RecommendResponseDTO();
         when(valueOperations.get("recommend:score-matrix")).thenReturn(List.of("bad-cache"), (Object) null);
-        when(valueOperations.setIfAbsent("recommend:score-matrix:lock", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
+        when(recommendRedisLock.acquire("recommend:score-matrix:lock", 20L)).thenReturn(Optional.of("token-1"));
         when(learningBehaviorService.listAggregatedScores()).thenReturn(scores);
         when(restTemplate.postForObject(eq("http://recommend-service/recommend"), any(RecommendRequestDTO.class),
                 eq(RecommendResponseDTO.class))).thenReturn(response);
@@ -157,7 +161,7 @@ class CfRecommendClientTest {
         when(valueOperations.get("recommend:score-matrix"))
                 .thenThrow(new RuntimeException("redis unavailable"))
                 .thenReturn(null);
-        when(valueOperations.setIfAbsent("recommend:score-matrix:lock", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
+        when(recommendRedisLock.acquire("recommend:score-matrix:lock", 20L)).thenReturn(Optional.of("token-1"));
         when(learningBehaviorService.listAggregatedScores()).thenReturn(scores);
         when(restTemplate.postForObject(eq("http://recommend-service/recommend"), any(RecommendRequestDTO.class),
                 eq(RecommendResponseDTO.class))).thenReturn(response);
@@ -195,7 +199,7 @@ class CfRecommendClientTest {
         List<UserCourseScoreDTO> cachedScores = List.of(score(1L, 10L, 0.8d));
         RecommendResponseDTO response = new RecommendResponseDTO();
         when(valueOperations.get("recommend:score-matrix")).thenReturn(null, cachedScores);
-        when(valueOperations.setIfAbsent("recommend:score-matrix:lock", "1", 20L, TimeUnit.SECONDS)).thenReturn(false);
+        when(recommendRedisLock.acquire("recommend:score-matrix:lock", 20L)).thenReturn(Optional.empty());
         when(restTemplate.postForObject(eq("http://recommend-service/recommend"), any(RecommendRequestDTO.class),
                 eq(RecommendResponseDTO.class))).thenReturn(response);
 
@@ -211,7 +215,7 @@ class CfRecommendClientTest {
         List<UserCourseScoreDTO> scores = List.of(score(1L, 10L, 0.8d));
         RecommendResponseDTO response = new RecommendResponseDTO();
         when(valueOperations.get("recommend:score-matrix")).thenReturn(null);
-        when(valueOperations.setIfAbsent("recommend:score-matrix:lock", "1", 20L, TimeUnit.SECONDS))
+        when(recommendRedisLock.acquire("recommend:score-matrix:lock", 20L))
                 .thenThrow(new RuntimeException("redis unavailable"));
         when(learningBehaviorService.listAggregatedScores()).thenReturn(scores);
         when(restTemplate.postForObject(eq("http://recommend-service/recommend"), any(RecommendRequestDTO.class),
@@ -222,7 +226,7 @@ class CfRecommendClientTest {
         RecommendRequestDTO request = captureRequest();
         assertScore(request.getData().get(0), 1L, 10L, 0.8d);
         verify(valueOperations, never()).set(eq("recommend:score-matrix"), any(), eq(2L), eq(TimeUnit.MINUTES));
-        verify(redisTemplate, never()).delete("recommend:score-matrix:lock");
+        verify(recommendRedisLock, never()).release(eq("recommend:score-matrix:lock"), any());
     }
 
     @Test
@@ -252,7 +256,7 @@ class CfRecommendClientTest {
 
     private void rebuildClient() {
         cfRecommendClient = new CfRecommendClient(restTemplate, learningBehaviorService, redisTemplate,
-                objectMapper, recommendProperties);
+                objectMapper, recommendProperties, recommendRedisLock);
     }
 
     private RecommendRequestDTO captureRequest() {

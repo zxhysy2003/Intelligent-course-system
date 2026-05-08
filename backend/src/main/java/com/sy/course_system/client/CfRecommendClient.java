@@ -1,6 +1,7 @@
 package com.sy.course_system.client;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
@@ -16,6 +17,7 @@ import com.sy.course_system.config.RecommendProperties;
 import com.sy.course_system.dto.recommend.RecommendRequestDTO;
 import com.sy.course_system.dto.recommend.RecommendResponseDTO;
 import com.sy.course_system.dto.recommend.UserCourseScoreDTO;
+import com.sy.course_system.recommend.RecommendRedisLock;
 import com.sy.course_system.service.LearningBehaviorService;
 
 /**
@@ -40,22 +42,39 @@ public class CfRecommendClient {
         UNAVAILABLE
     }
 
+    private record ScoreMatrixLock(ScoreMatrixLockState state, String token) {
+        private static ScoreMatrixLock acquired(String token) {
+            return new ScoreMatrixLock(ScoreMatrixLockState.ACQUIRED, token);
+        }
+
+        private static ScoreMatrixLock busy() {
+            return new ScoreMatrixLock(ScoreMatrixLockState.BUSY, null);
+        }
+
+        private static ScoreMatrixLock unavailable() {
+            return new ScoreMatrixLock(ScoreMatrixLockState.UNAVAILABLE, null);
+        }
+    }
+
     private final RestTemplate restTemplate;
     private final LearningBehaviorService learningBehaviorService;
     private final RedisTemplate<String, Object> redisTemplate;
     private final ObjectMapper objectMapper;
     private final RecommendProperties recommendProperties;
+    private final RecommendRedisLock recommendRedisLock;
 
     public CfRecommendClient(RestTemplate restTemplate,
             LearningBehaviorService learningBehaviorService,
             RedisTemplate<String, Object> redisTemplate,
             ObjectMapper objectMapper,
-            RecommendProperties recommendProperties) {
+            RecommendProperties recommendProperties,
+            RecommendRedisLock recommendRedisLock) {
         this.restTemplate = restTemplate;
         this.learningBehaviorService = learningBehaviorService;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
         this.recommendProperties = recommendProperties;
+        this.recommendRedisLock = recommendRedisLock;
     }
 
     public RecommendResponseDTO recommend(Long userId) {
@@ -91,12 +110,12 @@ public class CfRecommendClient {
             return cached;
         }
 
-        ScoreMatrixLockState lockState = tryAcquireScoreMatrixLock();
-        if (lockState == ScoreMatrixLockState.UNAVAILABLE) {
+        ScoreMatrixLock lock = tryAcquireScoreMatrixLock();
+        if (lock.state() == ScoreMatrixLockState.UNAVAILABLE) {
             return buildScoreMatrixSnapshot();
         }
 
-        if (lockState == ScoreMatrixLockState.BUSY) {
+        if (lock.state() == ScoreMatrixLockState.BUSY) {
             List<UserCourseScoreDTO> waited = waitForScoreMatrixCache();
             if (waited != null) {
                 return waited;
@@ -118,7 +137,7 @@ public class CfRecommendClient {
             return snapshot;
         } finally {
             try {
-                redisTemplate.delete(SCORE_MATRIX_LOCK_KEY);
+                recommendRedisLock.release(SCORE_MATRIX_LOCK_KEY, lock.token());
             } catch (RuntimeException e) {
                 log.warn("Failed to release score matrix lock, ignoring", e);
             }
@@ -167,14 +186,14 @@ public class CfRecommendClient {
         }
     }
 
-    private ScoreMatrixLockState tryAcquireScoreMatrixLock() {
+    private ScoreMatrixLock tryAcquireScoreMatrixLock() {
         try {
-            Boolean ok = redisTemplate.opsForValue().setIfAbsent(SCORE_MATRIX_LOCK_KEY, "1",
-                    recommendProperties.cache().scoreMatrixLockTtlSeconds(), TimeUnit.SECONDS);
-            return Boolean.TRUE.equals(ok) ? ScoreMatrixLockState.ACQUIRED : ScoreMatrixLockState.BUSY;
+            Optional<String> token = recommendRedisLock.acquire(SCORE_MATRIX_LOCK_KEY,
+                    recommendProperties.cache().scoreMatrixLockTtlSeconds());
+            return token.map(ScoreMatrixLock::acquired).orElseGet(ScoreMatrixLock::busy);
         } catch (RuntimeException e) {
             log.warn("Failed to acquire score matrix lock, proceeding without lock", e);
-            return ScoreMatrixLockState.UNAVAILABLE;
+            return ScoreMatrixLock.unavailable();
         }
     }
 
