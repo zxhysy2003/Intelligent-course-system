@@ -20,6 +20,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.serializer.SerializationException;
 import org.springframework.web.client.RestTemplate;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -109,6 +110,44 @@ class CfRecommendClientTest {
         assertEquals(10L, request.getData().get(0).getCourseId());
         assertEquals(0.8d, request.getData().get(0).getScore());
         verify(learningBehaviorService, never()).listAggregatedScores();
+    }
+
+    @Test
+    void recommendShouldEvictAndRebuildWhenScoreMatrixCacheCannotDeserialize() {
+        List<UserCourseScoreDTO> scores = List.of(score(1L, 10L, 0.8d));
+        RecommendResponseDTO response = new RecommendResponseDTO();
+        when(valueOperations.get("recommend:score-matrix"))
+                .thenThrow(new SerializationException("bad cache"))
+                .thenReturn(null);
+        when(valueOperations.setIfAbsent("recommend:score-matrix:lock", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
+        when(learningBehaviorService.listAggregatedScores()).thenReturn(scores);
+        when(restTemplate.postForObject(eq("http://recommend-service/recommend"), any(RecommendRequestDTO.class),
+                eq(RecommendResponseDTO.class))).thenReturn(response);
+
+        cfRecommendClient.recommend(1L);
+
+        RecommendRequestDTO request = captureRequest();
+        assertScore(request.getData().get(0), 1L, 10L, 0.8d);
+        verify(redisTemplate).delete("recommend:score-matrix");
+        verify(valueOperations).set("recommend:score-matrix", scores, 2L, TimeUnit.MINUTES);
+    }
+
+    @Test
+    void recommendShouldEvictAndRebuildWhenScoreMatrixCacheShapeIsInvalid() {
+        List<UserCourseScoreDTO> scores = List.of(score(1L, 10L, 0.8d));
+        RecommendResponseDTO response = new RecommendResponseDTO();
+        when(valueOperations.get("recommend:score-matrix")).thenReturn(List.of("bad-cache"), (Object) null);
+        when(valueOperations.setIfAbsent("recommend:score-matrix:lock", "1", 20L, TimeUnit.SECONDS)).thenReturn(true);
+        when(learningBehaviorService.listAggregatedScores()).thenReturn(scores);
+        when(restTemplate.postForObject(eq("http://recommend-service/recommend"), any(RecommendRequestDTO.class),
+                eq(RecommendResponseDTO.class))).thenReturn(response);
+
+        cfRecommendClient.recommend(1L);
+
+        RecommendRequestDTO request = captureRequest();
+        assertScore(request.getData().get(0), 1L, 10L, 0.8d);
+        verify(redisTemplate).delete("recommend:score-matrix");
+        verify(valueOperations).set("recommend:score-matrix", scores, 2L, TimeUnit.MINUTES);
     }
 
     @Test

@@ -6,6 +6,7 @@ import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.SerializationException;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
@@ -111,17 +112,27 @@ public class CfRecommendClient {
     }
 
     private List<UserCourseScoreDTO> readScoreMatrixCache() {
-        Object cached = redisTemplate.opsForValue().get(SCORE_MATRIX_CACHE_KEY);
+        Object cached;
+        try {
+            cached = redisTemplate.opsForValue().get(SCORE_MATRIX_CACHE_KEY);
+        } catch (SerializationException ex) {
+            return evictBadScoreMatrixCache("Failed to deserialize recommend score matrix cache, rebuilding snapshot", ex);
+        }
         if (cached == null) {
             return null;
         }
         try {
             return objectMapper.convertValue(cached, SCORE_MATRIX_TYPE);
         } catch (IllegalArgumentException ex) {
-            // 历史缓存结构或序列化类型异常时直接回源，避免推荐链路被单个坏缓存卡死。
-            log.warn("Failed to deserialize recommend score matrix cache, rebuilding snapshot", ex);
-            return null;
+            return evictBadScoreMatrixCache("Failed to convert recommend score matrix cache, rebuilding snapshot", ex);
         }
+    }
+
+    private List<UserCourseScoreDTO> evictBadScoreMatrixCache(String message, RuntimeException ex) {
+        // 历史缓存结构或序列化类型异常时直接回源，避免推荐链路被单个坏缓存卡死。
+        log.warn(message, ex);
+        redisTemplate.delete(SCORE_MATRIX_CACHE_KEY);
+        return null;
     }
 
     private void writeScoreMatrixCache(List<UserCourseScoreDTO> snapshot) {
