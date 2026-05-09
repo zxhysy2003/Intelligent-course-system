@@ -11,13 +11,12 @@ import static org.mockito.Mockito.when;
 
 import java.util.List;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.RedisTemplate;
 
 import com.sy.course_system.dto.onboarding.OnboardingSubmitDTO;
 import com.sy.course_system.entity.Tag;
@@ -26,6 +25,7 @@ import com.sy.course_system.entity.UserOnboardingProfile;
 import com.sy.course_system.mapper.TagMapper;
 import com.sy.course_system.mapper.UserInterestTagMapper;
 import com.sy.course_system.mapper.UserOnboardingProfileMapper;
+import com.sy.course_system.recommend.RecommendCacheInvalidator;
 
 @ExtendWith(MockitoExtension.class)
 class OnboardingServiceImplTest {
@@ -37,10 +37,15 @@ class OnboardingServiceImplTest {
     @Mock
     private UserInterestTagMapper userInterestTagMapper;
     @Mock
-    private RedisTemplate<String, Object> redisTemplate;
+    private RecommendCacheInvalidator recommendCacheInvalidator;
 
-    @InjectMocks
     private OnboardingServiceImpl onboardingService;
+
+    @BeforeEach
+    void setUp() {
+        onboardingService = new OnboardingServiceImpl(tagMapper, userOnboardingProfileMapper, userInterestTagMapper,
+                recommendCacheInvalidator);
+    }
 
     @Test
     void submitShouldInsertProfileRebuildInitTagsAndDeleteBothRecommendCaches() {
@@ -67,8 +72,7 @@ class OnboardingServiceImplTest {
         assertEquals(List.of("INIT", "INIT"), rows.stream().map(UserInterestTag::getSource).toList());
         assertEquals(List.of(1.0, 1.0), rows.stream().map(UserInterestTag::getWeight).toList());
 
-        verify(redisTemplate).delete("recommend:cold:user:1");
-        verify(redisTemplate).delete("recommend:user:1");
+        verify(recommendCacheInvalidator).invalidateOnboardingRecommend(1L);
     }
 
     @Test
@@ -94,8 +98,7 @@ class OnboardingServiceImplTest {
         assertEquals("FOUNDATION", updated.getLearningGoal());
         assertEquals(1, updated.getOnboardingStatus());
 
-        verify(redisTemplate).delete("recommend:cold:user:2");
-        verify(redisTemplate).delete("recommend:user:2");
+        verify(recommendCacheInvalidator).invalidateOnboardingRecommend(2L);
     }
 
     @Test
@@ -104,7 +107,7 @@ class OnboardingServiceImplTest {
                 () -> onboardingService.submit(3L, null));
 
         assertEquals("请求参数不能为空", ex.getMessage());
-        verify(redisTemplate, never()).delete(anyString());
+        verify(recommendCacheInvalidator, never()).invalidateOnboardingRecommend(any());
     }
 
     @Test
@@ -115,7 +118,7 @@ class OnboardingServiceImplTest {
                 () -> onboardingService.submit(3L, submitDTO));
 
         assertEquals("currentLevel 非法", ex.getMessage());
-        verify(redisTemplate, never()).delete(anyString());
+        verify(recommendCacheInvalidator, never()).invalidateOnboardingRecommend(any());
     }
 
     @Test
@@ -126,7 +129,7 @@ class OnboardingServiceImplTest {
                 () -> onboardingService.submit(3L, submitDTO));
 
         assertEquals("tagIds 不能为空", ex.getMessage());
-        verify(redisTemplate, never()).delete(anyString());
+        verify(recommendCacheInvalidator, never()).invalidateOnboardingRecommend(any());
     }
 
     @Test
@@ -137,7 +140,7 @@ class OnboardingServiceImplTest {
                 () -> onboardingService.submit(3L, submitDTO));
 
         assertEquals("learningGoal 非法", ex.getMessage());
-        verify(redisTemplate, never()).delete(anyString());
+        verify(recommendCacheInvalidator, never()).invalidateOnboardingRecommend(any());
     }
 
     @Test
@@ -153,7 +156,7 @@ class OnboardingServiceImplTest {
         verify(userOnboardingProfileMapper, never()).updateById(any());
         verify(userInterestTagMapper, never()).deleteByUserIdAndSource(any(), anyString());
         verify(userInterestTagMapper, never()).batchInsert(anyList());
-        verify(redisTemplate, never()).delete(anyString());
+        verify(recommendCacheInvalidator, never()).invalidateOnboardingRecommend(any());
     }
 
     private OnboardingSubmitDTO submitDTO(Integer currentLevel, String learningGoal, List<Long> tagIds) {

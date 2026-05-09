@@ -10,7 +10,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -28,19 +27,23 @@ import com.sy.course_system.service.LearningAnalysisService;
 @Service
 public class LearningAnalysisServiceImpl implements LearningAnalysisService {
 
-    @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
-
-    @Autowired
-    private LearningBehaviorMapper learningBehaviorMapper;
-    @Autowired
-    private UserCourseRelationMapper userCourseRelationMapper;
-    @Autowired
-    private KnowledgeRepository knowledgeRepository;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final LearningBehaviorMapper learningBehaviorMapper;
+    private final UserCourseRelationMapper userCourseRelationMapper;
+    private final KnowledgeRepository knowledgeRepository;
 
     private static final String HOT_COURSE_KEY = "course:hot";
-    private static final String SCORE_MATRIX_CACHE_KEY = "recommend:score-matrix";
     private static final DateTimeFormatter DAY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+    public LearningAnalysisServiceImpl(RedisTemplate<String, Object> redisTemplate,
+            LearningBehaviorMapper learningBehaviorMapper,
+            UserCourseRelationMapper userCourseRelationMapper,
+            KnowledgeRepository knowledgeRepository) {
+        this.redisTemplate = redisTemplate;
+        this.learningBehaviorMapper = learningBehaviorMapper;
+        this.userCourseRelationMapper = userCourseRelationMapper;
+        this.knowledgeRepository = knowledgeRepository;
+    }
 
     /**
      * 增加课程热度
@@ -99,13 +102,6 @@ public class LearningAnalysisServiceImpl implements LearningAnalysisService {
         return courseIdSet.stream()
                 .map(id -> Long.parseLong(id.toString()))
                 .toList();
-    }
-
-    @Override
-    public void refreshUserRecommendCache(Long userId) {
-        String key = "recommend:user:" + userId;
-        redisTemplate.delete(key); // 删除缓存，下次访问时会重新计算推荐结果
-        redisTemplate.delete(SCORE_MATRIX_CACHE_KEY);
     }
 
     /**

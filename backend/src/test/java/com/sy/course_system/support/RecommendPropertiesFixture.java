@@ -138,6 +138,8 @@ public final class RecommendPropertiesFixture {
         private long scoreMatrixLockTtlSeconds = 20L;
         private int scoreMatrixWaitRetryTimes = 3;
         private long scoreMatrixWaitMillis = 80L;
+        private long studyInvalidateThrottleSeconds = 90L;
+        private long scoreMatrixInvalidateThrottleSeconds = 120L;
 
         public CacheBuilder coldStartTtlMinutes(long coldStartTtlMinutes) {
             this.coldStartTtlMinutes = coldStartTtlMinutes;
@@ -189,10 +191,21 @@ public final class RecommendPropertiesFixture {
             return this;
         }
 
+        public CacheBuilder studyInvalidateThrottleSeconds(long studyInvalidateThrottleSeconds) {
+            this.studyInvalidateThrottleSeconds = studyInvalidateThrottleSeconds;
+            return this;
+        }
+
+        public CacheBuilder scoreMatrixInvalidateThrottleSeconds(long scoreMatrixInvalidateThrottleSeconds) {
+            this.scoreMatrixInvalidateThrottleSeconds = scoreMatrixInvalidateThrottleSeconds;
+            return this;
+        }
+
         private RecommendProperties.Cache build() {
             return new RecommendProperties.Cache(coldStartTtlMinutes, regularTtlMinutes, buildLockTtlSeconds,
                     waitRetryTimes, waitMillis, scoreMatrixEnabled, scoreMatrixTtlMinutes,
-                    scoreMatrixLockTtlSeconds, scoreMatrixWaitRetryTimes, scoreMatrixWaitMillis);
+                    scoreMatrixLockTtlSeconds, scoreMatrixWaitRetryTimes, scoreMatrixWaitMillis,
+                    studyInvalidateThrottleSeconds, scoreMatrixInvalidateThrottleSeconds);
         }
     }
 

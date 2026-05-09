@@ -42,7 +42,9 @@ public record RecommendProperties(
             @DefaultValue("2") long scoreMatrixTtlMinutes,
             @DefaultValue("20") long scoreMatrixLockTtlSeconds,
             @DefaultValue("3") int scoreMatrixWaitRetryTimes,
-            @DefaultValue("80") long scoreMatrixWaitMillis) {
+            @DefaultValue("80") long scoreMatrixWaitMillis,
+            @DefaultValue("90") long studyInvalidateThrottleSeconds,
+            @DefaultValue("120") long scoreMatrixInvalidateThrottleSeconds) {
     }
 
     public record Score(

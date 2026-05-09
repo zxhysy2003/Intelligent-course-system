@@ -69,6 +69,8 @@ recommend:
     score-matrix-lock-ttl-seconds: ${RECOMMEND_SCORE_MATRIX_LOCK_TTL_SECONDS:20}
     score-matrix-wait-retry-times: ${RECOMMEND_SCORE_MATRIX_WAIT_RETRY_TIMES:3}
     score-matrix-wait-millis: ${RECOMMEND_SCORE_MATRIX_WAIT_MILLIS:80}
+    study-invalidate-throttle-seconds: ${RECOMMEND_STUDY_INVALIDATE_THROTTLE_SECONDS:90}
+    score-matrix-invalidate-throttle-seconds: ${RECOMMEND_SCORE_MATRIX_INVALIDATE_THROTTLE_SECONDS:120}
   # 前端展示分映射配置
   score:
     base: ${RECOMMEND_SCORE_BASE:60}

@@ -24,6 +24,8 @@ class RecommendPropertiesBindingTest {
                         "recommend.async.enabled=false",
                         "recommend.cache.wait-retry-times=5",
                         "recommend.cache.score-matrix-wait-millis=120",
+                        "recommend.cache.study-invalidate-throttle-seconds=45",
+                        "recommend.cache.score-matrix-invalidate-throttle-seconds=180",
                         "recommend.regular.request-top-n=60")
                 .run(context -> {
                     RecommendProperties properties = context.getBean(RecommendProperties.class);
@@ -33,6 +35,8 @@ class RecommendPropertiesBindingTest {
                     assertFalse(properties.async().enabled());
                     assertEquals(5, properties.cache().waitRetryTimes());
                     assertEquals(120L, properties.cache().scoreMatrixWaitMillis());
+                    assertEquals(45L, properties.cache().studyInvalidateThrottleSeconds());
+                    assertEquals(180L, properties.cache().scoreMatrixInvalidateThrottleSeconds());
                     assertEquals(60, properties.regular().requestTopN());
                 });
     }

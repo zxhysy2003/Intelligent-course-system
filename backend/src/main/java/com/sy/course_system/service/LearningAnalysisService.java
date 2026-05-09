@@ -15,8 +15,6 @@ public interface LearningAnalysisService {
 
     List<Long> getHotCoursesByRange(int startInclusive, int limit);
 
-    void refreshUserRecommendCache(Long userId);
-
     ProgressChartDTO getProgressChart(Long userId, Integer days);
 
     AbilityRadarDTO getAbilityRadar(Long userId);

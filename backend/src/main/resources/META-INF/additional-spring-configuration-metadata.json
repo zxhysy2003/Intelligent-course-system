@@ -234,6 +234,18 @@
       "defaultValue": 80
     },
     {
+      "name": "recommend.cache.study-invalidate-throttle-seconds",
+      "type": "java.lang.Long",
+      "description": "普通 STUDY 行为触发用户推荐缓存失效的节流时间（秒）",
+      "defaultValue": 90
+    },
+    {
+      "name": "recommend.cache.score-matrix-invalidate-throttle-seconds",
+      "type": "java.lang.Long",
+      "description": "学习行为触发 CF 评分矩阵缓存失效的全局节流时间（秒）",
+      "defaultValue": 120
+    },
+    {
       "name": "recommend.score.base",
       "type": "java.lang.Integer",
       "description": "前端展示分基础值",
