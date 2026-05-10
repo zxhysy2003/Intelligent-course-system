@@ -54,6 +54,28 @@ backend 同时依赖 MySQL、Redis、Neo4j 和本地视频目录。
 
 详细步骤见 [docs/OPERATION_MANUAL.md](./docs/OPERATION_MANUAL.md)。
 
+### 一键启动开发服务
+
+完成各服务依赖安装、数据库初始化和 `backend/docker-compose.yml` 基础依赖启动后，可在仓库根目录同时启动前端、后端和推荐服务：
+
+```bash
+./scripts/dev.sh
+```
+
+默认地址：
+
+- frontend: `http://127.0.0.1:5173`
+- backend: `http://127.0.0.1:8080`
+- recommend-service: `http://127.0.0.1:8000`
+
+推荐服务会优先通过 Conda 环境 `lab_autumn` 启动；如需切换可设置 `RECOMMEND_CONDA_ENV`。
+
+常用覆盖项可直接在命令前设置，例如：
+
+```bash
+FRONTEND_PORT=5174 BACKEND_PORT=8081 RECOMMEND_PORT=8001 ./scripts/dev.sh
+```
+
 ## 常用命令
 
 ### 后端依赖
