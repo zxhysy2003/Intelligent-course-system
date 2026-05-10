@@ -52,7 +52,7 @@ class RecommendControllerTest {
     }
 
     @Test
-    void hybridRecommendShouldReturnFrontEndVoWithoutInternalFields() throws Exception {
+    void hybridRecommendShouldReturnFrontEndVoWithSourceButWithoutInternalFields() throws Exception {
         when(hybridRecommendService.recommend(1L)).thenReturn(responseDto());
 
         Result<HybridRecommendResponseVO> result = recommendController.hybridRecommend();
@@ -61,6 +61,7 @@ class RecommendControllerTest {
         assertNotNull(result.getData());
         assertEquals(1, result.getData().getItems().size());
         assertEquals(87, result.getData().getItems().get(0).getRecommendScore());
+        assertEquals("CF", result.getData().getItems().get(0).getRecommendSource());
         assertEquals("根据你的学习行为推荐；当前可直接学习", result.getData().getItems().get(0).getReason());
         assertEquals(1, result.getData().getItems().get(0).getLearningPaths().size());
         assertEquals(2, result.getData().getItems().get(0).getLearningPaths().get(0).size());
@@ -75,10 +76,11 @@ class RecommendControllerTest {
         assertTrue(itemNode.has("knowledgePoints"));
         assertTrue(itemNode.has("missingPrerequisitesMastery"));
         assertTrue(itemNode.has("learningPaths"));
+        assertTrue(itemNode.has("recommendSource"));
+        assertEquals("CF", itemNode.path("recommendSource").asText());
         assertFalse(itemNode.has("coverUrl"));
         assertFalse(itemNode.has("cfScore"));
         assertFalse(itemNode.has("finalScore"));
-        assertFalse(itemNode.has("recommendSource"));
 
         JsonNode learningPathNode = itemNode.path("learningPaths").get(0).get(0);
         assertEquals(20L, learningPathNode.path("id").asLong());

@@ -23,6 +23,20 @@
         <span class="label">更新于</span>
         <span class="value">{{ lastUpdatedText || "-" }}</span>
       </div>
+      <div class="info-card source-audit-card">
+        <span class="label">来源核验</span>
+        <div class="source-summary">
+          <el-tag
+            v-for="source in sourceStats"
+            :key="source.code"
+            :type="source.type"
+            effect="plain"
+            size="small"
+          >
+            {{ source.label }} {{ source.count }}
+          </el-tag>
+        </div>
+      </div>
     </div>
 
     <el-row v-if="items.length" :gutter="20" class="cards-container">
@@ -39,14 +53,24 @@
                   {{ difficultyText(item.difficulty) }}
                 </el-tag>
               </div>
-              <el-tag :type="scoreTagType(item.recommendScore)" effect="dark">
-                {{ formatRecommendScore(item.recommendScore) }}分 {{ recommendTagText(item) }}
-              </el-tag>
+              <div class="card-meta">
+                <el-tag :type="scoreTagType(item.recommendScore)" effect="dark">
+                  {{ formatRecommendScore(item.recommendScore) }}分
+                </el-tag>
+                <el-tag :type="sourceMeta(item).type" effect="plain">
+                  {{ sourceMeta(item).label }}
+                </el-tag>
+              </div>
             </div>
           </template>
 
           <div v-if="item.reason" class="reason-text">
             {{ item.reason }}
+          </div>
+
+          <div class="source-detail">
+            <span class="source-code">{{ item.recommendSource }}</span>
+            <span>{{ sourceMeta(item).description }}</span>
           </div>
 
           <div class="metric-section">
@@ -191,10 +215,62 @@ const normalizeRecommendItem = (item) => ({
   recommendScore: toFiniteNumber(item?.recommendScore ?? item?.finalScore, 0),
   reason: item?.reason ?? "",
   readiness: toFiniteNumber(item?.readiness, 0),
+  recommendSource: normalizeSource(item),
   isNewCourse: Boolean(item?.isNewCourse),
   knowledgePoints: normalizeArray(item?.knowledgePoints),
   missingPrerequisitesMastery: normalizeArray(item?.missingPrerequisitesMastery),
   learningPaths: normalizeArray(item?.learningPaths).filter(Array.isArray),
+});
+
+const sourceMap = {
+  CF: {
+    label: "CF 路径",
+    type: "success",
+    description: "协同过滤候选通过课程状态、已选过滤和图谱准备度加权后返回",
+  },
+  COLD_START_USER: {
+    label: "冷启动路径",
+    type: "warning",
+    description: "用户学习行为不足时，根据初始化画像和兴趣标签生成",
+  },
+  COLD_START_COURSE: {
+    label: "新课注入",
+    type: "primary",
+    description: "常规推荐链路中的新课冷启动候选，经过质量门槛和曝光插槽控制",
+  },
+  HOT_FALLBACK: {
+    label: "热门兜底",
+    type: "danger",
+    description: "CF 与新课候选都不可用时，从近期热门课程中兜底补全",
+  },
+  UNKNOWN: {
+    label: "来源未知",
+    type: "info",
+    description: "接口未返回推荐来源，请检查缓存或后端推荐链路",
+  },
+};
+
+function normalizeSource(item) {
+  const rawSource = String(item?.recommendSource || "").trim().toUpperCase();
+  if (sourceMap[rawSource]) {
+    return rawSource;
+  }
+  return item?.isNewCourse ? "COLD_START_COURSE" : "UNKNOWN";
+}
+
+const sourceMeta = (item) => sourceMap[item?.recommendSource] || sourceMap.UNKNOWN;
+
+const sourceStats = computed(() => {
+  const counts = items.value.reduce((acc, item) => {
+    const source = item.recommendSource || "UNKNOWN";
+    acc[source] = (acc[source] || 0) + 1;
+    return acc;
+  }, {});
+  return Object.keys(sourceMap).map((code) => ({
+    code,
+    ...sourceMap[code],
+    count: counts[code] || 0,
+  }));
 });
 
 const normalizePayload = (payload) => {
@@ -232,8 +308,6 @@ const toPercent = (value) => Math.round(Number(value || 0) * 100);
 const formatRecommendScore = (score) => Math.round(toFiniteNumber(score, 0));
 
 const scoreTagType = (score) => formatRecommendScore(score) >= 85 ? "danger" : "success";
-
-const recommendTagText = (item) => item.isNewCourse ? "新课推荐" : "强力推荐";
 
 const difficultyMap = {
   1: "初级",
@@ -349,7 +423,7 @@ const goToCourseDetail = (courseId) => {
 .info-card {
   background: white;
   padding: 16px;
-  border-radius: 12px;
+  border-radius: 8px;
   border: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
@@ -369,8 +443,18 @@ const goToCourseDetail = (courseId) => {
   margin-top: 4px;
 }
 
+.source-audit-card {
+  gap: 10px;
+}
+
+.source-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .course-card {
-  border-radius: 16px;
+  border-radius: 8px;
   border: none;
   transition: transform 0.3s ease;
 }
@@ -411,14 +495,47 @@ const goToCourseDetail = (courseId) => {
   color: #409eff;
 }
 
+.card-meta {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
 .reason-text {
   margin-bottom: 18px;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: 6px;
   background: #f8fafc;
   color: #475569;
   font-size: 13px;
   line-height: 1.6;
+}
+
+.source-detail {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 9px 12px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.source-code {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #0f172a;
+  color: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
 }
 
 .metric-section {
@@ -469,7 +586,7 @@ const goToCourseDetail = (courseId) => {
 .path-section {
   margin-top: 24px;
   background: #fcfcfd;
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 12px;
 }
 

@@ -15,7 +15,8 @@ import com.sy.course_system.vo.HybridRecommendResponseVO;
  * 推荐接口出参映射器。
  *
  * 该映射器承担“内部 DTO -> 前端 VO”的边界收口职责：
- * - service 内部仍可保留 finalScore/cfScore/recommendSource 等实现细节；
+ * - service 内部仍可保留 finalScore/cfScore 等实现细节；
+ * - recommendSource 作为验收推荐链路的稳定字段透出；
  * - controller 对外只返回经过裁剪的稳定 VO 结构；
  * - 推荐链路里知识点相关结构已统一复用 VO，本映射器只需要收口响应层与推荐项本身。
  */

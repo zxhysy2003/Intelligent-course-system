@@ -7,8 +7,9 @@ import java.util.List;
  *
  * 设计原则：
  * 1) 只保留前端展示稳定依赖的字段；
- * 2) 不直接暴露内部排序分、协同过滤分、推荐来源等实现细节；
- * 3) 图谱解释字段继续保留，方便前端展示“为什么推荐、还差什么、建议怎么学”。
+ * 2) 不直接暴露内部排序分、协同过滤分等实现细节；
+ * 3) 保留 recommendSource，方便前端和验收人员确认推荐结果来自哪条加固后的链路；
+ * 4) 图谱解释字段继续保留，方便前端展示“为什么推荐、还差什么、建议怎么学”。
  */
 public class HybridRecommendItemVO {
     private Long courseId;
@@ -17,6 +18,7 @@ public class HybridRecommendItemVO {
     private Integer recommendScore;
     private String reason;
     private Double readiness;
+    private String recommendSource;
     private Boolean isNewCourse;
     private List<KnowledgeVO> knowledgePoints;
     private List<KnowledgeMasteryVO> missingPrerequisitesMastery;
@@ -68,6 +70,14 @@ public class HybridRecommendItemVO {
 
     public void setReadiness(Double readiness) {
         this.readiness = readiness;
+    }
+
+    public String getRecommendSource() {
+        return recommendSource;
+    }
+
+    public void setRecommendSource(String recommendSource) {
+        this.recommendSource = recommendSource;
     }
 
     public Boolean getIsNewCourse() {
