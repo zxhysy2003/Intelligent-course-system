@@ -8,6 +8,8 @@
 - `frontend`：Vue 3 + Vite 前端服务，负责用户端与管理端页面，默认开发端口 `5173`
 - `recommend-service`：FastAPI 推荐服务，负责基于学习行为评分生成协同过滤候选课程，默认端口 `8000`
 
+演示主线建议使用普通学生账号：登录后先完成 `/onboarding` 三步引导，再进入 `/recommend` 查看带来源核验的推荐卡片。
+
 ## 1. 仓库结构
 
 ```text
@@ -469,12 +471,14 @@ npm run preview
 
 1. 浏览器打开 `http://127.0.0.1:5173`
 2. 前端登录或注册是否正常
-3. 后端 `http://127.0.0.1:8080/actuator/health` 是否可访问
-4. 推荐服务 `http://127.0.0.1:8000/docs` 是否可访问
-5. 前端课程列表、课程详情、选课、视频学习是否正常
-6. 推荐页是否能返回推荐课程
-7. 学习进度、能力雷达图、知识图谱页面是否正常渲染
-8. 管理端课程管理、用户管理、视频上传流程是否正常
+3. 普通学生首次进入学生端是否自动跳到 `/onboarding`
+4. 完成学习基础、学习目标、兴趣方向后是否跳转到 `/recommend`
+5. 后端 `http://127.0.0.1:8080/actuator/health` 是否可访问
+6. 推荐服务 `http://127.0.0.1:8000/docs` 是否可访问
+7. 前端课程列表、课程详情、选课、视频学习是否正常
+8. 推荐页是否能返回推荐课程，并显示 `CF`、`COLD_START_USER`、`COLD_START_COURSE` 或 `HOT_FALLBACK` 来源标签
+9. 学习进度、能力雷达图、知识图谱页面是否正常渲染
+10. 管理端课程管理、用户管理、视频上传流程是否正常
 
 ## 11. 常用接口示例
 
@@ -541,14 +545,92 @@ curl -X POST "http://127.0.0.1:8080/behavior/record?courseId=1&behaviorType=STUD
   -H "Authorization: Bearer <your_token>"
 ```
 
-### 11.7 获取融合推荐结果
+### 11.7 新用户引导
+
+普通用户访问学生端页面时，前端会先查引导状态：
+
+```bash
+curl "http://127.0.0.1:8080/onboarding/status" \
+  -H "Authorization: Bearer <your_token>"
+```
+
+未完成时返回的核心字段为：
+
+```json
+{
+  "completed": false
+}
+```
+
+引导选项：
+
+```bash
+curl "http://127.0.0.1:8080/onboarding/options" \
+  -H "Authorization: Bearer <your_token>"
+```
+
+返回包含：
+
+| 字段 | 说明 |
+| --- | --- |
+| `levels` | `1` 零基础、`2` 入门、`3` 有基础 |
+| `learningGoals` | `JOB` 找工作、`PROJECT` 做项目、`FOUNDATION` 打基础、`EXAM` 备考 |
+| `tags` | 可用于初始化兴趣画像的启用标签 |
+
+提交引导信息：
+
+```bash
+curl -X POST "http://127.0.0.1:8080/onboarding/submit" \
+  -H "Authorization: Bearer <your_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "currentLevel": 2,
+    "learningGoal": "PROJECT",
+    "tagIds": [1, 2]
+  }'
+```
+
+约束：`currentLevel` 必填且只能为 `1`、`2`、`3`；`learningGoal` 可空；`tagIds` 至少一个，且必须来自启用的引导标签。提交成功后后端会保存 `user_onboarding_profile`，用 `INIT` 来源重写用户兴趣标签，并清理该用户推荐缓存。
+
+### 11.8 获取融合推荐结果
 
 ```bash
 curl "http://127.0.0.1:8080/recommend/hybrid" \
   -H "Authorization: Bearer <your_token>"
 ```
 
-### 11.8 获取学习分析数据
+响应的推荐项只暴露前端稳定展示字段，不再直接暴露内部 `cfScore`、`finalScore`：
+
+```json
+{
+  "items": [
+    {
+      "courseId": 3,
+      "title": "示例课程",
+      "difficulty": 2,
+      "recommendScore": 88,
+      "reason": "根据你的学习行为推荐；当前可直接学习",
+      "readiness": 0.86,
+      "recommendSource": "CF",
+      "isNewCourse": false,
+      "knowledgePoints": [],
+      "missingPrerequisitesMastery": [],
+      "learningPaths": []
+    }
+  ]
+}
+```
+
+`recommendSource` 用于演示和验收推荐链路：
+
+| 值 | 来源 |
+| --- | --- |
+| `CF` | 协同过滤候选，经课程状态、已选过滤和图谱准备度加权 |
+| `COLD_START_USER` | 行为不足的新用户，基于引导画像和兴趣标签生成 |
+| `COLD_START_COURSE` | 常规推荐链路中的新课注入候选 |
+| `HOT_FALLBACK` | CF 和新课候选都不可用时的热门课程兜底 |
+
+### 11.9 获取学习分析数据
 
 ```bash
 curl "http://127.0.0.1:8080/analysis/progress?days=30" \
