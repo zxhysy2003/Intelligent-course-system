@@ -25,9 +25,7 @@ public class RecommendCacheInvalidator {
     private static final String REGULAR_RECOMMEND_KEY = "recommend:user:";
     private static final String COLD_START_RECOMMEND_KEY = "recommend:cold:user:";
     private static final String COLD_START_STATUS_KEY = "recommend:cold:status:user:";
-    private static final String SCORE_MATRIX_CACHE_KEY = "recommend:score-matrix";
     private static final String STUDY_INVALIDATE_THROTTLE_KEY = "recommend:invalidate:study:user:";
-    private static final String SCORE_MATRIX_INVALIDATE_THROTTLE_KEY = "recommend:invalidate:score-matrix";
 
     private final RedisTemplate<String, Object> redisTemplate;
     private final RecommendProperties recommendProperties;
@@ -42,10 +40,7 @@ public class RecommendCacheInvalidator {
         if (userId == null) {
             return;
         }
-        runAfterCommit(() -> {
-            deleteUserRecommendKeys(userId);
-            deleteKey(SCORE_MATRIX_CACHE_KEY);
-        });
+        runAfterCommit(() -> deleteUserRecommendKeys(userId));
     }
 
     public void invalidateStudyUserRecommend(Long userId) {
@@ -57,10 +52,6 @@ public class RecommendCacheInvalidator {
             if (shouldInvalidate(STUDY_INVALIDATE_THROTTLE_KEY + userId,
                     cache.studyInvalidateThrottleSeconds())) {
                 deleteUserRecommendKeys(userId);
-            }
-            if (shouldInvalidate(SCORE_MATRIX_INVALIDATE_THROTTLE_KEY,
-                    cache.scoreMatrixInvalidateThrottleSeconds())) {
-                deleteKey(SCORE_MATRIX_CACHE_KEY);
             }
         });
     }

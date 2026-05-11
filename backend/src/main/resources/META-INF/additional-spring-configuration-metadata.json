@@ -46,6 +46,11 @@
       "description": "推荐缓存与防击穿配置"
     },
     {
+      "name": "recommend.score-snapshot",
+      "type": "com.sy.course_system.config.RecommendProperties$ScoreSnapshot",
+      "description": "推荐评分快照表刷新配置"
+    },
+    {
       "name": "recommend.score",
       "type": "com.sy.course_system.config.RecommendProperties$Score",
       "description": "推荐分数映射配置"
@@ -204,46 +209,34 @@
       "defaultValue": 80
     },
     {
-      "name": "recommend.cache.score-matrix-enabled",
-      "type": "java.lang.Boolean",
-      "description": "是否缓存 CF 评分矩阵快照",
-      "defaultValue": true
-    },
-    {
-      "name": "recommend.cache.score-matrix-ttl-minutes",
-      "type": "java.lang.Long",
-      "description": "CF 评分矩阵快照缓存时间（分钟）",
-      "defaultValue": 2
-    },
-    {
-      "name": "recommend.cache.score-matrix-lock-ttl-seconds",
-      "type": "java.lang.Long",
-      "description": "CF 评分矩阵快照构建锁过期时间（秒）",
-      "defaultValue": 20
-    },
-    {
-      "name": "recommend.cache.score-matrix-wait-retry-times",
-      "type": "java.lang.Integer",
-      "description": "CF 评分矩阵快照构建锁等待重试次数",
-      "defaultValue": 3
-    },
-    {
-      "name": "recommend.cache.score-matrix-wait-millis",
-      "type": "java.lang.Long",
-      "description": "CF 评分矩阵快照构建锁每次等待时间（毫秒）",
-      "defaultValue": 80
-    },
-    {
       "name": "recommend.cache.study-invalidate-throttle-seconds",
       "type": "java.lang.Long",
       "description": "普通 STUDY 行为触发用户推荐缓存失效的节流时间（秒）",
       "defaultValue": 90
     },
     {
-      "name": "recommend.cache.score-matrix-invalidate-throttle-seconds",
-      "type": "java.lang.Long",
-      "description": "学习行为触发 CF 评分矩阵缓存失效的全局节流时间（秒）",
-      "defaultValue": 120
+      "name": "recommend.score-snapshot.rebuild-on-startup",
+      "type": "java.lang.Boolean",
+      "description": "后端启动时是否全量重建推荐评分快照表",
+      "defaultValue": true
+    },
+    {
+      "name": "recommend.score-snapshot.batch-size",
+      "type": "java.lang.Integer",
+      "description": "全量重建评分快照时的批量写入大小",
+      "defaultValue": 500
+    },
+    {
+      "name": "recommend.score-snapshot.raw-score-scale",
+      "type": "java.lang.Double",
+      "description": "隐式评分归一化到 0-10 区间时使用的缩放系数",
+      "defaultValue": 20.0
+    },
+    {
+      "name": "recommend.score-snapshot.min-score",
+      "type": "java.lang.Double",
+      "description": "评分快照保留的最低归一化分，低于该值会删除或跳过",
+      "defaultValue": 0.1
     },
     {
       "name": "recommend.score.base",

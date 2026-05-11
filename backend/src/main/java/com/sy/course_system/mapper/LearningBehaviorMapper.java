@@ -115,4 +115,40 @@ public interface LearningBehaviorMapper extends BaseMapper<LearningBehavior> {
     Double getUserCourseBaseScore(@Param("userId") Long userId,
             @Param("courseId") Long courseId);
 
+    // 获取单个用户单个课程的评分快照原始输入，保留 last_time 供业务层做时间衰减。
+    @Select("""
+                SELECT
+                    inner_t.user_id,
+                    inner_t.course_id,
+                    (
+                      inner_t.study_score
+                      + inner_t.view_score
+                      + CASE WHEN COALESCE(ucr.is_favorite, 0) = 1 THEN COALESCE(fav_bw.weight, 0) ELSE 0 END
+                      + inner_t.finish_score
+                    ) AS base_score,
+                    inner_t.last_time
+                FROM (
+                    SELECT
+                        lb.user_id,
+                        lb.course_id,
+                        MAX(CASE WHEN lb.behavior_type = 'STUDY' THEN bw.weight ELSE 0 END)
+                        * LOG(1 + LEAST(SUM(CASE WHEN lb.behavior_type = 'STUDY' THEN lb.duration ELSE 0 END), 10800)) AS study_score,
+                        SUM(CASE WHEN lb.behavior_type = 'VIEW' THEN bw.weight ELSE 0 END) AS view_score,
+                        MAX(CASE WHEN lb.behavior_type = 'FINISH' THEN bw.weight ELSE 0 END) AS finish_score,
+                        MAX(CASE WHEN lb.behavior_type IN ('STUDY', 'FINISH') THEN lb.create_time ELSE NULL END) AS last_time
+                    FROM learning_behavior lb
+                    JOIN behavior_weight bw
+                      ON lb.behavior_type = bw.behavior_type
+                    WHERE lb.user_id = #{userId}
+                      AND lb.course_id = #{courseId}
+                    GROUP BY lb.user_id, lb.course_id
+                ) inner_t
+                LEFT JOIN user_course_relation ucr
+                  ON inner_t.user_id = ucr.user_id AND inner_t.course_id = ucr.course_id
+                LEFT JOIN behavior_weight fav_bw
+                  ON fav_bw.behavior_type = 'FAVORITE'
+            """)
+    UserCourseBaseScoreDTO getUserCourseBaseScoreSnapshot(@Param("userId") Long userId,
+            @Param("courseId") Long courseId);
+
 }

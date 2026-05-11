@@ -15,6 +15,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 public record RecommendProperties(
         @DefaultValue Regular regular,
         @DefaultValue Cache cache,
+        @DefaultValue ScoreSnapshot scoreSnapshot,
         @DefaultValue Score score,
         @DefaultValue HotFallback hotFallback,
         @DefaultValue NewCourse newCourse,
@@ -38,13 +39,14 @@ public record RecommendProperties(
             @DefaultValue("20") long buildLockTtlSeconds,
             @DefaultValue("3") int waitRetryTimes,
             @DefaultValue("80") long waitMillis,
-            @DefaultValue("true") boolean scoreMatrixEnabled,
-            @DefaultValue("2") long scoreMatrixTtlMinutes,
-            @DefaultValue("20") long scoreMatrixLockTtlSeconds,
-            @DefaultValue("3") int scoreMatrixWaitRetryTimes,
-            @DefaultValue("80") long scoreMatrixWaitMillis,
-            @DefaultValue("90") long studyInvalidateThrottleSeconds,
-            @DefaultValue("120") long scoreMatrixInvalidateThrottleSeconds) {
+            @DefaultValue("90") long studyInvalidateThrottleSeconds) {
+    }
+
+    public record ScoreSnapshot(
+            @DefaultValue("true") boolean rebuildOnStartup,
+            @DefaultValue("500") int batchSize,
+            @DefaultValue("20.0") double rawScoreScale,
+            @DefaultValue("0.1") double minScore) {
     }
 
     public record Score(

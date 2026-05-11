@@ -3,15 +3,16 @@ package com.sy.course_system.service.impl;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sy.course_system.common.UserContext;
-import com.sy.course_system.common.util.TimeDecayUtil;
-import com.sy.course_system.dto.recommend.UserCourseBaseScoreDTO;
-import com.sy.course_system.dto.recommend.UserCourseScoreDTO;
 import com.sy.course_system.entity.LearningBehavior;
 import com.sy.course_system.entity.UserCourseRelation;
 import com.sy.course_system.enums.BehaviorHandleResult;
@@ -22,12 +23,15 @@ import com.sy.course_system.repository.KnowledgeRepository;
 import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.LearningAnalysisService;
 import com.sy.course_system.service.LearningBehaviorService;
+import com.sy.course_system.service.RecommendScoreSnapshotService;
 import com.sy.course_system.service.UserCourseService;
 import com.sy.course_system.service.VideoService;
 
 @Service
 public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMapper, LearningBehavior>
         implements LearningBehaviorService {
+
+    private static final Logger log = LoggerFactory.getLogger(LearningBehaviorServiceImpl.class);
 
     private static final int MAX_SINGLE_SESSION_SECONDS = 6 * 60 * 60; // 每次上报的最大学习时长: 6小时
     private static final double FINISH_HOT_SCORE = 2.0; // 完成课程后增加的热度分数
@@ -40,6 +44,7 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
     private final VideoService videoService;
     private final StringRedisTemplate stringRedisTemplate;
     private final RecommendCacheInvalidator recommendCacheInvalidator;
+    private final RecommendScoreSnapshotService recommendScoreSnapshotService;
 
     private static final long VIEW_COOLDOWN_SECONDS = 10 * 60; // 10分钟冷却时间
 
@@ -49,7 +54,8 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
             UserCourseService userCourseService,
             VideoService videoService,
             StringRedisTemplate stringRedisTemplate,
-            RecommendCacheInvalidator recommendCacheInvalidator) {
+            RecommendCacheInvalidator recommendCacheInvalidator,
+            RecommendScoreSnapshotService recommendScoreSnapshotService) {
         this.courseService = courseService;
         this.knowledgeRepository = knowledgeRepository;
         this.learningAnalysisService = learningAnalysisService;
@@ -57,6 +63,7 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
         this.videoService = videoService;
         this.stringRedisTemplate = stringRedisTemplate;
         this.recommendCacheInvalidator = recommendCacheInvalidator;
+        this.recommendScoreSnapshotService = recommendScoreSnapshotService;
     }
 
     /**
@@ -67,6 +74,9 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
     public void recordBehavior(Long courseId,
             LearnBehaviorType behaviorType,
             Integer duration) {
+        if (behaviorType == LearnBehaviorType.FINISH) {
+            throw new IllegalArgumentException("FINISH 行为由学习进度自动生成，不能直接提交");
+        }
         Long userId = UserContext.getUserId();
 
         int safeDuration = duration != null ? Math.min(MAX_SINGLE_SESSION_SECONDS, duration) : 0;
@@ -89,6 +99,40 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
         if (result == BehaviorHandleResult.TRIGGER_FINISH) {
             recordFinishInternal(userId, courseId);
         }
+        refreshScoreSnapshotIfNeeded(userId, courseId, behaviorType, result);
+    }
+
+    private void refreshScoreSnapshotIfNeeded(Long userId, Long courseId,
+            LearnBehaviorType behaviorType, BehaviorHandleResult result) {
+        boolean shouldRefresh = switch (behaviorType) {
+            case VIEW, STUDY, FAVORITE -> result != BehaviorHandleResult.IGNORE;
+            case UNFAVORITE -> true;
+            default -> false;
+        };
+        if (shouldRefresh) {
+            runAfterCommit(() -> refreshScoreSnapshotQuietly(userId, courseId));
+        }
+    }
+
+    private void refreshScoreSnapshotQuietly(Long userId, Long courseId) {
+        try {
+            recommendScoreSnapshotService.refreshUserCourseScore(userId, courseId);
+        } catch (RuntimeException e) {
+            log.warn("Failed to refresh recommend score snapshot for user {}, course {}", userId, courseId, e);
+        }
+    }
+
+    private void runAfterCommit(Runnable action) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            action.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                action.run();
+            }
+        });
     }
 
     /**
@@ -269,22 +313,4 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
         knowledgeRepository.markUserMasteredBatch(userId, kpIds, mastery);
     }
 
-    /**
-     * 计算隐式评分:在Basescore的基础上乘上时间衰减
-     */
-    @Override
-    public List<UserCourseScoreDTO> listAggregatedScores() {
-        List<UserCourseBaseScoreDTO> baseScores = baseMapper.listUserCourseBaseScores();
-
-        return baseScores.stream().map(bs -> {
-            UserCourseScoreDTO dto = new UserCourseScoreDTO();
-            dto.setUserId(bs.getUserId());
-            dto.setCourseId(bs.getCourseId());
-            // 使用时间衰减后的评分
-            dto.setScore(bs.getBaseScore() * TimeDecayUtil.decay(bs.getLastTime()));
-            return dto;
-        })
-                .filter(dto -> dto.getScore() >= 0.1) // 过滤掉评分过低的记录
-                .toList();
-    }
 }

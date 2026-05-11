@@ -23,9 +23,11 @@ class RecommendPropertiesBindingTest {
                         "recommend.new-course.enabled=false",
                         "recommend.async.enabled=false",
                         "recommend.cache.wait-retry-times=5",
-                        "recommend.cache.score-matrix-wait-millis=120",
                         "recommend.cache.study-invalidate-throttle-seconds=45",
-                        "recommend.cache.score-matrix-invalidate-throttle-seconds=180",
+                        "recommend.score-snapshot.rebuild-on-startup=false",
+                        "recommend.score-snapshot.batch-size=200",
+                        "recommend.score-snapshot.raw-score-scale=30.0",
+                        "recommend.score-snapshot.min-score=0.2",
                         "recommend.regular.request-top-n=60")
                 .run(context -> {
                     RecommendProperties properties = context.getBean(RecommendProperties.class);
@@ -34,9 +36,11 @@ class RecommendPropertiesBindingTest {
                     assertFalse(properties.newCourse().enabled());
                     assertFalse(properties.async().enabled());
                     assertEquals(5, properties.cache().waitRetryTimes());
-                    assertEquals(120L, properties.cache().scoreMatrixWaitMillis());
                     assertEquals(45L, properties.cache().studyInvalidateThrottleSeconds());
-                    assertEquals(180L, properties.cache().scoreMatrixInvalidateThrottleSeconds());
+                    assertFalse(properties.scoreSnapshot().rebuildOnStartup());
+                    assertEquals(200, properties.scoreSnapshot().batchSize());
+                    assertEquals(30.0d, properties.scoreSnapshot().rawScoreScale());
+                    assertEquals(0.2d, properties.scoreSnapshot().minScore());
                     assertEquals(60, properties.regular().requestTopN());
                 });
     }
