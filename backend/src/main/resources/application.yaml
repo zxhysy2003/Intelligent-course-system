@@ -64,13 +64,13 @@ recommend:
     build-lock-ttl-seconds: ${RECOMMEND_CACHE_BUILD_LOCK_TTL_SECONDS:20}
     wait-retry-times: ${RECOMMEND_CACHE_WAIT_RETRY_TIMES:3}
     wait-millis: ${RECOMMEND_CACHE_WAIT_MILLIS:80}
-    score-matrix-enabled: ${RECOMMEND_SCORE_MATRIX_CACHE_ENABLED:true}
-    score-matrix-ttl-minutes: ${RECOMMEND_SCORE_MATRIX_CACHE_TTL_MINUTES:2}
-    score-matrix-lock-ttl-seconds: ${RECOMMEND_SCORE_MATRIX_LOCK_TTL_SECONDS:20}
-    score-matrix-wait-retry-times: ${RECOMMEND_SCORE_MATRIX_WAIT_RETRY_TIMES:3}
-    score-matrix-wait-millis: ${RECOMMEND_SCORE_MATRIX_WAIT_MILLIS:80}
     study-invalidate-throttle-seconds: ${RECOMMEND_STUDY_INVALIDATE_THROTTLE_SECONDS:90}
-    score-matrix-invalidate-throttle-seconds: ${RECOMMEND_SCORE_MATRIX_INVALIDATE_THROTTLE_SECONDS:120}
+  # CF 评分快照表配置：后端维护快照，recommend-service 直接读取该表训练模型
+  score-snapshot:
+    rebuild-on-startup: ${RECOMMEND_SCORE_SNAPSHOT_REBUILD_ON_STARTUP:true}
+    batch-size: ${RECOMMEND_SCORE_SNAPSHOT_BATCH_SIZE:500}
+    raw-score-scale: ${RECOMMEND_SCORE_SNAPSHOT_RAW_SCORE_SCALE:20.0}
+    min-score: ${RECOMMEND_SCORE_SNAPSHOT_MIN_SCORE:0.1}
   # 前端展示分映射配置
   score:
     base: ${RECOMMEND_SCORE_BASE:60}

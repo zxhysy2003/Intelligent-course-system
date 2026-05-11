@@ -1,12 +1,16 @@
 package com.sy.course_system.service.impl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -20,6 +24,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.sy.course_system.common.UserContext;
 import com.sy.course_system.common.UserInfo;
@@ -31,6 +37,7 @@ import com.sy.course_system.recommend.RecommendCacheInvalidator;
 import com.sy.course_system.repository.KnowledgeRepository;
 import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.LearningAnalysisService;
+import com.sy.course_system.service.RecommendScoreSnapshotService;
 import com.sy.course_system.service.UserCourseService;
 import com.sy.course_system.service.VideoService;
 
@@ -52,6 +59,8 @@ class LearningBehaviorServiceImplTest {
     @Mock
     private RecommendCacheInvalidator recommendCacheInvalidator;
     @Mock
+    private RecommendScoreSnapshotService recommendScoreSnapshotService;
+    @Mock
     private LearningBehaviorMapper learningBehaviorMapper;
 
     private LearningBehaviorServiceImpl learningBehaviorService;
@@ -60,13 +69,16 @@ class LearningBehaviorServiceImplTest {
     void setUp() {
         learningBehaviorService = spy(new LearningBehaviorServiceImpl(courseService, knowledgeRepository,
                 learningAnalysisService, userCourseService, videoService, stringRedisTemplate,
-                recommendCacheInvalidator));
+                recommendCacheInvalidator, recommendScoreSnapshotService));
         ReflectionTestUtils.setField(learningBehaviorService, "baseMapper", learningBehaviorMapper);
         UserContext.set(new UserInfo(1L, "student", "USER"));
     }
 
     @AfterEach
     void tearDown() {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
         UserContext.clear();
     }
 
@@ -90,6 +102,7 @@ class LearningBehaviorServiceImplTest {
         verify(knowledgeRepository).markUserMasteredBatch(1L, List.of(100L, 101L), 1.0d);
         verify(recommendCacheInvalidator).invalidateStrongUserRecommend(1L);
         verify(recommendCacheInvalidator, never()).invalidateStudyUserRecommend(1L);
+        verify(recommendScoreSnapshotService).refreshUserCourseScore(1L, 10L);
         verify(learningAnalysisService).increaseCourseHot(10L, 2.0d);
 
         ArgumentCaptor<LearningBehavior> behaviorCaptor = ArgumentCaptor.forClass(LearningBehavior.class);
@@ -115,6 +128,7 @@ class LearningBehaviorServiceImplTest {
         verify(knowledgeRepository, never()).markUserMasteredBatch(any(), any(), any());
         verify(recommendCacheInvalidator).invalidateStudyUserRecommend(1L);
         verify(recommendCacheInvalidator, never()).invalidateStrongUserRecommend(1L);
+        verify(recommendScoreSnapshotService).refreshUserCourseScore(1L, 10L);
 
         ArgumentCaptor<LearningBehavior> behaviorCaptor = ArgumentCaptor.forClass(LearningBehavior.class);
         verify(learningBehaviorService).save(behaviorCaptor.capture());
@@ -140,6 +154,7 @@ class LearningBehaviorServiceImplTest {
         verify(knowledgeRepository).markUserMasteredBatch(1L, List.of(100L, 101L), 1.0d);
         verify(recommendCacheInvalidator).invalidateStrongUserRecommend(1L);
         verify(recommendCacheInvalidator, never()).invalidateStudyUserRecommend(1L);
+        verify(recommendScoreSnapshotService).refreshUserCourseScore(1L, 10L);
 
         ArgumentCaptor<LearningBehavior> behaviorCaptor = ArgumentCaptor.forClass(LearningBehavior.class);
         verify(learningBehaviorService, org.mockito.Mockito.times(2)).save(behaviorCaptor.capture());
@@ -161,6 +176,7 @@ class LearningBehaviorServiceImplTest {
                 any(LocalDateTime.class));
         verify(recommendCacheInvalidator).invalidateStudyUserRecommend(1L);
         verify(recommendCacheInvalidator, never()).invalidateStrongUserRecommend(1L);
+        verify(recommendScoreSnapshotService).refreshUserCourseScore(1L, 10L);
     }
 
     @Test
@@ -176,6 +192,7 @@ class LearningBehaviorServiceImplTest {
         verify(userCourseService).updateUserCourseRelation(relation);
         verify(recommendCacheInvalidator).invalidateStrongUserRecommend(1L);
         verify(recommendCacheInvalidator, never()).invalidateStudyUserRecommend(1L);
+        verify(recommendScoreSnapshotService).refreshUserCourseScore(1L, 10L);
         verify(learningAnalysisService).increaseCourseHot(10L, 5.0d);
     }
 
@@ -191,6 +208,7 @@ class LearningBehaviorServiceImplTest {
         verify(userCourseService).updateUserCourseRelation(relation);
         verify(recommendCacheInvalidator).invalidateStrongUserRecommend(1L);
         verify(recommendCacheInvalidator, never()).invalidateStudyUserRecommend(1L);
+        verify(recommendScoreSnapshotService).refreshUserCourseScore(1L, 10L);
         verify(learningBehaviorService, never()).save(any(LearningBehavior.class));
     }
 
@@ -208,8 +226,53 @@ class LearningBehaviorServiceImplTest {
 
         verify(recommendCacheInvalidator).invalidateStrongUserRecommend(1L);
         verify(recommendCacheInvalidator, never()).invalidateStudyUserRecommend(1L);
+        verify(recommendScoreSnapshotService).refreshUserCourseScore(1L, 10L);
         verify(knowledgeRepository, never()).markUserMasteredBatch(any(), any(), any());
         verify(learningBehaviorService, org.mockito.Mockito.times(2)).save(any(LearningBehavior.class));
+    }
+
+    @Test
+    void recordBehaviorShouldRefreshSnapshotAfterTransactionCommit() {
+        TransactionSynchronizationManager.initSynchronization();
+        UserCourseRelation active = relation(1, 120);
+        doReturn(active).when(userCourseService).getUserCourseRelation(1L, 10L);
+        doReturn(600).when(videoService).getVideoDurationInSeconds(10L);
+        doReturn(0).when(userCourseService).tryMarkFinished(eq(1L), eq(10L), any(LocalDateTime.class));
+        doReturn(true).when(learningBehaviorService).save(any(LearningBehavior.class));
+
+        learningBehaviorService.recordBehavior(10L, LearnBehaviorType.STUDY, 60);
+
+        verify(recommendScoreSnapshotService, never()).refreshUserCourseScore(1L, 10L);
+
+        for (TransactionSynchronization synchronization : TransactionSynchronizationManager.getSynchronizations()) {
+            synchronization.afterCommit();
+        }
+
+        verify(recommendScoreSnapshotService).refreshUserCourseScore(1L, 10L);
+    }
+
+    @Test
+    void recordBehaviorShouldIgnoreSnapshotRefreshFailure() {
+        UserCourseRelation relation = relation(1, 120);
+        relation.setIsFavorite(0);
+        doReturn(relation).when(userCourseService).getUserCourseRelation(1L, 10L);
+        doReturn(true).when(learningBehaviorService).save(any(LearningBehavior.class));
+        doThrow(new RuntimeException("snapshot unavailable"))
+                .when(recommendScoreSnapshotService).refreshUserCourseScore(1L, 10L);
+
+        assertDoesNotThrow(() -> learningBehaviorService.recordBehavior(10L, LearnBehaviorType.FAVORITE, null));
+
+        verify(learningBehaviorService).save(any(LearningBehavior.class));
+        verify(recommendScoreSnapshotService).refreshUserCourseScore(1L, 10L);
+    }
+
+    @Test
+    void recordBehaviorShouldRejectDirectFinish() {
+        assertThrows(IllegalArgumentException.class,
+                () -> learningBehaviorService.recordBehavior(10L, LearnBehaviorType.FINISH, null));
+
+        verifyNoInteractions(userCourseService, recommendScoreSnapshotService, learningAnalysisService);
+        verify(learningBehaviorService, never()).save(any(LearningBehavior.class));
     }
 
     private UserCourseRelation relation(Integer status, Integer learnedSeconds) {

@@ -40,30 +40,26 @@ class RecommendCacheInvalidatorTest {
     }
 
     @Test
-    void strongInvalidationShouldDeleteUserCachesAndScoreMatrix() {
+    void strongInvalidationShouldDeleteUserCaches() {
         invalidator.invalidateStrongUserRecommend(1L);
 
         verify(redisTemplate).delete("recommend:user:1");
         verify(redisTemplate).delete("recommend:cold:user:1");
         verify(redisTemplate).delete("recommend:cold:status:user:1");
-        verify(redisTemplate).delete("recommend:score-matrix");
     }
 
     @Test
-    void onboardingInvalidationShouldNotDeleteScoreMatrix() {
+    void onboardingInvalidationShouldDeleteUserCaches() {
         invalidator.invalidateOnboardingRecommend(2L);
 
         verify(redisTemplate).delete("recommend:user:2");
         verify(redisTemplate).delete("recommend:cold:user:2");
         verify(redisTemplate).delete("recommend:cold:status:user:2");
-        verify(redisTemplate, never()).delete("recommend:score-matrix");
     }
 
     @Test
     void studyInvalidationShouldDeleteWhenThrottleKeysAreAcquired() {
         when(valueOperations.setIfAbsent("recommend:invalidate:study:user:3", "1", 90L, TimeUnit.SECONDS))
-                .thenReturn(true);
-        when(valueOperations.setIfAbsent("recommend:invalidate:score-matrix", "1", 120L, TimeUnit.SECONDS))
                 .thenReturn(true);
 
         invalidator.invalidateStudyUserRecommend(3L);
@@ -71,14 +67,11 @@ class RecommendCacheInvalidatorTest {
         verify(redisTemplate).delete("recommend:user:3");
         verify(redisTemplate).delete("recommend:cold:user:3");
         verify(redisTemplate).delete("recommend:cold:status:user:3");
-        verify(redisTemplate).delete("recommend:score-matrix");
     }
 
     @Test
     void studyInvalidationShouldSkipDeletesWhenThrottleKeysAreBusy() {
         when(valueOperations.setIfAbsent("recommend:invalidate:study:user:4", "1", 90L, TimeUnit.SECONDS))
-                .thenReturn(false);
-        when(valueOperations.setIfAbsent("recommend:invalidate:score-matrix", "1", 120L, TimeUnit.SECONDS))
                 .thenReturn(false);
 
         invalidator.invalidateStudyUserRecommend(4L);
@@ -86,14 +79,12 @@ class RecommendCacheInvalidatorTest {
         verify(redisTemplate, never()).delete("recommend:user:4");
         verify(redisTemplate, never()).delete("recommend:cold:user:4");
         verify(redisTemplate, never()).delete("recommend:cold:status:user:4");
-        verify(redisTemplate, never()).delete("recommend:score-matrix");
     }
 
     @Test
     void studyInvalidationShouldBypassThrottleWhenConfiguredNonPositive() {
         RecommendProperties properties = RecommendPropertiesFixture.builder()
-                .cache(cache -> cache.studyInvalidateThrottleSeconds(0)
-                        .scoreMatrixInvalidateThrottleSeconds(0))
+                .cache(cache -> cache.studyInvalidateThrottleSeconds(0))
                 .build();
         invalidator = new RecommendCacheInvalidator(redisTemplate, properties);
 
@@ -101,19 +92,14 @@ class RecommendCacheInvalidatorTest {
 
         verify(valueOperations, never()).setIfAbsent(eq("recommend:invalidate:study:user:5"), eq("1"), anyLong(),
                 eq(TimeUnit.SECONDS));
-        verify(valueOperations, never()).setIfAbsent(eq("recommend:invalidate:score-matrix"), eq("1"), anyLong(),
-                eq(TimeUnit.SECONDS));
         verify(redisTemplate).delete("recommend:user:5");
         verify(redisTemplate).delete("recommend:cold:user:5");
         verify(redisTemplate).delete("recommend:cold:status:user:5");
-        verify(redisTemplate).delete("recommend:score-matrix");
     }
 
     @Test
     void redisFailuresShouldNotEscapeInvalidation() {
         when(valueOperations.setIfAbsent("recommend:invalidate:study:user:6", "1", 90L, TimeUnit.SECONDS))
-                .thenThrow(new RuntimeException("redis unavailable"));
-        when(valueOperations.setIfAbsent("recommend:invalidate:score-matrix", "1", 120L, TimeUnit.SECONDS))
                 .thenThrow(new RuntimeException("redis unavailable"));
         when(redisTemplate.delete("recommend:user:6")).thenThrow(new RuntimeException("delete failed"));
 
@@ -121,7 +107,6 @@ class RecommendCacheInvalidatorTest {
 
         verify(redisTemplate).delete("recommend:cold:user:6");
         verify(redisTemplate).delete("recommend:cold:status:user:6");
-        verify(redisTemplate).delete("recommend:score-matrix");
     }
 
     @Test
@@ -139,7 +124,6 @@ class RecommendCacheInvalidatorTest {
             verify(redisTemplate).delete("recommend:user:7");
             verify(redisTemplate).delete("recommend:cold:user:7");
             verify(redisTemplate).delete("recommend:cold:status:user:7");
-            verify(redisTemplate).delete("recommend:score-matrix");
         } finally {
             TransactionSynchronizationManager.clearSynchronization();
         }

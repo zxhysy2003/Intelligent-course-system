@@ -17,6 +17,7 @@ public final class RecommendPropertiesFixture {
     public static final class Builder {
         private final RegularBuilder regular = new RegularBuilder();
         private final CacheBuilder cache = new CacheBuilder();
+        private final ScoreSnapshotBuilder scoreSnapshot = new ScoreSnapshotBuilder();
         private final ScoreBuilder score = new ScoreBuilder();
         private final HotFallbackBuilder hotFallback = new HotFallbackBuilder();
         private final NewCourseBuilder newCourse = new NewCourseBuilder();
@@ -31,6 +32,11 @@ public final class RecommendPropertiesFixture {
 
         public Builder cache(Consumer<CacheBuilder> customizer) {
             customizer.accept(cache);
+            return this;
+        }
+
+        public Builder scoreSnapshot(Consumer<ScoreSnapshotBuilder> customizer) {
+            customizer.accept(scoreSnapshot);
             return this;
         }
 
@@ -68,6 +74,7 @@ public final class RecommendPropertiesFixture {
             return new RecommendProperties(
                     regular.build(),
                     cache.build(),
+                    scoreSnapshot.build(),
                     score.build(),
                     hotFallback.build(),
                     newCourse.build(),
@@ -133,13 +140,7 @@ public final class RecommendPropertiesFixture {
         private long buildLockTtlSeconds = 20L;
         private int waitRetryTimes = 3;
         private long waitMillis = 80L;
-        private boolean scoreMatrixEnabled = true;
-        private long scoreMatrixTtlMinutes = 2L;
-        private long scoreMatrixLockTtlSeconds = 20L;
-        private int scoreMatrixWaitRetryTimes = 3;
-        private long scoreMatrixWaitMillis = 80L;
         private long studyInvalidateThrottleSeconds = 90L;
-        private long scoreMatrixInvalidateThrottleSeconds = 120L;
 
         public CacheBuilder coldStartTtlMinutes(long coldStartTtlMinutes) {
             this.coldStartTtlMinutes = coldStartTtlMinutes;
@@ -166,46 +167,45 @@ public final class RecommendPropertiesFixture {
             return this;
         }
 
-        public CacheBuilder scoreMatrixEnabled(boolean scoreMatrixEnabled) {
-            this.scoreMatrixEnabled = scoreMatrixEnabled;
-            return this;
-        }
-
-        public CacheBuilder scoreMatrixTtlMinutes(long scoreMatrixTtlMinutes) {
-            this.scoreMatrixTtlMinutes = scoreMatrixTtlMinutes;
-            return this;
-        }
-
-        public CacheBuilder scoreMatrixLockTtlSeconds(long scoreMatrixLockTtlSeconds) {
-            this.scoreMatrixLockTtlSeconds = scoreMatrixLockTtlSeconds;
-            return this;
-        }
-
-        public CacheBuilder scoreMatrixWaitRetryTimes(int scoreMatrixWaitRetryTimes) {
-            this.scoreMatrixWaitRetryTimes = scoreMatrixWaitRetryTimes;
-            return this;
-        }
-
-        public CacheBuilder scoreMatrixWaitMillis(long scoreMatrixWaitMillis) {
-            this.scoreMatrixWaitMillis = scoreMatrixWaitMillis;
-            return this;
-        }
-
         public CacheBuilder studyInvalidateThrottleSeconds(long studyInvalidateThrottleSeconds) {
             this.studyInvalidateThrottleSeconds = studyInvalidateThrottleSeconds;
             return this;
         }
 
-        public CacheBuilder scoreMatrixInvalidateThrottleSeconds(long scoreMatrixInvalidateThrottleSeconds) {
-            this.scoreMatrixInvalidateThrottleSeconds = scoreMatrixInvalidateThrottleSeconds;
+        private RecommendProperties.Cache build() {
+            return new RecommendProperties.Cache(coldStartTtlMinutes, regularTtlMinutes, buildLockTtlSeconds,
+                    waitRetryTimes, waitMillis, studyInvalidateThrottleSeconds);
+        }
+    }
+
+    public static final class ScoreSnapshotBuilder {
+        private boolean rebuildOnStartup = true;
+        private int batchSize = 500;
+        private double rawScoreScale = 20.0;
+        private double minScore = 0.1;
+
+        public ScoreSnapshotBuilder rebuildOnStartup(boolean rebuildOnStartup) {
+            this.rebuildOnStartup = rebuildOnStartup;
             return this;
         }
 
-        private RecommendProperties.Cache build() {
-            return new RecommendProperties.Cache(coldStartTtlMinutes, regularTtlMinutes, buildLockTtlSeconds,
-                    waitRetryTimes, waitMillis, scoreMatrixEnabled, scoreMatrixTtlMinutes,
-                    scoreMatrixLockTtlSeconds, scoreMatrixWaitRetryTimes, scoreMatrixWaitMillis,
-                    studyInvalidateThrottleSeconds, scoreMatrixInvalidateThrottleSeconds);
+        public ScoreSnapshotBuilder batchSize(int batchSize) {
+            this.batchSize = batchSize;
+            return this;
+        }
+
+        public ScoreSnapshotBuilder rawScoreScale(double rawScoreScale) {
+            this.rawScoreScale = rawScoreScale;
+            return this;
+        }
+
+        public ScoreSnapshotBuilder minScore(double minScore) {
+            this.minScore = minScore;
+            return this;
+        }
+
+        private RecommendProperties.ScoreSnapshot build() {
+            return new RecommendProperties.ScoreSnapshot(rebuildOnStartup, batchSize, rawScoreScale, minScore);
         }
     }
 
