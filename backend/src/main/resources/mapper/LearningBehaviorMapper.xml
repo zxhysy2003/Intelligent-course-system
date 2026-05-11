@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.sy.course_system.mapper.LearningBehaviorMapper">
+
+    <!--
+        用户-课程隐式评分核心查询。
+        业务层会继续在 base_score 上叠加时间衰减；这里集中维护 STUDY/VIEW/FAVORITE/FINISH 的基础公式。
+    -->
+    <sql id="userCourseBaseScoreQuery">
+        SELECT
+            inner_t.user_id,
+            inner_t.course_id,
+            (
+                inner_t.study_score
+                + inner_t.view_score
+                + CASE WHEN COALESCE(ucr.is_favorite, 0) = 1 THEN COALESCE(fav_bw.weight, 0) ELSE 0 END
+                + inner_t.finish_score
+            ) AS base_score,
+            inner_t.last_time
+        FROM (
+            SELECT
+                lb.user_id,
+                lb.course_id,
+                MAX(CASE WHEN lb.behavior_type = 'STUDY' THEN bw.weight ELSE 0 END)
+                * LOG(1 + LEAST(SUM(CASE WHEN lb.behavior_type = 'STUDY' THEN lb.duration ELSE 0 END), 10800)) AS study_score,
+                SUM(CASE WHEN lb.behavior_type = 'VIEW' THEN bw.weight ELSE 0 END) AS view_score,
+                MAX(CASE WHEN lb.behavior_type = 'FINISH' THEN bw.weight ELSE 0 END) AS finish_score,
+                MAX(CASE WHEN lb.behavior_type IN ('STUDY', 'FINISH') THEN lb.create_time ELSE NULL END) AS last_time
+            FROM learning_behavior lb
+            JOIN behavior_weight bw
+              ON lb.behavior_type = bw.behavior_type
+            <where>
+                <if test="userId != null">
+                    AND lb.user_id = #{userId}
+                </if>
+                <if test="courseId != null">
+                    AND lb.course_id = #{courseId}
+                </if>
+            </where>
+            GROUP BY lb.user_id, lb.course_id
+        ) inner_t
+        LEFT JOIN user_course_relation ucr
+          ON inner_t.user_id = ucr.user_id AND inner_t.course_id = ucr.course_id
+        LEFT JOIN behavior_weight fav_bw
+          ON fav_bw.behavior_type = 'FAVORITE'
+    </sql>
+
+    <select id="listUserCourseBaseScoresByFilter" resultType="com.sy.course_system.dto.recommend.UserCourseBaseScoreDTO">
+        <include refid="userCourseBaseScoreQuery" />
+    </select>
+
+</mapper>
