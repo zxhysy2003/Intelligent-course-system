@@ -1,7 +1,6 @@
 services:
   mysql:
     image: mysql:8.0
-    container_name: mysql8-dev
     restart: always
     ports:
       - "3306:3306"
@@ -16,6 +15,7 @@ services:
       --collation-server=utf8mb4_unicode_ci
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./course_db.sql:/docker-entrypoint-initdb.d/01-course_db.sql:ro
     deploy:
       resources:
         limits:
@@ -23,7 +23,6 @@ services:
 
   redis:
     image: redis:7.2
-    container_name: redis7
     restart: always
     ports:
       - "6379:6379"
@@ -35,15 +34,30 @@ services:
         limits:
           memory: 256m
 
+  neo4j-init:
+    image: neo4j:5.11
+    restart: "no"
+    user: "neo4j"
+    volumes:
+      - neo4j_data:/data
+      - ./neo4j-backups:/backups:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      if [ ! -d /data/databases/neo4j ]; then
+        neo4j-admin database load --from-path=/backups neo4j --overwrite-destination=true;
+      fi
+
   neo4j:
     image: neo4j:5.11
-    container_name: neo4j5-dev
     restart: always
+    depends_on:
+      neo4j-init:
+        condition: service_completed_successfully
     ports:
       - "7474:7474"
       - "7687:7687"
     environment:
-      NEO4J_AUTH: none
+      NEO4J_AUTH: neo4j/neo4j123
       NEO4J_server_memory_pagecache_size: 512m
       NEO4J_server_memory_heap_initial__size: 512m
       NEO4J_server_memory_heap_max__size: 1g
@@ -58,6 +72,7 @@ services:
           memory: 2g
     tmpfs:
       - /var/lib/neo4j/run
+
 volumes:
   mysql_data:
   redis_data:
