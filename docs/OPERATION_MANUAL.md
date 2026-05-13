@@ -17,8 +17,6 @@ Intelligent-course-system
 ├── backend
 │   ├── src/main/java/com/sy/course_system
 │   ├── src/main/resources
-│   ├── course_db.sql
-│   ├── docker-compose.yml
 │   ├── mvnw
 │   └── pom.xml
 ├── frontend
@@ -31,6 +29,12 @@ Intelligent-course-system
 │   ├── main.py
 │   ├── model.py
 │   └── schemas.py
+├── scripts
+│   ├── course_db.sql
+│   ├── docker-compose.yml
+│   ├── dev.sh
+│   └── neo4j-backups
+│       └── neo4j.dump
 └── docs
     └── OPERATION_MANUAL.md
 ```
@@ -58,7 +62,7 @@ backend 同时依赖 MySQL、Redis、Neo4j 和本地视频目录。
 推荐启动顺序：
 
 1. 启动 MySQL、Redis、Neo4j 等基础依赖
-2. 初始化 MySQL 数据库
+2. 确认 MySQL 和 Neo4j 初始化数据已导入，首次启动 Compose 时会自动完成
 3. 启动 `recommend-service`
 4. 启动 `backend`
 5. 启动 `frontend`
@@ -90,10 +94,10 @@ backend 同时依赖 MySQL、Redis、Neo4j 和本地视频目录。
 
 ## 4. 启动基础依赖
 
-基础依赖的 Docker Compose 文件位于 `backend/docker-compose.yml`。
+基础依赖的 Docker Compose 文件位于 `scripts/docker-compose.yml`。
 
 ```bash
-cd backend
+cd scripts
 docker compose up -d
 docker compose ps
 ```
@@ -101,14 +105,14 @@ docker compose ps
 停止依赖服务：
 
 ```bash
-cd backend
+cd scripts
 docker compose down
 ```
 
 如果需要同时删除本地数据卷：
 
 ```bash
-cd backend
+cd scripts
 docker compose down -v
 ```
 
@@ -118,45 +122,30 @@ docker compose down -v
 | --- | --- | --- | --- |
 | MySQL | `127.0.0.1:3306` | `dev` | `dev123` |
 | Redis | `127.0.0.1:6379` | 无用户名 | `redis123` |
-| Neo4j HTTP | `http://127.0.0.1:7474` | 见下方说明 | 见下方说明 |
-| Neo4j Bolt | `bolt://127.0.0.1:7687` | 见下方说明 | 见下方说明 |
+| Neo4j HTTP | `http://127.0.0.1:7474` | `neo4j` | `neo4j123` |
+| Neo4j Bolt | `bolt://127.0.0.1:7687` | `neo4j` | `neo4j123` |
 
-### 4.2 Neo4j 认证注意事项
+### 4.2 初始化数据注意事项
 
-当前 `backend/docker-compose.yml` 中 Neo4j 配置为：
+`scripts/docker-compose.yml` 会在首次创建数据卷时自动导入初始化数据：
 
-```yaml
-NEO4J_AUTH: none
-```
+- MySQL 通过 `/docker-entrypoint-initdb.d/01-course_db.sql` 自动导入 `scripts/course_db.sql`
+- Neo4j 通过 `neo4j-init` 服务从 `scripts/neo4j-backups/neo4j.dump` 自动恢复默认库 `neo4j`
+- Neo4j 认证为 `neo4j/neo4j123`，与后端默认配置一致
 
-但 `backend/src/main/resources/application.yaml` 默认按用户名密码连接：
-
-```yaml
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=neo4j123
-```
-
-因此首次联调前需要统一 Neo4j 的认证方式。推荐做法是把 `backend/docker-compose.yml` 中的 Neo4j 环境变量改为：
-
-```yaml
-NEO4J_AUTH: neo4j/neo4j123
-```
-
-然后重新创建 Neo4j 容器和数据卷：
+如果需要重新导入 MySQL 和 Neo4j 数据，请删除数据卷后重新启动：
 
 ```bash
-cd backend
+cd scripts
 docker compose down -v
 docker compose up -d
 ```
-
-如果你希望继续使用无认证 Neo4j，则需要同步调整后端 Neo4j 连接配置，保证后端配置与容器实际认证方式一致。
 
 ## 5. 初始化数据库
 
 ### 5.1 创建数据库
 
-如果使用 `backend/docker-compose.yml` 启动 MySQL，数据库 `course_db` 会自动创建。若使用本机 MySQL，可以手动执行：
+如果使用 `scripts/docker-compose.yml` 启动 MySQL，数据库 `course_db` 会自动创建。若使用本机 MySQL，可以手动执行：
 
 ```sql
 CREATE DATABASE course_db DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -167,16 +156,16 @@ CREATE DATABASE course_db DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_
 从仓库根目录执行：
 
 ```bash
-mysql -u dev -p course_db < backend/course_db.sql
+mysql -u dev -p course_db < scripts/course_db.sql
 ```
 
 使用 Docker MySQL 时，也可以从仓库根目录执行：
 
 ```bash
-docker exec -i mysql8-dev mysql -udev -pdev123 course_db < backend/course_db.sql
+docker compose -f scripts/docker-compose.yml exec -T mysql mysql -udev -pdev123 course_db < scripts/course_db.sql
 ```
 
-`backend/course_db.sql` 包含表结构和部分初始化测试数据。
+`scripts/course_db.sql` 包含表结构和课程、用户、学习行为等初始化测试数据。首次启动 Compose 且 MySQL 数据卷为空时，该脚本会自动导入。
 
 ## 6. 配置说明
 
@@ -670,7 +659,7 @@ curl "http://127.0.0.1:8080/analysis/knowledge-graph?courseId=1&depth=3" \
 - MySQL 是否已经启动
 - 数据库名是否为 `course_db`
 - 用户名和密码是否与配置一致
-- `backend/course_db.sql` 是否已经导入
+- `scripts/course_db.sql` 是否已经导入，或 MySQL 数据卷首次创建时是否已自动初始化
 - 本机端口 `3306` 是否被其他 MySQL 实例占用
 
 ### 13.2 Redis 连接失败
@@ -687,8 +676,8 @@ curl "http://127.0.0.1:8080/analysis/knowledge-graph?courseId=1&depth=3" \
 
 - `NEO4J_URI` 是否为 `bolt://127.0.0.1:7687` 或你的实际地址
 - Neo4j 容器是否已经启动
-- `NEO4J_AUTH` 与后端的 `NEO4J_USERNAME`、`NEO4J_PASSWORD` 是否一致
-- 如果修改过认证方式，是否重新创建过 Neo4j 数据卷
+- 后端的 `NEO4J_USERNAME`、`NEO4J_PASSWORD` 是否仍为 `neo4j`、`neo4j123`
+- 如果需要重新恢复 `scripts/neo4j-backups/neo4j.dump`，是否已经删除旧 Neo4j 数据卷并重新启动 Compose
 
 ### 13.4 推荐接口报错
 

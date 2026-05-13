@@ -64,17 +64,18 @@ backend 同时依赖 MySQL、Redis、Neo4j 和本地视频目录。
 
 完整系统建议按下面顺序启动：
 
-1. 启动 `backend/docker-compose.yml` 中的 MySQL、Redis、Neo4j
-2. 导入 `backend/course_db.sql` 初始化数据库
-3. 启动 `recommend-service`
-4. 启动 `backend`
-5. 启动 `frontend`
+1. 启动 `scripts/docker-compose.yml` 中的 MySQL、Redis、Neo4j
+2. 使用 `scripts/course_db.sql` 初始化 MySQL，首次启动 Compose 时会自动导入
+3. 使用 `scripts/neo4j-backups/neo4j.dump` 初始化 Neo4j，首次启动 Compose 时会自动恢复
+4. 启动 `recommend-service`
+5. 启动 `backend`
+6. 启动 `frontend`
 
 详细步骤见 [docs/OPERATION_MANUAL.md](./docs/OPERATION_MANUAL.md)。
 
 ### 一键启动开发服务
 
-完成各服务依赖安装、数据库初始化和 `backend/docker-compose.yml` 基础依赖启动后，可在仓库根目录同时启动前端、后端和推荐服务：
+完成各服务依赖安装、数据库初始化和 `scripts/docker-compose.yml` 基础依赖启动后，可在仓库根目录同时启动前端、后端和推荐服务：
 
 ```bash
 ./scripts/dev.sh
@@ -99,7 +100,7 @@ FRONTEND_PORT=5174 BACKEND_PORT=8081 RECOMMEND_PORT=8001 ./scripts/dev.sh
 ### 后端依赖
 
 ```bash
-cd backend
+cd scripts
 docker compose up -d
 ```
 
