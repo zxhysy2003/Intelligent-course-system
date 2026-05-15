@@ -28,6 +28,7 @@ export RECOMMEND_SERVICE_URL=${RECOMMEND_SERVICE_URL:-http://${RECOMMEND_HOST}:$
 export VITE_BACKEND_TARGET=${VITE_BACKEND_TARGET:-http://${BACKEND_HOST}:${BACKEND_PORT}}
 export CORS_ALLOWED_ORIGIN_PATTERNS=${CORS_ALLOWED_ORIGIN_PATTERNS:-http://localhost:${FRONTEND_PORT},http://127.0.0.1:${FRONTEND_PORT},http://192.168.*:${FRONTEND_PORT}}
 export SERVER_PORT=${SERVER_PORT:-${BACKEND_PORT}}
+export SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-dev}
 
 typeset -a pids
 STATE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/course-system-dev.XXXXXX")
@@ -91,6 +92,7 @@ fi
 log "frontend:          http://${FRONTEND_HOST}:${FRONTEND_PORT}"
 log "backend:           http://${BACKEND_HOST}:${BACKEND_PORT}"
 log "recommend-service: http://${RECOMMEND_HOST}:${RECOMMEND_PORT}"
+log "spring profile:    ${SPRING_PROFILES_ACTIVE}"
 
 start_service "recommend-service" "$ROOT_DIR/recommend-service" "${recommend_cmd[@]}"
 start_service "backend" "$ROOT_DIR/backend" ./mvnw spring-boot:run

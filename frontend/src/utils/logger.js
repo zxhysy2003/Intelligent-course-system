@@ -1,5 +1,7 @@
 import { ElMessage } from 'element-plus';
 
+const isDev = import.meta.env.DEV;
+
 const formatMessage = (message) => {
   if (message instanceof Error) {
     return message.message || '未知错误';
@@ -24,7 +26,7 @@ export const logger = {
   error(message, detail) {
     const text = formatMessage(message);
     ElMessage.error(text);
-    if (detail) {
+    if (isDev && detail) {
       // 保留开发调试信息
       console.error(text, detail);
     }
@@ -33,6 +35,8 @@ export const logger = {
     ElMessage.info(formatMessage(message));
   },
   debug(message, detail) {
-    console.log(formatMessage(message), detail ?? '');
+    if (isDev) {
+      console.log(formatMessage(message), detail ?? '');
+    }
   }
 };

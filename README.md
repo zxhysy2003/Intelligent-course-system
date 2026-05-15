@@ -81,6 +81,12 @@ backend 同时依赖 MySQL、Redis、Neo4j 和本地视频目录。
 ./scripts/dev.sh
 ```
 
+如果当前环境没有 zsh，也可以使用 Bash 版本：
+
+```bash
+./scripts/dev.bash
+```
+
 默认地址：
 
 - frontend: `http://127.0.0.1:5173`
@@ -117,8 +123,10 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 ```bash
 cd backend
-RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 ./mvnw spring-boot:run
+SPRING_PROFILES_ACTIVE=dev RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 ./mvnw spring-boot:run
 ```
+
+`dev` profile 会开启 MyBatis SQL 调试日志；默认配置不打印 SQL，更适合生产或演示环境。
 
 ### 前端服务
 

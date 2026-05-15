@@ -33,6 +33,7 @@ Intelligent-course-system
 │   ├── course_db.sql
 │   ├── docker-compose.yml
 │   ├── dev.sh
+│   ├── dev.bash
 │   └── neo4j-backups
 │       └── neo4j.dump
 └── docs
@@ -198,11 +199,10 @@ docker compose -f scripts/docker-compose.yml exec -T mysql mysql -udev -pdev123 
 | `RECOMMEND_CACHE_BUILD_LOCK_TTL_SECONDS` | 推荐缓存构建锁时间，单位秒 | `20` |
 | `RECOMMEND_CACHE_WAIT_RETRY_TIMES` | 推荐缓存等待重试次数 | `3` |
 | `RECOMMEND_CACHE_WAIT_MILLIS` | 推荐缓存每次等待时间，单位毫秒 | `80` |
-| `RECOMMEND_SCORE_MATRIX_CACHE_ENABLED` | 评分矩阵缓存开关 | `true` |
-| `RECOMMEND_SCORE_MATRIX_CACHE_TTL_MINUTES` | 评分矩阵缓存时间，单位分钟 | `2` |
-| `RECOMMEND_SCORE_MATRIX_LOCK_TTL_SECONDS` | 评分矩阵构建锁时间，单位秒 | `20` |
-| `RECOMMEND_SCORE_MATRIX_WAIT_RETRY_TIMES` | 评分矩阵缓存等待重试次数 | `3` |
-| `RECOMMEND_SCORE_MATRIX_WAIT_MILLIS` | 评分矩阵缓存每次等待时间，单位毫秒 | `80` |
+| `RECOMMEND_SCORE_SNAPSHOT_REBUILD_ON_STARTUP` | 启动时是否全量重建 `recommend_user_course_score` 评分快照表 | `true` |
+| `RECOMMEND_SCORE_SNAPSHOT_BATCH_SIZE` | 全量重建快照的批量写入大小 | `500` |
+| `RECOMMEND_SCORE_SNAPSHOT_RAW_SCORE_SCALE` | 隐式评分归一化到 0-10 区间的缩放系数 | `20.0` |
+| `RECOMMEND_SCORE_SNAPSHOT_MIN_SCORE` | 快照保留的最低归一化分 | `0.1` |
 | `RECOMMEND_SCORE_BASE` | 推荐展示分基础值 | `60` |
 | `RECOMMEND_SCORE_SPAN` | 推荐展示分跨度 | `35` |
 | `RECOMMEND_COLD_START_USER_SCORE_SCALE` | 用户冷启动展示分缩放系数 | `10.0` |
@@ -299,6 +299,18 @@ POST ${RECOMMEND_SERVICE_URL}/recommend
 
 因此只要后端的 `RECOMMEND_SERVICE_URL` 与 FastAPI 实际监听地址一致即可。
 
+第二阶段重构后，推荐服务不再接收后端传来的全量评分矩阵，而是直连 MySQL 读取后端维护的 `recommend_user_course_score` 快照表。推荐服务复用以下数据库环境变量：
+
+| 变量名 | 说明 | 默认值 |
+| --- | --- | --- |
+| `DB_HOST` | MySQL 地址 | `localhost` |
+| `DB_PORT` | MySQL 端口 | `3306` |
+| `DB_NAME` | 数据库名 | `course_db` |
+| `DB_USERNAME` | MySQL 用户名 | `dev` |
+| `DB_PASSWORD` | MySQL 密码 | `dev123` |
+
+后端启动后默认会重建评分快照表；如果推荐服务已经提前启动，后端重建完成后可调用 `POST /model/reload` 让推荐服务重新加载快照并训练内存模型。
+
 ## 7. 启动 recommend-service
 
 进入推荐服务目录：
@@ -329,6 +341,19 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 - `http://127.0.0.1:8000/docs`
 - `http://127.0.0.1:8000/openapi.json`
+- `http://127.0.0.1:8000/model/status`
+
+查看模型状态：
+
+```bash
+curl "http://127.0.0.1:8000/model/status"
+```
+
+手动重新加载快照并训练模型：
+
+```bash
+curl -X POST "http://127.0.0.1:8000/model/reload"
+```
 
 推荐接口测试：
 
@@ -337,19 +362,11 @@ curl -X POST "http://127.0.0.1:8000/recommend" \
   -H "Content-Type: application/json" \
   -d '{
     "targetUserId": 1,
-    "topN": 3,
-    "data": [
-      { "userId": 1, "courseId": 1, "score": 9.0 },
-      { "userId": 1, "courseId": 2, "score": 7.5 },
-      { "userId": 2, "courseId": 2, "score": 8.0 },
-      { "userId": 2, "courseId": 3, "score": 9.5 },
-      { "userId": 3, "courseId": 3, "score": 8.5 },
-      { "userId": 3, "courseId": 4, "score": 9.0 }
-    ]
+    "topN": 3
   }'
 ```
 
-正常情况下会返回：
+模型可用时会返回类似结构：
 
 ```json
 {
@@ -357,13 +374,13 @@ curl -X POST "http://127.0.0.1:8000/recommend" \
   "items": [
     {
       "courseId": 3,
-      "score": 0.0
+      "score": 8.72
     }
   ]
 }
 ```
 
-实际 `score` 会随模型训练结果变化，只要响应结构包含 `userId` 和 `items` 即表示接口可用。
+实际 `score` 会随模型训练结果变化；如果模型尚未训练、快照表为空或目标用户不在训练集中，`items` 会返回空数组，后端混合推荐会继续走新课和热门课程兜底。
 
 ## 8. 启动 backend
 
@@ -382,8 +399,10 @@ cd backend
 启动后端服务：
 
 ```bash
-RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 ./mvnw spring-boot:run
+SPRING_PROFILES_ACTIVE=dev RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 ./mvnw spring-boot:run
 ```
+
+`dev` profile 会开启 MyBatis SQL 调试日志；默认配置不打印 SQL，适合生产或演示环境。
 
 如果需要显式指定本地依赖地址：
 
@@ -391,6 +410,7 @@ RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 ./mvnw spring-boot:run
 DB_HOST=127.0.0.1 \
 REDIS_HOST=127.0.0.1 \
 NEO4J_URI=bolt://127.0.0.1:7687 \
+SPRING_PROFILES_ACTIVE=dev \
 RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 \
 VIDEO_DIR=/data/course_videos \
 VIDEO_BASE_URL=http://127.0.0.1:8080 \
@@ -725,7 +745,7 @@ curl "http://127.0.0.1:8080/analysis/knowledge-graph?courseId=1&depth=3" \
 cd backend
 ./mvnw -q -DskipTests compile
 ./mvnw test
-./mvnw spring-boot:run
+SPRING_PROFILES_ACTIVE=dev ./mvnw spring-boot:run
 ```
 
 ### 14.2 前端

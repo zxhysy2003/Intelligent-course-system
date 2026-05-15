@@ -95,9 +95,7 @@ const handleSubmit = async () => {
     
     try {
         await formRef.value.validate()
-        // 提交表单数据
-        console.log('表单数据：', form)
-        
+
         // 调用注册 API
         const response = await Register(form)
         if (response.data.code !== 200) {

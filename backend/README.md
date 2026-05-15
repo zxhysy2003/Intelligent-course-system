@@ -143,8 +143,10 @@ docker compose -f scripts/docker-compose.yml exec -T mysql mysql -udev -pdev123 
 
 ```bash
 cd backend
-RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 ./mvnw spring-boot:run
+SPRING_PROFILES_ACTIVE=dev RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 ./mvnw spring-boot:run
 ```
+
+`dev` profile 会开启 MyBatis SQL 调试日志；默认配置不打印 SQL，避免生产环境日志噪声和敏感信息暴露。
 
 也可以显式指定常用本地环境变量：
 
@@ -153,6 +155,7 @@ cd backend
 DB_HOST=127.0.0.1 \
 REDIS_HOST=127.0.0.1 \
 NEO4J_URI=bolt://127.0.0.1:7687 \
+SPRING_PROFILES_ACTIVE=dev \
 RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 \
 VIDEO_DIR=/data/course_videos \
 VIDEO_BASE_URL=http://127.0.0.1:8080 \

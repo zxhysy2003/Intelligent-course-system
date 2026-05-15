@@ -1,0 +1,4 @@
+mybatis-plus:
+  configuration:
+    # 开发环境打印 MyBatis SQL，默认/生产环境不启用，避免日志噪声和敏感信息泄露。
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl

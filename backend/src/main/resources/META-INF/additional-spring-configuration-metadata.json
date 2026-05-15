@@ -127,8 +127,7 @@
     {
       "name": "mybatis-plus.configuration.log-impl",
       "type": "java.lang.Class",
-      "description": "MyBatis 日志实现类",
-      "defaultValue": "org.apache.ibatis.logging.stdout.StdOutImpl"
+      "description": "MyBatis 日志实现类，默认不启用；dev profile 使用 StdOutImpl 打印 SQL"
     },
     {
       "name": "mybatis-plus.configuration.map-underscore-to-camel-case",
