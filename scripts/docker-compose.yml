@@ -42,10 +42,11 @@ services:
       - neo4j_data:/data
       - ./neo4j-backups:/backups:ro
     entrypoint: ["/bin/sh", "-c"]
-    command: >
-      if [ ! -d /data/databases/neo4j ]; then
-        neo4j-admin database load --from-path=/backups neo4j --overwrite-destination=true;
-      fi
+    command:
+      - | 
+        if [ ! -d /data/databases/neo4j ]; then
+          neo4j-admin database load --from-path=/backups neo4j --overwrite-destination=true
+        fi
 
   neo4j:
     image: neo4j:5.11
