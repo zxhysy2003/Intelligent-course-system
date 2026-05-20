@@ -21,6 +21,8 @@ import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.sy.course_system.converter.UserMapperStruct;
+import com.sy.course_system.converter.UserMapperStructImpl;
 import com.sy.course_system.dto.UserRegisterDTO;
 import com.sy.course_system.entity.User;
 import com.sy.course_system.mapper.UserCourseRelationMapper;
@@ -38,6 +40,8 @@ class UserServiceImplTest {
     private UserNodeRepository userNodeRepository;
     @Mock
     private UserCourseRelationMapper userCourseRelationMapper;
+    @Spy
+    private UserMapperStruct userMapperStruct = new UserMapperStructImpl();
 
     @Spy
     @InjectMocks

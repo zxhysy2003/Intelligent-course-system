@@ -12,7 +12,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mapstruct.factory.Mappers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -21,7 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sy.course_system.common.Result;
 import com.sy.course_system.common.UserContext;
 import com.sy.course_system.common.UserInfo;
-import com.sy.course_system.converter.HybridRecommendMapperStruct;
+import com.sy.course_system.converter.HybridRecommendMapperStructImpl;
 import com.sy.course_system.dto.recommend.HybridRecommendItemDTO;
 import com.sy.course_system.dto.recommend.HybridRecommendResponseDTO;
 import com.sy.course_system.service.HybridRecommendService;
@@ -42,7 +41,7 @@ class RecommendControllerTest {
     @BeforeEach
     void setUp() {
         recommendController = new RecommendController(hybridRecommendService,
-                Mappers.getMapper(HybridRecommendMapperStruct.class));
+                new HybridRecommendMapperStructImpl());
         UserContext.set(new UserInfo(1L, "tester", "USER"));
     }
 

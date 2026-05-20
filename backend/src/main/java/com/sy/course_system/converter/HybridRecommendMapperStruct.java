@@ -4,7 +4,6 @@ import java.util.List;
 
 import org.mapstruct.Mapper;
 import org.mapstruct.NullValueMappingStrategy;
-import org.mapstruct.factory.Mappers;
 
 import com.sy.course_system.dto.recommend.HybridRecommendItemDTO;
 import com.sy.course_system.dto.recommend.HybridRecommendResponseDTO;
@@ -22,8 +21,6 @@ import com.sy.course_system.vo.HybridRecommendResponseVO;
  */
 @Mapper(componentModel = "spring", nullValueMappingStrategy = NullValueMappingStrategy.RETURN_DEFAULT)
 public interface HybridRecommendMapperStruct {
-    HybridRecommendMapperStruct INSTANCE = Mappers.getMapper(HybridRecommendMapperStruct.class);
-
     HybridRecommendItemVO toItemVO(HybridRecommendItemDTO dto);
 
     List<HybridRecommendItemVO> toItemVOList(List<HybridRecommendItemDTO> dtos);

@@ -1,11 +1,17 @@
 package com.sy.course_system.service.impl;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sy.course_system.common.PageResult;
 import com.sy.course_system.common.util.JwtUtil;
+import com.sy.course_system.converter.UserMapperStruct;
 import com.sy.course_system.dto.LoginDTO;
 import com.sy.course_system.dto.UserQueryDTO;
 import com.sy.course_system.dto.UserRegisterDTO;
@@ -15,34 +21,33 @@ import com.sy.course_system.entity.UserCourseRelation;
 import com.sy.course_system.enums.UserType;
 import com.sy.course_system.mapper.UserCourseRelationMapper;
 import com.sy.course_system.mapper.UserMapper;
-import com.sy.course_system.converter.UserMapperStruct;
 import com.sy.course_system.repository.UserNodeRepository;
 import com.sy.course_system.service.UserService;
 import com.sy.course_system.vo.UserDetailVO;
 import com.sy.course_system.vo.UserVO;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements UserService {
 
-    @Autowired
-    private UserNodeRepository userNodeRepository;
-    @Autowired
-    private UserCourseRelationMapper userCourseRelationMapper;
+    private final UserMapperStruct userMapperStruct;
+    private final UserNodeRepository userNodeRepository;
+    private final UserCourseRelationMapper userCourseRelationMapper;
 
+    public UserServiceImpl(UserMapperStruct userMapperStruct,
+            UserNodeRepository userNodeRepository,
+            UserCourseRelationMapper userCourseRelationMapper) {
+        this.userMapperStruct = userMapperStruct;
+        this.userNodeRepository = userNodeRepository;
+        this.userCourseRelationMapper = userCourseRelationMapper;
+    }
 
     @Override
     public List<UserVO> listUsers() {
         List<User> users = this.list();
-        return UserMapperStruct.INSTANCE.toUserVOs(users);
+        return userMapperStruct.toUserVOs(users);
     }
 
     @Override
@@ -51,7 +56,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (user == null) {
             return null;
         }
-        return UserMapperStruct.INSTANCE.toUserVO(user);
+        return userMapperStruct.toUserVO(user);
     }
 
     @Override
@@ -63,7 +68,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (this.getOne(queryWrapper) != null) {
             return -1; // 用户名已存在
         }
-        User user = UserMapperStruct.INSTANCE.toEntity(registerDTO);
+        User user = userMapperStruct.toEntity(registerDTO);
         this.save(user);
 
         Long userId = user.getId();
@@ -115,7 +120,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         queryWrapper.orderByDesc("id");
 
         Page<User> pageObj = this.page(new Page<>(page, pageSize), queryWrapper);
-        List<UserVO> records = UserMapperStruct.INSTANCE.toUserVOs(pageObj.getRecords());
+        List<UserVO> records = userMapperStruct.toUserVOs(pageObj.getRecords());
         return PageResult.of(pageObj.getTotal(), page, pageSize, records);
     }
 
@@ -178,7 +183,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (user == null) {
             return null;
         }
-        return UserMapperStruct.INSTANCE.toUserDetailVO(user);
+        return userMapperStruct.toUserDetailVO(user);
     }
 
     @Override

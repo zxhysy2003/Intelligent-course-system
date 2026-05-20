@@ -10,15 +10,15 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.sy.course_system.enums.CourseStatus;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sy.course_system.common.PageResult;
 import com.sy.course_system.common.UserContext;
+import com.sy.course_system.converter.CourseMapperStruct;
 import com.sy.course_system.dto.course.CoursePageLearnerCountDTO;
 import com.sy.course_system.dto.course.CoursePageTagDTO;
 import com.sy.course_system.dto.course.CourseRegisterOptionsDTO;
@@ -31,11 +31,11 @@ import com.sy.course_system.dto.course.TagOptionDTO;
 import com.sy.course_system.entity.Course;
 import com.sy.course_system.entity.Knowledge;
 import com.sy.course_system.entity.Tag;
+import com.sy.course_system.enums.CourseStatus;
 import com.sy.course_system.mapper.CourseHotScoreMapper;
 import com.sy.course_system.mapper.CourseMapper;
 import com.sy.course_system.mapper.KnowledgePointMapper;
 import com.sy.course_system.mapper.TagMapper;
-import com.sy.course_system.converter.CourseMapperStruct;
 import com.sy.course_system.repository.CourseNodeRepository;
 import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.CourseTagService;
@@ -50,26 +50,32 @@ import com.sy.course_system.vo.KnowledgeVO;
 public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> implements CourseService {
     private static final Logger log = LoggerFactory.getLogger(CourseServiceImpl.class);
 
-    @Autowired
-    private CourseNodeRepository courseNodeRepository;
+    private final CourseMapperStruct courseMapperStruct;
+    private final CourseNodeRepository courseNodeRepository;
+    private final LearningAnalysisService learningAnalysisService;
+    private final VideoService videoService;
+    private final CourseTagService courseTagService;
+    private final TagMapper tagMapper;
+    private final KnowledgePointMapper knowledgePointMapper;
+    private final CourseHotScoreMapper courseHotScoreMapper;
 
-    @Autowired
-    private LearningAnalysisService learningAnalysisService;
-
-    @Autowired
-    private VideoService videoService;
-
-    @Autowired
-    private CourseTagService courseTagService;
-
-    @Autowired
-    private TagMapper tagMapper;
-
-    @Autowired
-    private KnowledgePointMapper knowledgePointMapper;
-
-    @Autowired
-    private CourseHotScoreMapper courseHotScoreMapper;
+    public CourseServiceImpl(CourseMapperStruct courseMapperStruct,
+            CourseNodeRepository courseNodeRepository,
+            LearningAnalysisService learningAnalysisService,
+            VideoService videoService,
+            CourseTagService courseTagService,
+            TagMapper tagMapper,
+            KnowledgePointMapper knowledgePointMapper,
+            CourseHotScoreMapper courseHotScoreMapper) {
+        this.courseMapperStruct = courseMapperStruct;
+        this.courseNodeRepository = courseNodeRepository;
+        this.learningAnalysisService = learningAnalysisService;
+        this.videoService = videoService;
+        this.courseTagService = courseTagService;
+        this.tagMapper = tagMapper;
+        this.knowledgePointMapper = knowledgePointMapper;
+        this.courseHotScoreMapper = courseHotScoreMapper;
+    }
 
     @Override
     public CourseRegisterOptionsDTO getRegisterOptions() {
@@ -162,7 +168,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
     private List<CourseVO> convertToVO(List<CourseTempDTO> courseTempList) {
         return courseTempList.stream()
-                .map(CourseMapperStruct.INSTANCE::tempToVO)
+                .map(courseMapperStruct::tempToVO)
                 .collect(Collectors.toList());
     }
 
@@ -177,7 +183,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         if (courses == null || courses.isEmpty()) {
             return null;
         }
-        return CourseMapperStruct.INSTANCE.toDetailVOs(courses);
+        return courseMapperStruct.toDetailVOs(courses);
     }
 
     // ===== 后台课程管理 =====
@@ -208,7 +214,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
             throw new IllegalArgumentException("Invalid tagIds");
         }
 
-        Course course = CourseMapperStruct.INSTANCE.toEntity(registerDTO);
+        Course course = courseMapperStruct.toEntity(registerDTO);
         course.setStatus(CourseStatus.DRAFT.getCode()); // 默认草稿状态,待上传完视频后再上线
 
         this.save(course);
@@ -332,7 +338,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     public CourseDetailVO getCourseByIdForUser(Long courseId) {
         Course course = this.getById(courseId);
         if (course != null) {
-            CourseDetailVO vo = CourseMapperStruct.INSTANCE.toDetailVO(course);
+            CourseDetailVO vo = courseMapperStruct.toDetailVO(course);
             return vo;
         }
         return null;
@@ -386,7 +392,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         if (knowledgePoints == null || knowledgePoints.isEmpty()) {
             return null;
         }
-        return CourseMapperStruct.INSTANCE.toKnowledgeVOs(knowledgePoints);
+        return courseMapperStruct.toKnowledgeVOs(knowledgePoints);
 
     }
 
@@ -465,7 +471,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         options.setTags(tags);
         options.setKnowledgePoints(knowledgePoints);
 
-        CourseUpdateVO vo = CourseMapperStruct.INSTANCE.toUpdateVO(course);
+        CourseUpdateVO vo = courseMapperStruct.toUpdateVO(course);
         vo.setCategoryId(baseMapper.selectCategoryIdByCourseId(courseId));
         vo.setOptions(options);
         return vo;

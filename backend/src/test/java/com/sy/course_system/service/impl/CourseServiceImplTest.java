@@ -27,18 +27,20 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.sy.course_system.dto.course.CourseRegisterOptionsDTO;
+import com.sy.course_system.common.PageResult;
+import com.sy.course_system.common.UserContext;
+import com.sy.course_system.common.UserInfo;
+import com.sy.course_system.converter.CourseMapperStruct;
+import com.sy.course_system.converter.CourseMapperStructImpl;
 import com.sy.course_system.dto.course.CoursePageLearnerCountDTO;
 import com.sy.course_system.dto.course.CoursePageTagDTO;
 import com.sy.course_system.dto.course.CourseQueryDTO;
+import com.sy.course_system.dto.course.CourseRegisterOptionsDTO;
 import com.sy.course_system.dto.course.CourseTempDTO;
 import com.sy.course_system.dto.course.KnowledgePointOptionDTO;
 import com.sy.course_system.dto.course.TagOptionDTO;
 import com.sy.course_system.entity.Course;
 import com.sy.course_system.entity.Knowledge;
-import com.sy.course_system.common.PageResult;
-import com.sy.course_system.common.UserContext;
-import com.sy.course_system.common.UserInfo;
 import com.sy.course_system.enums.CourseOrderType;
 import com.sy.course_system.enums.CourseStatus;
 import com.sy.course_system.mapper.CourseHotScoreMapper;
@@ -72,6 +74,8 @@ class CourseServiceImplTest {
     private KnowledgePointMapper knowledgePointMapper;
     @Mock
     private CourseHotScoreMapper courseHotScoreMapper;
+    @Spy
+    private CourseMapperStruct courseMapperStruct = new CourseMapperStructImpl();
 
     @Spy
     @InjectMocks

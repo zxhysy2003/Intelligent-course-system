@@ -5,7 +5,6 @@ import java.util.List;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.NullValueMappingStrategy;
-import org.mapstruct.factory.Mappers;
 
 import com.sy.course_system.dto.UserRegisterDTO;
 import com.sy.course_system.entity.User;
@@ -23,8 +22,6 @@ import com.sy.course_system.vo.UserVO;
  */
 @Mapper(componentModel = "spring", nullValueMappingStrategy = NullValueMappingStrategy.RETURN_DEFAULT)
 public interface UserMapperStruct {
-    UserMapperStruct INSTANCE = Mappers.getMapper(UserMapperStruct.class);
-
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "nickname", ignore = true)
     @Mapping(target = "role", expression = "java(com.sy.course_system.enums.UserType.STUDENT.name())")
