@@ -20,6 +20,7 @@ public record AgentProperties(
         @DefaultValue("45000") int readTimeoutMs,
         @DefaultValue("12") int maxHistoryMessages,
         @DefaultValue("5") int maxContextCourses,
+        @DefaultValue("5000") int contextRecommendTimeoutMs,
         @DefaultValue("800") int maxOutputTokens,
         @DefaultValue("0.3") double temperature) {
 

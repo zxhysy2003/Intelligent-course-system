@@ -69,9 +69,10 @@ backend 同时依赖 MySQL、Redis、Neo4j 和本地视频目录。
 AGENT_LLM_API_KEY=your_api_key
 AGENT_LLM_BASE_URL=https://api.openai.com/v1
 AGENT_LLM_MODEL=gpt-4o-mini
+AGENT_CONTEXT_RECOMMEND_TIMEOUT_MS=5000
 ```
 
-Agent 当前只提供学习建议、推荐解释、薄弱点分析和路径建议，不替用户执行选课、收藏或进度修改等写操作。
+Agent 当前只提供学习建议、推荐解释、薄弱点分析和路径建议，不替用户执行选课、收藏或进度修改等写操作。`AGENT_CONTEXT_RECOMMEND_TIMEOUT_MS` 只控制 Agent 等待推荐上下文的时间；超时会跳过推荐来源继续回答，不影响推荐页自身接口预算。
 
 ## 快速开始
 

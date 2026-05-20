@@ -4,8 +4,17 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.stereotype.Component;
 
 import com.sy.course_system.config.AgentProperties;
@@ -27,25 +36,30 @@ import com.sy.course_system.vo.agent.AgentSourceVO;
 @Component
 public class AgentContextAssembler {
 
+    private static final Logger log = LoggerFactory.getLogger(AgentContextAssembler.class);
+
     private final OnboardingService onboardingService;
     private final LearningAnalysisService learningAnalysisService;
     private final HybridRecommendService hybridRecommendService;
     private final UserCourseRelationMapper userCourseRelationMapper;
     private final TagMapper tagMapper;
     private final AgentProperties properties;
+    private final AsyncTaskExecutor agentContextExecutor;
 
     public AgentContextAssembler(OnboardingService onboardingService,
             LearningAnalysisService learningAnalysisService,
             HybridRecommendService hybridRecommendService,
             UserCourseRelationMapper userCourseRelationMapper,
             TagMapper tagMapper,
-            AgentProperties properties) {
+            AgentProperties properties,
+            @Qualifier("agentContextExecutor") AsyncTaskExecutor agentContextExecutor) {
         this.onboardingService = onboardingService;
         this.learningAnalysisService = learningAnalysisService;
         this.hybridRecommendService = hybridRecommendService;
         this.userCourseRelationMapper = userCourseRelationMapper;
         this.tagMapper = tagMapper;
         this.properties = properties;
+        this.agentContextExecutor = agentContextExecutor;
     }
 
     public AgentContextSnapshot assemble(Long userId) {
@@ -157,7 +171,36 @@ public class AgentContextAssembler {
     }
 
     private List<HybridRecommendItemDTO> safeGetRecommendations(Long userId) {
-        HybridRecommendResponseDTO response = safeGet(() -> hybridRecommendService.recommend(userId));
+        Future<HybridRecommendResponseDTO> future;
+        try {
+            future = agentContextExecutor.submit(() -> hybridRecommendService.recommend(userId));
+        } catch (RuntimeException e) {
+            log.warn("Agent recommendation context task rejected for user {}, using empty recommendations", userId, e);
+            return List.of();
+        }
+
+        HybridRecommendResponseDTO response;
+        int timeoutMs = Math.max(1, properties.contextRecommendTimeoutMs());
+        try {
+            response = future.get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            future.cancel(true);
+            log.warn("Agent recommendation context timed out for user {}, timeoutMs={}", userId, timeoutMs);
+            return List.of();
+        } catch (InterruptedException e) {
+            future.cancel(true);
+            Thread.currentThread().interrupt();
+            log.warn("Agent recommendation context interrupted for user {}, using empty recommendations", userId);
+            return List.of();
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() == null ? e : e.getCause();
+            log.warn("Agent recommendation context failed for user {}, using empty recommendations", userId, cause);
+            return List.of();
+        } catch (CancellationException e) {
+            log.warn("Agent recommendation context cancelled for user {}, using empty recommendations", userId, e);
+            return List.of();
+        }
+
         if (response == null || response.getItems() == null) {
             return List.of();
         }

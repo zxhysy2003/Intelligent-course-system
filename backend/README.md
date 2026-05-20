@@ -271,6 +271,7 @@ java -jar target/course-system-0.0.1-SNAPSHOT.jar
 | `AGENT_LLM_MODEL` | 模型名 | `gpt-4o-mini` |
 | `AGENT_MAX_HISTORY_MESSAGES` | 每次请求携带的最近消息数 | `12` |
 | `AGENT_MAX_CONTEXT_COURSES` | 上下文中最多携带的课程/推荐数 | `5` |
+| `AGENT_CONTEXT_RECOMMEND_TIMEOUT_MS` | Agent 等待推荐上下文的最长时间，超时后跳过推荐来源继续回答 | `5000` |
 
 学习助手接口统一在 `/agent/**`，由 JWT 拦截器保护。当前支持会话列表、消息历史、非流式对话、重命名和软删除会话；Agent 只读分析学习数据，不执行选课、收藏、删除或进度更新。
 | `RECOMMEND_CF_CONNECT_TIMEOUT_MS` | 推荐服务连接超时 | `5000` |

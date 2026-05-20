@@ -118,6 +118,7 @@ class AgentServiceImplTest {
                 100,
                 12,
                 5,
+                5000,
                 800,
                 0.3d);
         return new AgentServiceImpl(
