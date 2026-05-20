@@ -39,6 +39,7 @@ backend 同时依赖 MySQL、Redis、Neo4j 和本地视频目录。
 - 课程浏览、分类筛选、选课和视频学习
 - 视频断点续播、学习行为记录和课程热度同步
 - 个性化推荐、用户冷启动推荐、新课曝光和混合推荐，推荐页可核验来源
+- 学生端学习助手 Agent：基于课程、推荐、进度和知识图谱提供只读学习建议
 - Neo4j 知识图谱展示和课程知识点关系查询
 - 学习进度图表、能力雷达图和个人中心
 - 后台课程管理、视频上传和用户管理
@@ -59,6 +60,18 @@ backend 同时依赖 MySQL、Redis、Neo4j 和本地视频目录。
 | `COLD_START_USER` | 新用户或行为不足时，基于引导画像和兴趣标签生成 |
 | `COLD_START_COURSE` | 常规链路中的新课注入候选 |
 | `HOT_FALLBACK` | CF 和新课候选不可用时的热门课程兜底 |
+
+## 学习助手 Agent
+
+学生端新增 `/agent` 学习助手页面。首版 Agent 由后端 Spring Boot 内置实现，复用已有 JWT 鉴权、课程、推荐、学习分析和知识图谱服务；会话和消息保存在 MySQL 中。默认未配置模型密钥时会使用本地 mock 回答，便于开发演示；接入 OpenAI-compatible 模型时设置：
+
+```bash
+AGENT_LLM_API_KEY=your_api_key
+AGENT_LLM_BASE_URL=https://api.openai.com/v1
+AGENT_LLM_MODEL=gpt-4o-mini
+```
+
+Agent 当前只提供学习建议、推荐解释、薄弱点分析和路径建议，不替用户执行选课、收藏或进度修改等写操作。
 
 ## 快速开始
 

@@ -48,6 +48,10 @@
                         <el-icon><DataAnalysis /></el-icon>
                         <span>学习进度</span>
                     </el-menu-item>
+                    <el-menu-item index="/agent">
+                        <el-icon><MagicStick /></el-icon>
+                        <span>学习助手</span>
+                    </el-menu-item>
                     <el-menu-item index="/graph">
                         <el-icon><MagicStick /></el-icon>
                         <span>知识图谱</span>

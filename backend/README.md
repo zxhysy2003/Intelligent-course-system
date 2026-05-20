@@ -20,6 +20,7 @@
 - 学习行为记录、课程热度同步、学习进度和能力雷达图分析
 - Neo4j 知识图谱展示与课程知识点关系查询
 - 个性化推荐、用户冷启动推荐、评分快照维护、新课曝光和混合推荐结果融合
+- 学生端学习助手 Agent，会话持久化并基于课程、推荐、进度和知识图谱生成只读建议
 - 通过 `/videos/**` 暴露本地课程视频静态资源
 
 ## 技术栈
@@ -258,6 +259,20 @@ java -jar target/course-system-0.0.1-SNAPSHOT.jar
 | 变量名 | 说明 | 默认值 |
 | --- | --- | --- |
 | `RECOMMEND_SERVICE_URL` | FastAPI 推荐服务地址 | `http://localhost:8000` |
+
+### Agent 配置
+
+| 变量名 | 说明 | 默认值 |
+| --- | --- | --- |
+| `AGENT_ENABLED` | 学习助手开关 | `true` |
+| `AGENT_LLM_PROVIDER` | 模型提供方，`mock` 或 `openai-compatible` | `openai-compatible` |
+| `AGENT_LLM_BASE_URL` | OpenAI-compatible API 基础地址 | `https://api.openai.com/v1` |
+| `AGENT_LLM_API_KEY` | 模型 API Key，留空时走 mock 回答 | 空 |
+| `AGENT_LLM_MODEL` | 模型名 | `gpt-4o-mini` |
+| `AGENT_MAX_HISTORY_MESSAGES` | 每次请求携带的最近消息数 | `12` |
+| `AGENT_MAX_CONTEXT_COURSES` | 上下文中最多携带的课程/推荐数 | `5` |
+
+学习助手接口统一在 `/agent/**`，由 JWT 拦截器保护。当前支持会话列表、消息历史、非流式对话、重命名和软删除会话；Agent 只读分析学习数据，不执行选课、收藏、删除或进度更新。
 | `RECOMMEND_CF_CONNECT_TIMEOUT_MS` | 推荐服务连接超时 | `5000` |
 | `RECOMMEND_CF_READ_TIMEOUT_MS` | 推荐服务读取超时 | `30000` |
 | `RECOMMEND_CF_REQUEST_TOP_N` | CF 服务候选返回数量 | `100` |

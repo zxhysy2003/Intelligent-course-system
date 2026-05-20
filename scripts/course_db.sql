@@ -614,4 +614,49 @@ INSERT INTO `video` (`id`, `course_id`, `title`, `video_path`, `duration_seconds
 INSERT INTO `video` (`id`, `course_id`, `title`, `video_path`, `duration_seconds`, `create_time`, `update_time`) VALUES (14, 14, 'test2', '14/6bf74f400b25470a99820f7d410acde4.mp4', 705, '2026-02-27 14:45:07', '2026-02-27 14:45:07');
 COMMIT;
 
+-- ----------------------------
+-- Table structure for agent_session
+-- ----------------------------
+DROP TABLE IF EXISTS `agent_session`;
+CREATE TABLE `agent_session` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT 'Agent 会话ID',
+  `user_id` bigint NOT NULL COMMENT '用户ID',
+  `title` varchar(100) NOT NULL COMMENT '会话标题',
+  `status` tinyint NOT NULL DEFAULT '1' COMMENT '状态：1-正常 0-删除',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_agent_session_user_time` (`user_id`,`status`,`update_time`,`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='学习助手会话表';
+
+-- ----------------------------
+-- Records of agent_session
+-- ----------------------------
+BEGIN;
+COMMIT;
+
+-- ----------------------------
+-- Table structure for agent_message
+-- ----------------------------
+DROP TABLE IF EXISTS `agent_message`;
+CREATE TABLE `agent_message` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT 'Agent 消息ID',
+  `session_id` bigint NOT NULL COMMENT '会话ID',
+  `user_id` bigint NOT NULL COMMENT '用户ID',
+  `role` varchar(20) NOT NULL COMMENT '角色：USER / ASSISTANT',
+  `content` text NOT NULL COMMENT '消息内容',
+  `metadata_json` json DEFAULT NULL COMMENT '模型、来源、耗时等元数据',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_agent_message_session_time` (`session_id`,`user_id`,`create_time`,`id`),
+  KEY `idx_agent_message_user_time` (`user_id`,`create_time`,`id`),
+  CONSTRAINT `chk_agent_message_role` CHECK (`role` IN ('USER','ASSISTANT'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='学习助手消息表';
+
+-- ----------------------------
+-- Records of agent_message
+-- ----------------------------
+BEGIN;
+COMMIT;
+
 SET FOREIGN_KEY_CHECKS = 1;

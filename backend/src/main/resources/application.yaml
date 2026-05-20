@@ -143,6 +143,19 @@ recommend:
     quality-duration-full-score-seconds: ${RECOMMEND_NEW_COURSE_QUALITY_DURATION_FULL_SCORE_SECONDS:1800.0}
     quality-kp-weight: ${RECOMMEND_NEW_COURSE_QUALITY_KP_WEIGHT:0.5}
 
+agent:
+  enabled: ${AGENT_ENABLED:true}
+  provider: ${AGENT_LLM_PROVIDER:openai-compatible}
+  base-url: ${AGENT_LLM_BASE_URL:https://api.openai.com/v1}
+  api-key: ${AGENT_LLM_API_KEY:}
+  model: ${AGENT_LLM_MODEL:gpt-4o-mini}
+  connect-timeout-ms: ${AGENT_LLM_CONNECT_TIMEOUT_MS:5000}
+  read-timeout-ms: ${AGENT_LLM_READ_TIMEOUT_MS:45000}
+  max-history-messages: ${AGENT_MAX_HISTORY_MESSAGES:12}
+  max-context-courses: ${AGENT_MAX_CONTEXT_COURSES:5}
+  max-output-tokens: ${AGENT_LLM_MAX_OUTPUT_TOKENS:800}
+  temperature: ${AGENT_LLM_TEMPERATURE:0.3}
+
 logging:
   level:
     "[org.springframework.transaction]": DEBUG

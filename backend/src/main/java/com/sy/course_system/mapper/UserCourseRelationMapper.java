@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Select;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.sy.course_system.dto.ProgressSummaryDTO;
+import com.sy.course_system.dto.agent.AgentCourseProgressDTO;
 import com.sy.course_system.entity.UserCourseRelation;
 
 import org.apache.ibatis.annotations.Param;
@@ -56,5 +57,25 @@ public interface UserCourseRelationMapper extends BaseMapper<UserCourseRelation>
             """)
     List<Long> selectSelectedCourseIds(@Param("userId") Long userId,
             @Param("courseIds") List<Long> courseIds);
+
+    @Select("""
+            SELECT
+                ucr.course_id AS courseId,
+                c.title AS title,
+                c.difficulty AS difficulty,
+                ucr.progress AS progress,
+                ucr.learned_seconds AS learnedSeconds,
+                ucr.status AS status,
+                ucr.is_favorite AS favorite,
+                ucr.last_learn_time AS lastLearnTime
+            FROM user_course_relation ucr
+            JOIN course c ON c.id = ucr.course_id
+            WHERE ucr.user_id = #{userId}
+              AND c.status = 1
+            ORDER BY COALESCE(ucr.last_learn_time, ucr.update_time, ucr.create_time) DESC, ucr.id DESC
+            LIMIT #{limit}
+            """)
+    List<AgentCourseProgressDTO> selectRecentCourseProgress(@Param("userId") Long userId,
+            @Param("limit") Integer limit);
 
 }

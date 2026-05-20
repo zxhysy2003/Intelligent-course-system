@@ -13,6 +13,7 @@ import Recommend from "@/views/user/Recommend.vue";
 import Dashboard from "@/views/user/Dashboard.vue";
 import KnowledgeGraph from "@/views/user/KnowledgeGraph.vue";
 import Onboarding from "@/views/user/Onboarding.vue";
+import AgentAssistant from "@/views/user/AgentAssistant.vue";
 import NotFound from "@/views/404.vue";
 import CourseDetail from "@/views/user/CourseDetail.vue";
 import CourseManage from "@/views/admin/CourseManage.vue";
@@ -44,6 +45,7 @@ const routes = [
             { path: "onboarding", name: "Onboarding", component: Onboarding },
             { path: "recommend", component: Recommend },
             { path: "dashboard", component: Dashboard },
+            { path: "agent", component: AgentAssistant },
             { path: "graph", component: KnowledgeGraph },
             { path: "profile", component: Profile },
             { path: "admin/course", component: CourseManage },
