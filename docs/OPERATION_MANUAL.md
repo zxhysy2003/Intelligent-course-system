@@ -17,6 +17,7 @@ Intelligent-course-system
 ├── backend
 │   ├── src/main/java/com/sy/course_system
 │   ├── src/main/resources
+│   │   └── db/migration
 │   ├── mvnw
 │   └── pom.xml
 ├── frontend
@@ -30,7 +31,6 @@ Intelligent-course-system
 │   ├── model.py
 │   └── schemas.py
 ├── scripts
-│   ├── course_db.sql
 │   ├── docker-compose.yml
 │   ├── dev.sh
 │   ├── dev.bash
@@ -39,6 +39,8 @@ Intelligent-course-system
 └── docs
     └── OPERATION_MANUAL.md
 ```
+
+MySQL 初始化以 `backend/src/main/resources/db/migration` 下的 Flyway 迁移为准。
 
 ## 2. 服务关系
 
@@ -57,16 +59,15 @@ backend
   v
 recommend-service
 
-backend 同时依赖 MySQL、Redis、Neo4j 和本地视频目录。
+backend 同时依赖 MySQL、Redis、Neo4j 和本地视频目录；recommend-service 会直连 MySQL 读取推荐评分快照。
 ```
 
 推荐启动顺序：
 
 1. 启动 MySQL、Redis、Neo4j 等基础依赖
-2. 确认 MySQL 和 Neo4j 初始化数据已导入，首次启动 Compose 时会自动完成
+2. 启动 `backend`，由 Flyway 完成 MySQL 迁移并生成 `flyway_schema_history`
 3. 启动 `recommend-service`
-4. 启动 `backend`
-5. 启动 `frontend`
+4. 启动 `frontend`
 
 ## 3. 环境要求
 
@@ -128,13 +129,13 @@ docker compose down -v
 
 ### 4.2 初始化数据注意事项
 
-`scripts/docker-compose.yml` 会在首次创建数据卷时自动导入初始化数据：
+`scripts/docker-compose.yml` 会在首次创建数据卷时准备基础依赖：
 
-- MySQL 通过 `/docker-entrypoint-initdb.d/01-course_db.sql` 自动导入 `scripts/course_db.sql`
+- MySQL 只创建空数据库 `course_db`，表结构和初始化数据由后端 Flyway 迁移创建
 - Neo4j 通过 `neo4j-init` 服务从 `scripts/neo4j-backups/neo4j.dump` 自动恢复默认库 `neo4j`
 - Neo4j 认证为 `neo4j/neo4j123`，与后端默认配置一致
 
-如果需要重新导入 MySQL 和 Neo4j 数据，请删除数据卷后重新启动：
+如果需要重建本地 MySQL 和 Neo4j 数据，请删除数据卷后重新启动，再启动后端执行 Flyway 迁移：
 
 ```bash
 cd scripts
@@ -152,21 +153,49 @@ docker compose up -d
 CREATE DATABASE course_db DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-### 5.2 导入初始化脚本
+### 5.2 使用 Flyway 初始化新数据库
 
-从仓库根目录执行：
+后端集成 Flyway，迁移脚本位于：
 
-```bash
-mysql -u dev -p course_db < scripts/course_db.sql
+```text
+backend/src/main/resources/db/migration
 ```
 
-使用 Docker MySQL 时，也可以从仓库根目录执行：
+空数据库场景下，启动后端即可自动执行 `V1__baseline_schema.sql` 以及后续迁移：
 
 ```bash
-docker compose -f scripts/docker-compose.yml exec -T mysql mysql -udev -pdev123 course_db < scripts/course_db.sql
+cd backend
+SPRING_PROFILES_ACTIVE=dev ./mvnw spring-boot:run
 ```
 
-`scripts/course_db.sql` 包含表结构和课程、用户、学习行为等初始化测试数据。首次启动 Compose 且 MySQL 数据卷为空时，该脚本会自动导入。
+迁移完成后，MySQL 中会出现 `flyway_schema_history` 表。该表记录已执行的迁移版本，后续不要删除或手动修改。
+
+### 5.3 已有数据库首次接入 Flyway
+
+如果你的 `course_db` 已经在 Flyway 接入前存在，并且表结构就是当前项目基准状态，第一次启动后端时需要显式 baseline：
+
+```bash
+cd backend
+FLYWAY_BASELINE_ON_MIGRATE=true SPRING_PROFILES_ACTIVE=dev ./mvnw spring-boot:run
+```
+
+确认 `flyway_schema_history` 已生成后，后续启动不要再携带 `FLYWAY_BASELINE_ON_MIGRATE=true`。
+
+### 5.4 后续数据库变更
+
+不要修改已经执行过的迁移文件。新增表、字段、索引或基础数据时，新建更高版本迁移，例如：
+
+```text
+backend/src/main/resources/db/migration/V2__add_course_source.sql
+```
+
+多人协作时建议使用时间戳版本降低冲突概率，例如：
+
+```text
+V202605201430__add_course_source.sql
+```
+
+当前初始化流程以 Flyway 迁移为准，基线脚本为 `backend/src/main/resources/db/migration/V1__baseline_schema.sql`。
 
 ## 6. 配置说明
 
@@ -181,6 +210,7 @@ docker compose -f scripts/docker-compose.yml exec -T mysql mysql -udev -pdev123 
 | `DB_NAME` | 数据库名 | `course_db` |
 | `DB_USERNAME` | MySQL 用户名 | `dev` |
 | `DB_PASSWORD` | MySQL 密码 | `dev123` |
+| `FLYWAY_BASELINE_ON_MIGRATE` | 旧库首次接入 Flyway 时标记当前库为基线 | `false` |
 | `REDIS_HOST` | Redis 地址 | `localhost` |
 | `REDIS_PORT` | Redis 端口 | `6379` |
 | `REDIS_PASSWORD` | Redis 密码 | `redis123` |
@@ -285,13 +315,7 @@ export FFPROBE_PATH=/usr/bin/ffprobe
 
 ### 6.3 推荐服务配置
 
-推荐服务默认通过以下命令监听 `127.0.0.1:8000`：
-
-```bash
-uvicorn main:app --reload --host 127.0.0.1 --port 8000
-```
-
-后端会调用：
+推荐服务默认监听 `127.0.0.1:8000`，后端会调用：
 
 ```text
 POST ${RECOMMEND_SERVICE_URL}/recommend
@@ -311,7 +335,61 @@ POST ${RECOMMEND_SERVICE_URL}/recommend
 
 后端启动后默认会重建评分快照表；如果推荐服务已经提前启动，后端重建完成后可调用 `POST /model/reload` 让推荐服务重新加载快照并训练内存模型。
 
-## 7. 启动 recommend-service
+## 7. 启动 backend
+
+进入后端目录：
+
+```bash
+cd backend
+```
+
+编译检查：
+
+```bash
+./mvnw -q -DskipTests compile
+```
+
+启动后端服务：
+
+```bash
+SPRING_PROFILES_ACTIVE=dev RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 ./mvnw spring-boot:run
+```
+
+`dev` profile 会开启 MyBatis SQL 调试日志；默认配置不打印 SQL，适合生产或演示环境。后端启动阶段会先执行 Flyway 迁移，再启动业务服务。
+
+如果需要显式指定本地依赖地址：
+
+```bash
+DB_HOST=127.0.0.1 \
+REDIS_HOST=127.0.0.1 \
+NEO4J_URI=bolt://127.0.0.1:7687 \
+SPRING_PROFILES_ACTIVE=dev \
+RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 \
+VIDEO_DIR=/data/course_videos \
+VIDEO_BASE_URL=http://127.0.0.1:8080 \
+./mvnw spring-boot:run
+```
+
+打包运行：
+
+```bash
+./mvnw clean package
+java -jar target/course-system-0.0.1-SNAPSHOT.jar
+```
+
+服务默认访问地址：
+
+```text
+http://127.0.0.1:8080
+```
+
+Actuator 健康检查：
+
+```bash
+curl "http://127.0.0.1:8080/actuator/health"
+```
+
+## 8. 启动 recommend-service
 
 进入推荐服务目录：
 
@@ -381,60 +459,6 @@ curl -X POST "http://127.0.0.1:8000/recommend" \
 ```
 
 实际 `score` 会随模型训练结果变化；如果模型尚未训练、快照表为空或目标用户不在训练集中，`items` 会返回空数组，后端混合推荐会继续走新课和热门课程兜底。
-
-## 8. 启动 backend
-
-进入后端目录：
-
-```bash
-cd backend
-```
-
-编译检查：
-
-```bash
-./mvnw -q -DskipTests compile
-```
-
-启动后端服务：
-
-```bash
-SPRING_PROFILES_ACTIVE=dev RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 ./mvnw spring-boot:run
-```
-
-`dev` profile 会开启 MyBatis SQL 调试日志；默认配置不打印 SQL，适合生产或演示环境。
-
-如果需要显式指定本地依赖地址：
-
-```bash
-DB_HOST=127.0.0.1 \
-REDIS_HOST=127.0.0.1 \
-NEO4J_URI=bolt://127.0.0.1:7687 \
-SPRING_PROFILES_ACTIVE=dev \
-RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 \
-VIDEO_DIR=/data/course_videos \
-VIDEO_BASE_URL=http://127.0.0.1:8080 \
-./mvnw spring-boot:run
-```
-
-打包运行：
-
-```bash
-./mvnw clean package
-java -jar target/course-system-0.0.1-SNAPSHOT.jar
-```
-
-服务默认访问地址：
-
-```text
-http://127.0.0.1:8080
-```
-
-Actuator 健康检查：
-
-```bash
-curl "http://127.0.0.1:8080/actuator/health"
-```
 
 ## 9. 启动 frontend
 
@@ -679,7 +703,8 @@ curl "http://127.0.0.1:8080/analysis/knowledge-graph?courseId=1&depth=3" \
 - MySQL 是否已经启动
 - 数据库名是否为 `course_db`
 - 用户名和密码是否与配置一致
-- `scripts/course_db.sql` 是否已经导入，或 MySQL 数据卷首次创建时是否已自动初始化
+- 新库是否已通过后端 Flyway 迁移完成
+- 旧库首次接入 Flyway 时是否已使用 `FLYWAY_BASELINE_ON_MIGRATE=true` 生成 `flyway_schema_history`
 - 本机端口 `3306` 是否被其他 MySQL 实例占用
 
 ### 13.2 Redis 连接失败
@@ -772,6 +797,7 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 - 不要使用默认数据库、Redis、Neo4j 密码
 - 使用独立的生产环境配置管理敏感信息
+- 生产库首次接入 Flyway 前先备份数据库，并确认是否需要一次性 baseline
 - 将 `VIDEO_DIR` 指向持久化存储目录
 - 为后端、前端和推荐服务配置统一的反向代理
 - 为 FastAPI 推荐服务增加进程守护，例如 systemd、Docker 或 Supervisor

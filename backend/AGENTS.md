@@ -14,7 +14,7 @@
 - `repository`、`graph`：Neo4j 与图数据相关代码。
 - `entity`、`dto`、`vo`：实体、入参、出参。
 - `config`、`common`：基础配置与通用能力。
-- `course_db.sql`：MySQL 表结构与初始化数据。
+- `src/main/resources/db/migration`：Flyway MySQL 迁移脚本。
 
 ## 工作原则
 
@@ -29,7 +29,7 @@
 
 - 通用默认值放在 `application.yaml`，环境差异通过 profile 或环境变量覆盖。
 - 不要把本地临时地址、生产密码、令牌等写回仓库。
-- 涉及 SQL 前先核对 `course_db.sql` 中的表结构和索引。
+- 涉及 SQL 前先核对 Flyway 迁移脚本中的表结构和索引。
 - 新增字段时同步检查 entity、DTO、VO、Mapper XML 和接口调用方。
 - 修改返回结构时优先新增字段，谨慎删除或重命名已有字段。
 - 推荐、学习分析、课程管理等核心逻辑要保护现有行为，避免无验证重写。

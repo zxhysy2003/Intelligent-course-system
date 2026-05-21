@@ -29,7 +29,7 @@ backend
   v
 recommend-service
 
-backend 同时依赖 MySQL、Redis、Neo4j 和本地视频目录。
+backend 同时依赖 MySQL、Redis、Neo4j 和本地视频目录；recommend-service 会直连 MySQL 读取推荐评分快照。
 ```
 
 ## 核心功能
@@ -63,33 +63,11 @@ backend 同时依赖 MySQL、Redis、Neo4j 和本地视频目录。
 
 ## 学习助手 Agent
 
-学生端新增 `/agent` 学习助手页面。首版 Agent 由后端 Spring Boot 内置实现，复用已有 JWT 鉴权、课程、推荐、学习分析和知识图谱服务；会话和消息保存在 MySQL 中。默认未配置模型密钥时会使用本地 mock 回答，便于开发演示；接入 OpenAI-compatible 模型时设置：
-
-```bash
-AGENT_LLM_API_KEY=your_api_key
-AGENT_LLM_BASE_URL=https://api.openai.com/v1
-AGENT_LLM_MODEL=gpt-4o-mini
-AGENT_CONTEXT_RECOMMEND_TIMEOUT_MS=5000
-```
-
-Agent 当前只提供学习建议、推荐解释、薄弱点分析和路径建议，不替用户执行选课、收藏或进度修改等写操作。`AGENT_CONTEXT_RECOMMEND_TIMEOUT_MS` 只控制 Agent 等待推荐上下文的时间；超时会跳过推荐来源继续回答，不影响推荐页自身接口预算。
+学生端 `/agent` 学习助手由后端内置实现，复用课程、推荐、进度和知识图谱数据生成只读学习建议。模型接入和配置项见 [backend/README.md](./backend/README.md)。
 
 ## 快速开始
 
-完整系统建议按下面顺序启动：
-
-1. 启动 `scripts/docker-compose.yml` 中的 MySQL、Redis、Neo4j
-2. 使用 `scripts/course_db.sql` 初始化 MySQL，首次启动 Compose 时会自动导入
-3. 使用 `scripts/neo4j-backups/neo4j.dump` 初始化 Neo4j，首次启动 Compose 时会自动恢复
-4. 启动 `recommend-service`
-5. 启动 `backend`
-6. 启动 `frontend`
-
-详细步骤见 [docs/OPERATION_MANUAL.md](./docs/OPERATION_MANUAL.md)。
-
-### 一键启动开发服务
-
-完成各服务依赖安装、数据库初始化和 `scripts/docker-compose.yml` 基础依赖启动后，可在仓库根目录同时启动前端、后端和推荐服务：
+完成依赖安装并启动基础服务后，推荐用一键脚本拉起前端、后端和推荐服务：
 
 ```bash
 ./scripts/dev.sh
@@ -107,7 +85,7 @@ Agent 当前只提供学习建议、推荐解释、薄弱点分析和路径建�
 - backend: `http://127.0.0.1:8080`
 - recommend-service: `http://127.0.0.1:8000`
 
-推荐服务会优先通过 Conda 环境 `lab_autumn` 启动；如需切换可设置 `RECOMMEND_CONDA_ENV`。
+推荐服务会优先通过 Conda 环境 `lab_autumn` 启动；如需切换可设置 `RECOMMEND_CONDA_ENV`。脚本默认会一直等待后端启动完成；如需设置等待上限，可设置 `BACKEND_READY_TIMEOUT_SECONDS`。
 
 常用覆盖项可直接在命令前设置，例如：
 
@@ -115,40 +93,7 @@ Agent 当前只提供学习建议、推荐解释、薄弱点分析和路径建�
 FRONTEND_PORT=5174 BACKEND_PORT=8081 RECOMMEND_PORT=8001 ./scripts/dev.sh
 ```
 
-## 常用命令
-
-### 后端依赖
-
-```bash
-cd scripts
-docker compose up -d
-```
-
-### 推荐服务
-
-```bash
-cd recommend-service
-conda env create -f environment.yml
-conda activate lab_autumn
-uvicorn main:app --reload --host 127.0.0.1 --port 8000
-```
-
-### 后端服务
-
-```bash
-cd backend
-SPRING_PROFILES_ACTIVE=dev RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 ./mvnw spring-boot:run
-```
-
-`dev` profile 会开启 MyBatis SQL 调试日志；默认配置不打印 SQL，更适合生产或演示环境。
-
-### 前端服务
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
+完整手动启动、Flyway 接管旧库、数据库重建和排查步骤见 [docs/OPERATION_MANUAL.md](./docs/OPERATION_MANUAL.md)。
 
 ## 文档入口
 
@@ -163,7 +108,7 @@ npm run dev
 - 服务级 README 负责各自的依赖、启动、配置、接口和常见问题
 - 前端通过 `/api` 和 `/videos` 代理访问后端
 - 后端通过 `RECOMMEND_SERVICE_URL` 调用推荐服务
-- 推荐服务不直接访问数据库，评分数据由后端聚合后传入
+- 推荐服务直连 MySQL 读取后端维护的 `recommend_user_course_score` 快照表
 
 ## License
 

@@ -29,6 +29,7 @@ export VITE_BACKEND_TARGET=${VITE_BACKEND_TARGET:-http://${BACKEND_HOST}:${BACKE
 export CORS_ALLOWED_ORIGIN_PATTERNS=${CORS_ALLOWED_ORIGIN_PATTERNS:-http://localhost:${FRONTEND_PORT},http://127.0.0.1:${FRONTEND_PORT},http://192.168.*:${FRONTEND_PORT}}
 export SERVER_PORT=${SERVER_PORT:-${BACKEND_PORT}}
 export SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-dev}
+export BACKEND_READY_TIMEOUT_SECONDS=${BACKEND_READY_TIMEOUT_SECONDS:-0}
 
 typeset -a pids
 STATE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/course-system-dev.XXXXXX")
@@ -38,7 +39,7 @@ log() {
 }
 
 cleanup() {
-  local status=${1:-0}
+  local exit_status=${1:-0}
   trap - EXIT INT TERM
 
   if (( ${#pids[@]} > 0 )); then
@@ -51,7 +52,7 @@ cleanup() {
 
   rm -rf "$STATE_DIR"
 
-  exit "$status"
+  exit "$exit_status"
 }
 
 start_service() {
@@ -75,6 +76,55 @@ start_service() {
   pids+=("$!")
 }
 
+wait_for_http() {
+  local name=$1
+  local url=$2
+  local timeout_seconds=${3:-$BACKEND_READY_TIMEOUT_SECONDS}
+  local elapsed=0
+  local http_code curl_exit exit_file service_name service_status
+
+  if ! command -v curl >/dev/null 2>&1; then
+    log "curl is missing; skipping ${name} readiness wait"
+    return 0
+  fi
+
+  log "waiting for ${name} at ${url}"
+  if (( timeout_seconds > 0 )); then
+    log "${name} readiness timeout: ${timeout_seconds}s"
+  fi
+
+  while true; do
+    if http_code=$(curl -sS -o /dev/null -w "%{http_code}" "$url" 2>/dev/null); then
+      curl_exit=0
+    else
+      curl_exit=$?
+    fi
+    if (( curl_exit != 0 )) || [[ -z "$http_code" ]]; then
+      http_code=000
+    fi
+
+    if [[ "$http_code" != "000" ]]; then
+      log "${name} is accepting HTTP requests"
+      return 0
+    fi
+
+    for exit_file in "$STATE_DIR"/*.exit(N); do
+      service_name=${exit_file:t:r}
+      service_status=$(<"$exit_file")
+      log "${service_name} exited with status ${service_status}; shutting down the rest"
+      cleanup "$service_status"
+    done
+
+    sleep 1
+
+    (( elapsed += 1 ))
+    if (( timeout_seconds > 0 && elapsed >= timeout_seconds )); then
+      log "timed out waiting for ${name}; shutting down the rest"
+      cleanup 1
+    fi
+  done
+}
+
 trap 'cleanup 130' INT TERM
 trap 'cleanup $?' EXIT
 
@@ -94,16 +144,17 @@ log "backend:           http://${BACKEND_HOST}:${BACKEND_PORT}"
 log "recommend-service: http://${RECOMMEND_HOST}:${RECOMMEND_PORT}"
 log "spring profile:    ${SPRING_PROFILES_ACTIVE}"
 
-start_service "recommend-service" "$ROOT_DIR/recommend-service" "${recommend_cmd[@]}"
 start_service "backend" "$ROOT_DIR/backend" ./mvnw spring-boot:run
+wait_for_http "backend" "http://${BACKEND_HOST}:${BACKEND_PORT}/user/login"
+start_service "recommend-service" "$ROOT_DIR/recommend-service" "${recommend_cmd[@]}"
 start_service "frontend" "$ROOT_DIR/frontend" npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT"
 
 while true; do
   for exit_file in "$STATE_DIR"/*.exit(N); do
     service_name=${exit_file:t:r}
-    status=$(<"$exit_file")
-    log "${service_name} exited with status ${status}; shutting down the rest"
-    cleanup "$status"
+    service_status=$(<"$exit_file")
+    log "${service_name} exited with status ${service_status}; shutting down the rest"
+    cleanup "$service_status"
   done
   sleep 1
 done
