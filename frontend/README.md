@@ -22,6 +22,7 @@
 - 个性化推荐课程展示，包含推荐分、推荐理由、来源核验、知识点和相关课程跳转
 - 学习进度图表、能力雷达图和个人中心
 - 知识图谱展示，以及按知识点跳转相关课程
+- 学习助手 Agent，会话持久化、失败重试和只读学习建议
 
 ### 管理端
 
@@ -129,7 +130,9 @@ npm run build
 npm run preview
 ```
 
-当前项目没有配置单独的测试脚本。功能变更后建议至少手动验证登录、课程、视频播放、推荐、分析、知识图谱和后台管理流程。
+生产构建通过路由级懒加载拆分页面代码，并在 `vite.config.js` 中把 Vue、Element Plus、ECharts 和其他第三方依赖拆成独立 vendor chunk。ECharts 页面统一从 `src/utils/echarts.js` 使用按需注册后的 `init`，当前注册了柱状图、折线图、知识图谱和雷达图所需能力。
+
+当前项目没有配置单独的测试脚本。功能变更后建议至少手动验证登录、课程、视频播放、推荐、分析、知识图谱、学习助手和后台管理流程。
 
 ## 代理配置
 
@@ -198,6 +201,7 @@ Axios 实例定义在 [`src/api/request.js`](src/api/request.js)，默认配置�
 - `/onboarding`：新用户引导
 - `/recommend`：个性化推荐
 - `/dashboard`：学习进度
+- `/agent`：学习助手
 - `/graph`：知识图谱
 - `/profile`：个人中心
 
@@ -219,6 +223,7 @@ Axios 实例定义在 [`src/api/request.js`](src/api/request.js)，默认配置�
 - [`src/api/onboarding.js`](src/api/onboarding.js)：引导选项、状态和提交
 - [`src/api/recommend.js`](src/api/recommend.js)：混合推荐
 - [`src/api/analysis.js`](src/api/analysis.js)：学习进度、能力雷达图和知识图谱
+- [`src/api/agent.js`](src/api/agent.js)：学习助手会话、消息和聊天发送
 - [`src/api/learningBehavior.js`](src/api/learningBehavior.js)：学习行为记录
 
 ## 推荐页字段
@@ -247,6 +252,7 @@ Axios 实例定义在 [`src/api/request.js`](src/api/request.js)，默认配置�
 - Pinia store 放在 `src/store`
 - 新增页面时同步更新 `src/router/index.js`
 - 新增管理端页面时保留现有 `ADMIN` 角色访问控制
+- 路由页面组件默认使用动态 `import()` 懒加载；新增图表类型时同步更新 `src/utils/echarts.js` 的按需注册列表
 
 ## 常见问题
 

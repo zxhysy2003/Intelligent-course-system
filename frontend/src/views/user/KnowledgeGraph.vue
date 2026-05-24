@@ -77,10 +77,10 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import * as echarts from "echarts";
 import { GetKnowledgeGraph } from "@/api/analysis";
 import { GetCourseByKp } from "@/api/course";
 import { logger } from "@/utils/logger";
+import { init } from "@/utils/echarts";
 
 const router = useRouter();
 const route = useRoute();
@@ -173,7 +173,7 @@ const clearChart = () => {
 const buildChart = (data) => {
   if (!chartRef.value) return;
   if (!chartInstance.value) {
-    chartInstance.value = echarts.init(chartRef.value);
+    chartInstance.value = init(chartRef.value);
   }
 
   // 节点：课程内按难度高亮，课程外统一灰色

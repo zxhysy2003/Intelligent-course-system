@@ -8,7 +8,7 @@
 - `frontend`：Vue 3 + Vite 前端服务，负责用户端与管理端页面，默认开发端口 `5173`
 - `recommend-service`：FastAPI 推荐服务，负责基于学习行为评分生成协同过滤候选课程，默认端口 `8000`
 
-演示主线建议使用普通学生账号：登录后先完成 `/onboarding` 三步引导，再进入 `/recommend` 查看带来源核验的推荐卡片。
+演示主线建议使用普通学生账号：登录后先完成 `/onboarding` 三步引导，再进入 `/recommend` 查看带来源核验的推荐卡片，也可以进入 `/agent` 让学习助手基于学习画像、进度、能力雷达、最近课程和推荐结果生成只读学习建议。
 
 ## 1. 仓库结构
 
@@ -37,7 +37,8 @@ Intelligent-course-system
 │   └── neo4j-backups
 │       └── neo4j.dump
 └── docs
-    └── OPERATION_MANUAL.md
+    ├── OPERATION_MANUAL.md
+    └── agent-module.md
 ```
 
 MySQL 初始化以 `backend/src/main/resources/db/migration` 下的 Flyway 迁移为准。
@@ -59,7 +60,7 @@ backend
   v
 recommend-service
 
-backend 同时依赖 MySQL、Redis、Neo4j 和本地视频目录；recommend-service 会直连 MySQL 读取推荐评分快照。
+backend 同时依赖 MySQL、Redis、Neo4j、本地视频目录和可选的 OpenAI 兼容模型服务；recommend-service 会直连 MySQL 读取推荐评分快照。学习助手没有配置模型密钥或配置为 `mock` 时，会返回本地 mock 回答，便于本地演示。
 ```
 
 推荐启动顺序：
@@ -277,6 +278,19 @@ V202605201430__add_course_source.sql
 | `VIDEO_DIR` | 视频文件存储目录 | 本机开发绝对路径 |
 | `VIDEO_BASE_URL` | 视频访问基础地址 | `http://localhost:8080` |
 | `FFPROBE_PATH` | ffprobe 可执行文件路径 | `/opt/homebrew/bin/ffprobe` |
+| `AGENT_ENABLED` | 学习助手开关 | `true` |
+| `AGENT_LLM_PROVIDER` | 学习助手模型提供方；`mock` 或空密钥时走本地 mock | `openai-compatible` |
+| `AGENT_LLM_BASE_URL` | OpenAI 兼容接口基础地址 | `https://api.openai.com/v1` |
+| `AGENT_LLM_API_KEY` | 学习助手模型密钥 | 空 |
+| `AGENT_LLM_MODEL` | 学习助手模型名称 | `gpt-4o-mini` |
+| `AGENT_LLM_CONNECT_TIMEOUT_MS` | 学习助手模型连接超时，单位毫秒 | `5000` |
+| `AGENT_LLM_READ_TIMEOUT_MS` | 学习助手模型读取超时，单位毫秒 | `45000` |
+| `AGENT_MAX_HISTORY_MESSAGES` | 构造对话上下文时最多读取的历史消息数 | `12` |
+| `AGENT_MAX_CONTEXT_COURSES` | 学习助手上下文中最多使用的课程数量 | `5` |
+| `AGENT_CONTEXT_RECOMMEND_TIMEOUT_MS` | 学习助手读取推荐上下文的等待时间，单位毫秒 | `5000` |
+| `AGENT_INCOMPLETE_RECOVERY_AFTER_MS` | USER 已落库但 ASSISTANT 未落库时允许重试接管的窗口，单位毫秒 | `90000` |
+| `AGENT_LLM_MAX_OUTPUT_TOKENS` | 学习助手模型最大输出 token | `800` |
+| `AGENT_LLM_TEMPERATURE` | 学习助手模型温度 | `0.3` |
 | `CORS_ALLOWED_ORIGIN_PATTERNS` | 允许跨域来源 | `http://localhost:5173,http://127.0.0.1:5173,http://192.168.*:5173` |
 
 常用本地配置示例：
@@ -300,6 +314,7 @@ export RECOMMEND_SERVICE_URL=http://127.0.0.1:8000
 export VIDEO_DIR=/data/course_videos
 export VIDEO_BASE_URL=http://127.0.0.1:8080
 export FFPROBE_PATH=/usr/bin/ffprobe
+export AGENT_LLM_PROVIDER=mock
 ```
 
 ### 6.2 前端接口配置
@@ -492,6 +507,8 @@ http://127.0.0.1:5173
 npm run build
 ```
 
+前端生产包会按路由拆分页面代码，并把 Vue、Element Plus、ECharts 和其他第三方依赖拆成独立 vendor chunk。学习进度、知识图谱和个人中心页面使用 `src/utils/echarts.js` 中按需注册的 ECharts 能力。
+
 本地预览构建结果：
 
 ```bash
@@ -511,7 +528,8 @@ npm run preview
 7. 前端课程列表、课程详情、选课、视频学习是否正常
 8. 推荐页是否能返回推荐课程，并显示 `CF`、`COLD_START_USER`、`COLD_START_COURSE` 或 `HOT_FALLBACK` 来源标签
 9. 学习进度、能力雷达图、知识图谱页面是否正常渲染
-10. 管理端课程管理、用户管理、视频上传流程是否正常
+10. 学习助手 `/agent` 是否能创建会话、发送消息；刷新后半成品 USER 消息是否显示“回答未完成，可重试”
+11. 管理端课程管理、用户管理、视频上传流程是否正常
 
 ## 11. 常用接口示例
 

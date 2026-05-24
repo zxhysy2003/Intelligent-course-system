@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.sy.course_system.common.Result;
 import com.sy.course_system.common.UserContext;
+import com.sy.course_system.agent.AgentChatProcessingException;
 import com.sy.course_system.dto.agent.AgentChatRequestDTO;
 import com.sy.course_system.dto.agent.AgentSessionTitleDTO;
 import com.sy.course_system.service.AgentService;
@@ -67,6 +68,8 @@ public class AgentController {
             return Result.success(action.get());
         } catch (IllegalArgumentException e) {
             return Result.error(400, e.getMessage());
+        } catch (AgentChatProcessingException e) {
+            return Result.error(409, e.getMessage());
         } catch (SecurityException | IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }

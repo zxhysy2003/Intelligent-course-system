@@ -111,6 +111,7 @@ class AgentContextAssemblerTest {
                 12,
                 5,
                 recommendTimeoutMs,
+                90000,
                 800,
                 0.3d);
     }

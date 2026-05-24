@@ -51,7 +51,12 @@
           </div>
         </div>
 
-        <div v-for="message in messages" :key="message.id || `${message.role}-${message.createTime}`" class="message-row" :class="message.role.toLowerCase()">
+        <div
+          v-for="message in messages"
+          :key="message.id || message.localKey || message.clientMessageId || `${message.role}-${message.createTime}`"
+          class="message-row"
+          :class="[message.role.toLowerCase(), message.status]"
+        >
           <div class="message-avatar">
             <el-icon v-if="message.role === 'ASSISTANT'"><MagicStick /></el-icon>
             <el-icon v-else><User /></el-icon>
@@ -60,8 +65,15 @@
             <div class="message-meta">
               <span>{{ message.role === "ASSISTANT" ? "学习助手" : "我" }}</span>
               <time>{{ formatDateTime(message.createTime) }}</time>
+              <span v-if="message.status === 'sending'">发送中</span>
+              <span v-else-if="message.status === 'failed'">{{ message.errorMessage || "发送失败" }}</span>
             </div>
             <p>{{ message.content }}</p>
+            <div v-if="canRetryMessage(message)" class="message-actions">
+              <el-button size="small" :icon="Refresh" @click="retryMessage(message)" :loading="sending">
+                重试
+              </el-button>
+            </div>
           </div>
         </div>
 
@@ -96,7 +108,7 @@
           @keydown.ctrl.enter.prevent="sendMessage"
           @keydown.meta.enter.prevent="sendMessage"
         />
-        <el-button type="primary" :icon="Promotion" @click="sendMessage" :loading="sending">
+        <el-button type="primary" :icon="Promotion" @click="sendMessage" :loading="sending" :disabled="sending">
           发送
         </el-button>
       </div>
@@ -174,7 +186,7 @@ async function loadMessages(sessionId) {
   try {
     const res = await ListAgentMessages(requestedSessionId);
     if (sameSession(currentSessionId.value, requestedSessionId)) {
-      messages.value = unwrapData(res) || [];
+      messages.value = normalizeLoadedMessages(unwrapData(res) || []);
     }
   } catch (e) {
     if (sameSession(currentSessionId.value, requestedSessionId)) {
@@ -185,6 +197,27 @@ async function loadMessages(sessionId) {
       loadingMessages.value = false;
     }
   }
+}
+
+function normalizeLoadedMessages(loadedMessages) {
+  const answeredClientMessageIds = new Set(
+    loadedMessages
+      .filter((message) => message.role === "ASSISTANT" && message.clientMessageId)
+      .map((message) => message.clientMessageId)
+  );
+  return loadedMessages.map((message) => {
+    const canRestore = message.role === "USER"
+      && message.clientMessageId
+      && !answeredClientMessageIds.has(message.clientMessageId);
+    if (!canRestore) {
+      return message;
+    }
+    return {
+      ...message,
+      status: "failed",
+      errorMessage: "回答未完成，可重试",
+    };
+  });
 }
 
 async function createSession() {
@@ -250,43 +283,136 @@ function usePrompt(prompt) {
 }
 
 async function sendMessage() {
+  if (sending.value) {
+    return;
+  }
   const content = draft.value.trim();
   if (!content) {
     ElMessage.warning("请输入问题");
     return;
   }
   const sendingSessionId = currentSessionId.value;
-  sending.value = true;
+  const clientMessageId = createClientMessageId();
+  const localMessage = createLocalUserMessage(content, sendingSessionId, clientMessageId);
+  messages.value = [...messages.value, localMessage];
   draft.value = "";
+  await submitChat({
+    sessionId: sendingSessionId,
+    content,
+    clientMessageId,
+    localKey: localMessage.localKey,
+  });
+}
+
+async function retryMessage(message) {
+  if (sending.value) {
+    return;
+  }
+  if (!message?.clientMessageId || !message?.content) {
+    ElMessage.warning("无法重试该消息");
+    return;
+  }
+  const localKey = message.localKey || message.clientMessageId;
+  markLocalMessage(localKey, { status: "sending", errorMessage: "" });
+  await submitChat({
+    sessionId: message.sessionId ?? null,
+    content: message.content,
+    clientMessageId: message.clientMessageId,
+    localKey,
+  });
+}
+
+function canRetryMessage(message) {
+  return message?.role === "USER" && Boolean(message?.clientMessageId) && message?.status === "failed";
+}
+
+async function submitChat({ sessionId, content, clientMessageId, localKey }) {
+  const sendingSessionId = sessionId;
+  sending.value = true;
   try {
     const res = await SendAgentChat({
       sessionId: sendingSessionId,
       message: content,
+      clientMessageId,
     });
     const data = unwrapData(res);
     if (!data) {
       throw new Error("empty response");
     }
-    if (sendingSessionId == null || sameSession(currentSessionId.value, sendingSessionId)) {
+    if (shouldApplyChatResponse(sendingSessionId)) {
       currentSessionId.value = data.sessionId;
-      appendChatMessages(data);
+      applyChatMessages(data, localKey);
       sources.value = data.sources || [];
     }
     await loadSessions();
   } catch (e) {
-    draft.value = content;
+    markLocalMessage(localKey, { status: "failed", errorMessage: e?.message || "发送失败" });
     showError(e, "发送失败，请稍后重试");
   } finally {
     sending.value = false;
   }
 }
 
-function appendChatMessages(data) {
-  messages.value = [
-    ...messages.value,
-    data.userMessage,
-    data.assistantMessage,
-  ].filter(Boolean);
+function shouldApplyChatResponse(sendingSessionId) {
+  // 用户切到其他会话后，迟到响应只刷新会话列表，不再把当前视图拉回旧会话。
+  if (sendingSessionId == null) {
+    return currentSessionId.value == null;
+  }
+  return sameSession(currentSessionId.value, sendingSessionId);
+}
+
+function applyChatMessages(data, localKey) {
+  const userMessage = data.userMessage;
+  const assistantMessage = data.assistantMessage;
+  const insertIndex = messages.value.findIndex((message) => {
+    return isTrackedMessage(message, localKey) || (userMessage?.id && message.id === userMessage.id);
+  });
+  const nextMessages = messages.value.filter((message) => {
+    return !isTrackedMessage(message, localKey)
+      && (!userMessage?.id || message.id !== userMessage.id)
+      && (!assistantMessage?.id || message.id !== assistantMessage.id);
+  });
+  const normalizedIndex = insertIndex >= 0 ? Math.min(insertIndex, nextMessages.length) : nextMessages.length;
+  nextMessages.splice(normalizedIndex, 0, ...[userMessage, assistantMessage].filter(Boolean));
+  messages.value = nextMessages;
+}
+
+function markLocalMessage(localKey, patch) {
+  messages.value = messages.value.map((message) => {
+    return isTrackedMessage(message, localKey) ? { ...message, ...patch } : message;
+  });
+}
+
+function isTrackedMessage(message, localKey) {
+  if (!localKey) {
+    return false;
+  }
+  return message.localKey === localKey || (message.clientMessageId && message.clientMessageId === localKey);
+}
+
+function createLocalUserMessage(content, sessionId, clientMessageId) {
+  return {
+    localKey: `local-${clientMessageId}`,
+    sessionId,
+    clientMessageId,
+    role: "USER",
+    content,
+    createTime: new Date().toISOString(),
+    status: "sending",
+    errorMessage: "",
+  };
+}
+
+function createClientMessageId() {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  if (!globalThis.crypto?.getRandomValues) {
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  }
+  const values = new Uint32Array(4);
+  globalThis.crypto.getRandomValues(values);
+  return Array.from(values, (value) => value.toString(16).padStart(8, "0")).join("-");
 }
 
 function sameSession(left, right) {
@@ -296,7 +422,9 @@ function sameSession(left, right) {
 function unwrapData(res) {
   const body = res?.data;
   if (!body || body.code !== 200) {
-    throw new Error(body?.msg || "请求失败");
+    const error = new Error(body?.msg || "请求失败");
+    error.code = body?.code;
+    throw error;
   }
   return body.data;
 }
@@ -507,6 +635,15 @@ function formatDateTime(value) {
   border-color: #2563eb;
 }
 
+.message-row.user.failed .message-bubble {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+.message-row.user.sending .message-bubble {
+  opacity: 0.82;
+}
+
 .message-meta {
   display: flex;
   gap: 10px;
@@ -525,6 +662,12 @@ function formatDateTime(value) {
   white-space: pre-wrap;
   line-height: 1.7;
   font-size: 14px;
+}
+
+.message-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .source-strip {

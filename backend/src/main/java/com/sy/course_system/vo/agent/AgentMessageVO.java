@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 public class AgentMessageVO {
     private Long id;
     private Long sessionId;
+    private String clientMessageId;
     private String role;
     private String content;
     private String metadataJson;
@@ -24,6 +25,14 @@ public class AgentMessageVO {
 
     public void setSessionId(Long sessionId) {
         this.sessionId = sessionId;
+    }
+
+    public String getClientMessageId() {
+        return clientMessageId;
+    }
+
+    public void setClientMessageId(String clientMessageId) {
+        this.clientMessageId = clientMessageId;
     }
 
     public String getRole() {

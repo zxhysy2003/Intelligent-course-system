@@ -28,6 +28,7 @@ class AgentPropertiesBindingTest {
                         "agent.max-history-messages=8",
                         "agent.max-context-courses=3",
                         "agent.context-recommend-timeout-ms=2500",
+                        "agent.incomplete-recovery-after-ms=70000",
                         "agent.max-output-tokens=600",
                         "agent.temperature=0.2")
                 .run(context -> {
@@ -42,6 +43,7 @@ class AgentPropertiesBindingTest {
                     assertEquals(8, properties.maxHistoryMessages());
                     assertEquals(3, properties.maxContextCourses());
                     assertEquals(2500, properties.contextRecommendTimeoutMs());
+                    assertEquals(70000, properties.incompleteRecoveryAfterMs());
                     assertEquals(600, properties.maxOutputTokens());
                     assertEquals(0.2d, properties.temperature());
                     assertFalse(properties.useMockClient());
@@ -64,6 +66,7 @@ class AgentPropertiesBindingTest {
                     assertEquals("https://llm.example.test/v1", properties.baseUrl());
                     assertEquals("test-model", properties.model());
                     assertEquals(5000, properties.contextRecommendTimeoutMs());
+                    assertEquals(90000, properties.incompleteRecoveryAfterMs());
                     assertFalse(properties.useMockClient());
                 });
     }

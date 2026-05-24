@@ -160,6 +160,7 @@ agent:
   max-history-messages: ${AGENT_MAX_HISTORY_MESSAGES:12}
   max-context-courses: ${AGENT_MAX_CONTEXT_COURSES:5}
   context-recommend-timeout-ms: ${AGENT_CONTEXT_RECOMMEND_TIMEOUT_MS:5000}
+  incomplete-recovery-after-ms: ${AGENT_INCOMPLETE_RECOVERY_AFTER_MS:90000}
   max-output-tokens: ${AGENT_LLM_MAX_OUTPUT_TOKENS:800}
   temperature: ${AGENT_LLM_TEMPERATURE:0.3}
 

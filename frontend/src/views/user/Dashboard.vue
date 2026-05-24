@@ -52,9 +52,9 @@
 
 <script setup>
 import { onMounted, onBeforeUnmount, ref } from "vue";
-import * as echarts from "echarts";
 import { GetLearningProgress } from "@/api/analysis";
 import { logger } from "@/utils/logger";
+import { init } from "@/utils/echarts";
 
 const chartRef = ref(null);
 const chartInstance = ref(null);
@@ -84,7 +84,7 @@ const formatDuration = (seconds) => {
 const renderChart = () => {
   if (!chartRef.value) return;
   if (!chartInstance.value) {
-    chartInstance.value = echarts.init(chartRef.value);
+    chartInstance.value = init(chartRef.value);
   }
 
   chartInstance.value.setOption({

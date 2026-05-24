@@ -3,26 +3,25 @@ import {
     createWebHashHistory 
 } from "vue-router";
 import { useUserStore } from "../store/user";
-
-import Login from "@/views/Login.vue";
-import Register from "@/views/Register.vue";
-import Layout from "@/views/Layout.vue";
-import Profile from "@/views/user/Profile.vue";
-import Course from "@/views/user/Course.vue";
-import Recommend from "@/views/user/Recommend.vue";
-import Dashboard from "@/views/user/Dashboard.vue";
-import KnowledgeGraph from "@/views/user/KnowledgeGraph.vue";
-import Onboarding from "@/views/user/Onboarding.vue";
-import AgentAssistant from "@/views/user/AgentAssistant.vue";
-import NotFound from "@/views/404.vue";
-import CourseDetail from "@/views/user/CourseDetail.vue";
-import CourseManage from "@/views/admin/CourseManage.vue";
-import UserManage from "@/views/admin/UserManage.vue";
-import UserEdit from "@/views/admin/UserEdit.vue";
-import CourseEdit from "@/views/admin/CourseEdit.vue";
-import CourseRegister from "@/views/admin/CourseRegister.vue";
 import { useOnboardingStore } from "@/store/onboarding";
 
+const Login = () => import("@/views/Login.vue");
+const Register = () => import("@/views/Register.vue");
+const Layout = () => import("@/views/Layout.vue");
+const Profile = () => import("@/views/user/Profile.vue");
+const Course = () => import("@/views/user/Course.vue");
+const Recommend = () => import("@/views/user/Recommend.vue");
+const Dashboard = () => import("@/views/user/Dashboard.vue");
+const KnowledgeGraph = () => import("@/views/user/KnowledgeGraph.vue");
+const Onboarding = () => import("@/views/user/Onboarding.vue");
+const AgentAssistant = () => import("@/views/user/AgentAssistant.vue");
+const NotFound = () => import("@/views/404.vue");
+const CourseDetail = () => import("@/views/user/CourseDetail.vue");
+const CourseManage = () => import("@/views/admin/CourseManage.vue");
+const UserManage = () => import("@/views/admin/UserManage.vue");
+const UserEdit = () => import("@/views/admin/UserEdit.vue");
+const CourseEdit = () => import("@/views/admin/CourseEdit.vue");
+const CourseRegister = () => import("@/views/admin/CourseRegister.vue");
 
 const routes = [
     {

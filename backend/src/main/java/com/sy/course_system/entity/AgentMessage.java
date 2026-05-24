@@ -15,6 +15,7 @@ public class AgentMessage {
     private Long id;
     private Long sessionId;
     private Long userId;
+    private String clientMessageId;
     private String role;
     private String content;
     private String metadataJson;
@@ -44,6 +45,14 @@ public class AgentMessage {
 
     public void setUserId(Long userId) {
         this.userId = userId;
+    }
+
+    public String getClientMessageId() {
+        return clientMessageId;
+    }
+
+    public void setClientMessageId(String clientMessageId) {
+        this.clientMessageId = clientMessageId;
     }
 
     public String getRole() {

@@ -20,7 +20,7 @@
 - 学习行为记录、课程热度同步、学习进度和能力雷达图分析
 - Neo4j 知识图谱展示与课程知识点关系查询
 - 个性化推荐、用户冷启动推荐、评分快照维护、新课曝光和混合推荐结果融合
-- 学生端学习助手 Agent，会话持久化并基于课程、推荐、进度和知识图谱生成只读建议
+- 学生端学习助手 Agent，会话持久化并基于学习画像、进度、能力雷达、最近课程和推荐结果生成只读建议
 - 通过 `/videos/**` 暴露本地课程视频静态资源
 
 ## 技术栈
@@ -136,7 +136,7 @@ MySQL 由 Flyway 管理，迁移文件位于 `src/main/resources/db/migration`�
 java -jar target/course-system-0.0.1-SNAPSHOT.jar
 ```
 
-当前测试主要覆盖推荐、冷启动、新课推荐、学习行为、学习分析、用户、课程和用户选课等 service 层逻辑，以及推荐控制器。
+当前测试主要覆盖推荐、冷启动、新课推荐、学习行为、学习分析、学习助手 Agent、用户、课程和用户选课等 service 层逻辑，以及推荐控制器。
 
 ## 配置说明
 
@@ -149,7 +149,7 @@ java -jar target/course-system-0.0.1-SNAPSHOT.jar
 - `VIDEO_DIR`、`VIDEO_BASE_URL`、`FFPROBE_PATH`：视频上传与播放。
 - `AGENT_LLM_*`：学习助手模型接入。
 
-学习助手接口统一在 `/agent/**`，由 JWT 拦截器保护。Agent 只读分析学习数据，不执行选课、收藏、删除或进度更新。
+学习助手接口统一在 `/agent/**`，由 JWT 拦截器保护。Agent 只读分析学习数据，不执行选课、收藏、删除或进度更新。`POST /agent/chat` 需要传入 `clientMessageId`，用于发送失败重试时防重复落库和重复调用模型；`AGENT_INCOMPLETE_RECOVERY_AFTER_MS` 控制半成品发送的恢复窗口，默认 90 秒。
 
 ## 接口分组
 
@@ -178,6 +178,12 @@ Authorization: Bearer <your_token>
 - `GET /analysis/progress`：学习进度
 - `GET /analysis/ability-radar`：能力雷达图
 - `GET /analysis/knowledge-graph`：知识图谱
+- `GET /agent/sessions`：学习助手会话列表
+- `POST /agent/sessions`：创建学习助手会话
+- `PATCH /agent/sessions/{sessionId}`：重命名学习助手会话
+- `DELETE /agent/sessions/{sessionId}`：删除学习助手会话
+- `GET /agent/sessions/{sessionId}/messages`：学习助手消息列表
+- `POST /agent/chat`：发送学习助手消息，需携带 `clientMessageId`
 
 ### 管理端
 
@@ -232,6 +238,7 @@ Docker Compose 中 Redis 使用 `redis123` 作为密码。若使用本机 Redis�
 ## 更多文档
 
 - 总操作手册：[`../docs/OPERATION_MANUAL.md`](../docs/OPERATION_MANUAL.md)
+- 学习助手模块说明：[`../docs/agent-module.md`](../docs/agent-module.md)
 - 前端说明：[`../frontend/README.md`](../frontend/README.md)
 - 推荐服务配置：[`../recommend-service/environment.yml`](../recommend-service/environment.yml)
 

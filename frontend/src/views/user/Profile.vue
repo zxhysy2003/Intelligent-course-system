@@ -17,9 +17,9 @@
 
 <script setup>
 import { onMounted, onBeforeUnmount, ref, nextTick } from "vue";
-import * as echarts from "echarts";
 import { GetAbilityRadar } from "@/api/analysis";
 import { logger } from "@/utils/logger";
+import { init } from "@/utils/echarts";
 
 const loading = ref(false);
 const empty = ref(false);
@@ -75,7 +75,7 @@ const normalizeRadarData = (payload) => {
 const renderRadar = async () => {
   if (!chartRef.value) return;
   if (!chartInstance.value) {
-    chartInstance.value = echarts.init(chartRef.value);
+    chartInstance.value = init(chartRef.value);
   }
 
   await nextTick();
