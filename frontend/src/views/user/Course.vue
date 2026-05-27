@@ -71,77 +71,79 @@
       </div>
     </section>
 
-    <el-row v-if="filteredCourses.length" :gutter="20" class="course-grid">
-      <el-col v-for="course in filteredCourses" :key="course.id" :xs="24" :sm="12" :lg="8">
-        <el-card shadow="hover" class="course-card" :body-style="{ padding: '0' }">
-          <div class="cover-wrap" @click="openCourse(course)">
-            <el-image :src="course.cover" :alt="course.title" fit="cover" class="cover">
-              <template #error>
-                <div class="cover-fallback">
-                  <el-icon><Picture /></el-icon>
-                </div>
-              </template>
-            </el-image>
-            <el-tag v-if="course.enrolled" class="enrolled-badge" type="success" effect="dark">
-              已加入
-            </el-tag>
-          </div>
-
-          <div class="card-body">
-            <div class="card-header">
-              <button class="title-button" type="button" @click="openCourse(course)">
-                {{ course.title }}
-              </button>
-              <el-tag size="small" :type="difficultyTagType(course.difficulty)" effect="light">
-                {{ difficultyText(course.difficulty) }}
+    <section v-if="filteredCourses.length" class="course-grid-wrap">
+      <el-row :gutter="20" class="course-grid">
+        <el-col v-for="course in filteredCourses" :key="course.id" :xs="24" :sm="12" :lg="8">
+          <el-card shadow="hover" class="course-card" :body-style="{ padding: '0' }">
+            <div class="cover-wrap" @click="openCourse(course)">
+              <el-image :src="course.cover" :alt="course.title" fit="cover" class="cover">
+                <template #error>
+                  <div class="cover-fallback">
+                    <el-icon><Picture /></el-icon>
+                  </div>
+                </template>
+              </el-image>
+              <el-tag v-if="course.enrolled" class="enrolled-badge" type="success" effect="dark">
+                已加入
               </el-tag>
             </div>
 
-            <div class="meta">
-              <span class="meta-item">
-                <el-icon><Grid /></el-icon>
-                {{ course.category }}
-              </span>
-              <span class="meta-dot" />
-              <span class="meta-item">
-                <el-icon><User /></el-icon>
-                {{ formatLearners(course.learners) }} 人学习
-              </span>
-            </div>
-
-            <div v-if="course.tagList.length" class="tags">
-              <el-tag v-for="tag in course.tagList.slice(0, 4)" :key="tag" size="small" effect="plain">
-                {{ tag }}
-              </el-tag>
-            </div>
-
-            <p class="desc">{{ course.description || "暂无课程简介" }}</p>
-
-            <div v-if="course.enrolled" class="progress-wrap">
-              <div class="progress-label">
-                <span>学习进度</span>
-                <strong>{{ course.progress }}%</strong>
+            <div class="card-body">
+              <div class="card-header">
+                <button class="title-button" type="button" @click="openCourse(course)">
+                  {{ course.title }}
+                </button>
+                <el-tag size="small" :type="difficultyTagType(course.difficulty)" effect="light">
+                  {{ difficultyText(course.difficulty) }}
+                </el-tag>
               </div>
-              <el-progress :percentage="course.progress" :stroke-width="9" :show-text="false" />
-            </div>
 
-            <div class="actions">
-              <el-button type="primary" :icon="VideoPlay" @click="openCourse(course)">
-                {{ course.enrolled ? "继续学习" : "查看详情" }}
-              </el-button>
-              <el-button
-                v-if="!course.enrolled"
-                :icon="Plus"
-                @click="enroll(course)"
-                :loading="!!enrolling[course.id]"
-              >
-                {{ enrolling[course.id] ? "加入中" : "加入课程" }}
-              </el-button>
+              <div class="meta">
+                <span class="meta-item">
+                  <el-icon><Grid /></el-icon>
+                  {{ course.category }}
+                </span>
+                <span class="meta-dot" />
+                <span class="meta-item">
+                  <el-icon><User /></el-icon>
+                  {{ formatLearners(course.learners) }} 人学习
+                </span>
+              </div>
+
+              <div v-if="course.tagList.length" class="tags">
+                <el-tag v-for="tag in course.tagList.slice(0, 4)" :key="tag" size="small" effect="plain">
+                  {{ tag }}
+                </el-tag>
+              </div>
+
+              <p class="desc">{{ course.description || "暂无课程简介" }}</p>
+
+              <div v-if="course.enrolled" class="progress-wrap">
+                <div class="progress-label">
+                  <span>学习进度</span>
+                  <strong>{{ course.progress }}%</strong>
+                </div>
+                <el-progress :percentage="course.progress" :stroke-width="9" :show-text="false" />
+              </div>
+
+              <div class="actions">
+                <el-button type="primary" :icon="VideoPlay" @click="openCourse(course)">
+                  {{ course.enrolled ? "继续学习" : "查看详情" }}
+                </el-button>
+                <el-button
+                  v-if="!course.enrolled"
+                  :icon="Plus"
+                  @click="enroll(course)"
+                  :loading="!!enrolling[course.id]"
+                >
+                  {{ enrolling[course.id] ? "加入中" : "加入课程" }}
+                </el-button>
+              </div>
             </div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+          </el-card>
+        </el-col>
+      </el-row>
+    </section>
 
     <el-empty v-else description="未找到符合条件的课程" class="empty-state">
       <el-button :icon="Refresh" @click="resetFilters">重置筛选</el-button>
@@ -436,9 +438,13 @@ onMounted(async () => {
   justify-content: flex-end;
 }
 
-.course-grid {
+.course-grid-wrap {
   max-width: 1180px;
   margin: 0 auto;
+}
+
+.course-grid {
+  align-items: stretch;
 }
 
 .course-card {
