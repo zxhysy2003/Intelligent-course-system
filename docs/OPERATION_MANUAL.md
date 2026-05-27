@@ -8,6 +8,8 @@
 - `frontend`：Vue 3 + Vite 前端服务，负责用户端与管理端页面，默认开发端口 `5173`
 - `recommend-service`：FastAPI 推荐服务，负责基于学习行为评分生成协同过滤候选课程，默认端口 `8000`
 
+如果想用 Docker 学习完整部署流程，可以直接使用根目录 `docker-compose.local.yml`，它会同时启动前端 Nginx、后端、推荐服务、MySQL、Redis 和 Neo4j，默认入口为 `http://localhost:8088`。详细步骤见 [`docs/DOCKER_LOCAL_DEPLOY.md`](./DOCKER_LOCAL_DEPLOY.md)。
+
 演示主线建议使用普通学生账号：登录后先完成 `/onboarding` 三步引导，再进入 `/recommend` 查看带来源核验的推荐卡片，也可以进入 `/agent` 让学习助手基于学习画像、进度、能力雷达、最近课程和推荐结果生成只读学习建议。
 
 ## 1. 仓库结构
@@ -98,6 +100,8 @@ backend 同时依赖 MySQL、Redis、Neo4j、本地视频目录和可选的 Open
 ## 4. 启动基础依赖
 
 基础依赖的 Docker Compose 文件位于 `scripts/docker-compose.yml`。
+
+注意：`scripts/docker-compose.yml` 只启动 MySQL、Redis、Neo4j 这类基础依赖，适合配合本机直接运行前端、后端和推荐服务。若要一并容器化应用服务，请使用根目录的 `docker-compose.local.yml`。
 
 ```bash
 cd scripts

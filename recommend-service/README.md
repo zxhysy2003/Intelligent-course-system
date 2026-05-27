@@ -233,6 +233,7 @@ curl -X POST "http://127.0.0.1:8000/recommend" \
 ## 更多文档
 
 - 总操作手册：[`../docs/OPERATION_MANUAL.md`](../docs/OPERATION_MANUAL.md)
+- 本机 Docker 部署：[`../docs/DOCKER_LOCAL_DEPLOY.md`](../docs/DOCKER_LOCAL_DEPLOY.md)
 - 后端说明：[`../backend/README.md`](../backend/README.md)
 - 前端说明：[`../frontend/README.md`](../frontend/README.md)
 

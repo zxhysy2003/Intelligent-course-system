@@ -279,6 +279,7 @@ Pinia store 会从 `localStorage.token` 初始化用户信息。如果 token 已
 ## 更多文档
 
 - 总操作手册：[`../docs/OPERATION_MANUAL.md`](../docs/OPERATION_MANUAL.md)
+- 本机 Docker 部署：[`../docs/DOCKER_LOCAL_DEPLOY.md`](../docs/DOCKER_LOCAL_DEPLOY.md)
 - 后端说明：[`../backend/README.md`](../backend/README.md)
 - 推荐服务配置：[`../recommend-service/environment.yml`](../recommend-service/environment.yml)
 

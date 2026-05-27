@@ -95,9 +95,18 @@ FRONTEND_PORT=5174 BACKEND_PORT=8081 RECOMMEND_PORT=8001 ./scripts/dev.sh
 
 完整手动启动、Flyway 接管旧库、数据库重建和排查步骤见 [docs/OPERATION_MANUAL.md](./docs/OPERATION_MANUAL.md)。
 
+如果只是想学习部署流程，也可以使用本机 Docker Compose 一次启动前端 Nginx、后端、推荐服务和基础依赖：
+
+```bash
+docker compose -f docker-compose.local.yml up -d --build
+```
+
+默认访问地址为 `http://localhost:8088`，详细说明见 [docs/DOCKER_LOCAL_DEPLOY.md](./docs/DOCKER_LOCAL_DEPLOY.md)。
+
 ## 文档入口
 
 - 总操作手册：[docs/OPERATION_MANUAL.md](./docs/OPERATION_MANUAL.md)
+- 本机 Docker 部署：[docs/DOCKER_LOCAL_DEPLOY.md](./docs/DOCKER_LOCAL_DEPLOY.md)
 - 后端说明：[backend/README.md](./backend/README.md)
 - 前端说明：[frontend/README.md](./frontend/README.md)
 - 推荐服务说明：[recommend-service/README.md](./recommend-service/README.md)

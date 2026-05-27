@@ -238,6 +238,7 @@ Docker Compose 中 Redis 使用 `redis123` 作为密码。若使用本机 Redis�
 ## 更多文档
 
 - 总操作手册：[`../docs/OPERATION_MANUAL.md`](../docs/OPERATION_MANUAL.md)
+- 本机 Docker 部署：[`../docs/DOCKER_LOCAL_DEPLOY.md`](../docs/DOCKER_LOCAL_DEPLOY.md)
 - 学习助手模块说明：[`../docs/agent-module.md`](../docs/agent-module.md)
 - 前端说明：[`../frontend/README.md`](../frontend/README.md)
 - 推荐服务配置：[`../recommend-service/environment.yml`](../recommend-service/environment.yml)
