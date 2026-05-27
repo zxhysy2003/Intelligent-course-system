@@ -67,10 +67,10 @@ http://localhost:8088
 Compose 默认把本机目录挂载到这个容器目录：
 
 ```text
-/home/shiyang/code_space/course_videos -> /app/videos
+./course_videos -> /app/videos
 ```
 
-如果你的视频不在这个目录，复制 `.env` 后修改：
+其中 `./course_videos` 是仓库根目录下的目录。如果你的视频不在这个目录，复制 `.env` 后修改：
 
 ```bash
 cp deploy/local.env.example .env

@@ -143,7 +143,7 @@ services:
       JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--Duser.timezone=Asia/Shanghai}
       JAVA_OPTS: ${JAVA_OPTS:-}
     volumes:
-      - ${VIDEO_HOST_DIR:-/home/shiyang/code_space/course_videos}:/app/videos
+      - ${VIDEO_HOST_DIR:-./course_videos}:/app/videos
     healthcheck:
       test: ["CMD-SHELL", "code=$$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/actuator/health || true); test \"$$code\" = \"200\" -o \"$$code\" = \"401\""]
       interval: 15s

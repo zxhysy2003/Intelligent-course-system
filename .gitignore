@@ -48,3 +48,5 @@ logs/
 backend/PLAN.md
 frontend/PLAN.md
 recommend-service/PLAN.md
+/course_videos/*
+!/course_videos/.gitkeep
