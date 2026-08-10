@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
@@ -20,7 +22,10 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.1",
-    "vite": "^7.2.4"
+    "@vue/test-utils": "^2.4.11",
+    "jsdom": "^30.0.1",
+    "vite": "^7.2.4",
+    "vitest": "^4.1.10"
   },
   "volta": {
     "node": "22.22.2"
