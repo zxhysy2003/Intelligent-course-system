@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('vue-router', () => ({
-  useRoute: () => ({ params: { id: '7' } }),
+  useRoute: () => ({ params: { courseId: '7' } }),
   useRouter: () => ({ push: mocks.push }),
 }))
 
@@ -65,15 +65,19 @@ const deferred = () => {
   return { promise, resolve, reject }
 }
 
-const createPage = () => shallowMount(CourseDetail, {
-  global: {
-    stubs: {
-      'el-card': { template: '<section><slot /></section>' },
-      'el-empty': { props: ['description'], template: '<div class="empty">{{ description }}</div>' },
-      'el-icon': { template: '<i><slot /></i>' },
+const createPage = () =>
+  shallowMount(CourseDetail, {
+    global: {
+      stubs: {
+        'el-card': { template: '<section><slot /></section>' },
+        'el-empty': {
+          props: ['description'],
+          template: '<div class="empty">{{ description }}</div>',
+        },
+        'el-icon': { template: '<i><slot /></i>' },
+      },
     },
-  },
-})
+  })
 
 const mountPage = async () => {
   const wrapper = createPage()
@@ -84,18 +88,22 @@ const mountPage = async () => {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.getCourseVideo.mockImplementation(() => success('/videos/course-7.mp4'))
-  mocks.getCourseRelation.mockImplementation(() => success({
-    isFavorite: false,
-    progressSeconds: 18,
-  }))
-  mocks.getCourseById.mockImplementation(() => success({
-    id: 7,
-    title: 'Vue 架构设计',
-    description: '学习单向数据流',
-  }))
-  mocks.getKnowledgePoints.mockImplementation(() => success([
-    { id: 1, name: '组件通信', difficulty: 2 },
-  ]))
+  mocks.getCourseRelation.mockImplementation(() =>
+    success({
+      isFavorite: false,
+      progressSeconds: 18,
+    }),
+  )
+  mocks.getCourseById.mockImplementation(() =>
+    success({
+      id: 7,
+      title: 'Vue 架构设计',
+      description: '学习单向数据流',
+    }),
+  )
+  mocks.getKnowledgePoints.mockImplementation(() =>
+    success([{ id: 1, name: '组件通信', difficulty: 2 }]),
+  )
   mocks.attendCourse.mockImplementation(() => success(null))
   mocks.updateProgress.mockImplementation(() => success(null))
   mocks.recordBehavior.mockImplementation(() => success(null))
@@ -288,7 +296,7 @@ describe('CourseDetail', () => {
     wrapper.findComponent(CourseActions).vm.$emit('open-graph')
 
     expect(mocks.push).toHaveBeenCalledWith({
-      path: '/graph',
+      path: '/knowledge-graph',
       query: { courseId: '7' },
     })
   })

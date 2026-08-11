@@ -19,24 +19,36 @@ vi.mock('@/store/onboarding', () => ({
   useOnboardingStore: () => mocks.onboardingStore,
 }))
 
-import router, { createNavigationGuard } from '../index'
+import router, { createNavigationGuard, routes } from '../index'
 
 const resolveCases = [
   ['/login', 'Login'],
   ['/register', 'Register'],
-  ['/course', 'CourseList'],
-  ['/courseDetail/42', 'CourseDetail'],
+  ['/courses', 'CourseList'],
+  ['/courses/42', 'CourseDetail'],
   ['/onboarding', 'Onboarding'],
-  ['/recommend', 'Recommend'],
+  ['/recommendations', 'Recommend'],
   ['/dashboard', 'Dashboard'],
-  ['/agent', 'AgentAssistant'],
-  ['/graph', 'KnowledgeGraph'],
+  ['/assistant', 'AgentAssistant'],
+  ['/knowledge-graph', 'KnowledgeGraph'],
   ['/profile', 'Profile'],
-  ['/admin/course', 'AdminCourseList'],
-  ['/admin/course/edit/3', 'CourseEdit'],
-  ['/admin/course/register', 'CourseRegister'],
+  ['/admin/courses', 'AdminCourseList'],
+  ['/admin/courses/3/edit', 'CourseEdit'],
+  ['/admin/courses/new', 'CourseRegister'],
   ['/admin/users', 'AdminUserList'],
-  ['/admin/users/edit/3', 'UserEdit'],
+  ['/admin/users/3/edit', 'UserEdit'],
+]
+
+const removedPaths = [
+  '/course',
+  '/courseDetail/42',
+  '/recommend',
+  '/agent',
+  '/graph',
+  '/admin/course',
+  '/admin/course/edit/3',
+  '/admin/course/register',
+  '/admin/users/edit/3',
 ]
 
 describe('router', () => {
@@ -51,10 +63,29 @@ describe('router', () => {
     expect(router.resolve(path).name).toBe(name)
   })
 
-  it('keeps the existing CourseDetail named route', () => {
-    expect(router.resolve({ name: 'CourseDetail', params: { id: 7 } }).fullPath).toBe(
-      '/courseDetail/7',
+  it('redirects the root child to the course list', () => {
+    const layoutRoute = routes.find((route) => route.path === '/')
+    expect(layoutRoute.children.find((route) => route.path === '').redirect).toEqual({
+      name: 'CourseList',
+    })
+  })
+
+  it('keeps the CourseDetail name with a semantic parameter', () => {
+    expect(router.resolve({ name: 'CourseDetail', params: { courseId: 7 } }).fullPath).toBe(
+      '/courses/7',
     )
+    expect(router.resolve({ name: 'CourseEdit', params: { courseId: 7 } }).fullPath).toBe(
+      '/admin/courses/7/edit',
+    )
+    expect(router.resolve({ name: 'UserEdit', params: { userId: 3 } }).fullPath).toBe(
+      '/admin/users/3/edit',
+    )
+  })
+
+  it.each(removedPaths)('does not resolve removed path %s', (path) => {
+    const resolved = router.resolve(path)
+    expect(resolved.name).toBe('NotFound')
+    expect(resolved.meta.public).toBe(true)
   })
 
   it('allows public routes without authentication', async () => {
@@ -65,7 +96,7 @@ describe('router', () => {
   })
 
   it('redirects unauthenticated users and resets onboarding state', async () => {
-    const result = await createNavigationGuard()({ meta: {}, fullPath: '/course' })
+    const result = await createNavigationGuard()({ meta: {}, fullPath: '/courses' })
 
     expect(result).toEqual({ name: 'Login' })
     expect(mocks.onboardingStore.reset).toHaveBeenCalledOnce()
@@ -77,7 +108,7 @@ describe('router', () => {
 
     const result = await createNavigationGuard()({
       meta: { roles: ['ADMIN'] },
-      fullPath: '/admin/course',
+      fullPath: '/admin/courses',
     })
 
     expect(result).toEqual({ name: 'CourseList' })
@@ -89,11 +120,14 @@ describe('router', () => {
     mocks.userStore.userInfo.role = 'USER'
     mocks.onboardingStore.fetchStatus.mockResolvedValue({ completed: false })
 
-    const result = await createNavigationGuard()({ meta: {}, fullPath: '/recommend?from=test' })
+    const result = await createNavigationGuard()({
+      meta: {},
+      fullPath: '/recommendations?from=test',
+    })
 
     expect(result).toEqual({
       name: 'Onboarding',
-      query: { redirect: '/recommend?from=test' },
+      query: { redirect: '/recommendations?from=test' },
     })
   })
 
@@ -104,7 +138,7 @@ describe('router', () => {
     mocks.onboardingStore.fetchStatus.mockRejectedValue(error)
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    const result = await createNavigationGuard()({ meta: {}, fullPath: '/course' })
+    const result = await createNavigationGuard()({ meta: {}, fullPath: '/courses' })
 
     expect(result).toBe(true)
     expect(consoleError).toHaveBeenCalledWith('获取引导状态失败', error)

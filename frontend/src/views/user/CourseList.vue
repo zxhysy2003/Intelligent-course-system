@@ -44,7 +44,13 @@
         </template>
       </el-input>
 
-      <el-select v-model="selectedCategory" placeholder="全部分类" clearable class="filter-select" @change="applyFilters">
+      <el-select
+        v-model="selectedCategory"
+        placeholder="全部分类"
+        clearable
+        class="filter-select"
+        @change="applyFilters"
+      >
         <el-option label="全部分类" :value="null" />
         <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
       </el-select>
@@ -62,9 +68,7 @@
       </div>
 
       <div class="toolbar-actions">
-        <el-button :icon="Refresh" @click="resetFilters">
-          重置
-        </el-button>
+        <el-button :icon="Refresh" @click="resetFilters"> 重置 </el-button>
         <el-button type="primary" :icon="Search" @click="applyFilters" :loading="loading">
           搜索
         </el-button>
@@ -111,12 +115,17 @@
               </div>
 
               <div v-if="course.tagList.length" class="tags">
-                <el-tag v-for="tag in course.tagList.slice(0, 4)" :key="tag" size="small" effect="plain">
+                <el-tag
+                  v-for="tag in course.tagList.slice(0, 4)"
+                  :key="tag"
+                  size="small"
+                  effect="plain"
+                >
                   {{ tag }}
                 </el-tag>
               </div>
 
-              <p class="desc">{{ course.description || "暂无课程简介" }}</p>
+              <p class="desc">{{ course.description || '暂无课程简介' }}</p>
 
               <div v-if="course.enrolled" class="progress-wrap">
                 <div class="progress-label">
@@ -128,7 +137,7 @@
 
               <div class="actions">
                 <el-button type="primary" :icon="VideoPlay" @click="openCourse(course)">
-                  {{ course.enrolled ? "继续学习" : "查看详情" }}
+                  {{ course.enrolled ? '继续学习' : '查看详情' }}
                 </el-button>
                 <el-button
                   v-if="!course.enrolled"
@@ -136,7 +145,7 @@
                   @click="enroll(course)"
                   :loading="!!enrolling[course.id]"
                 >
-                  {{ enrolling[course.id] ? "加入中" : "加入课程" }}
+                  {{ enrolling[course.id] ? '加入中' : '加入课程' }}
                 </el-button>
               </div>
             </div>
@@ -165,8 +174,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
-import { useRouter } from "vue-router";
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   CircleCheck,
   Collection,
@@ -177,85 +186,85 @@ import {
   Search,
   Tickets,
   User,
-  VideoPlay
-} from "@element-plus/icons-vue";
-import { notification } from "@/services/notification";
-import { getCategories, getCourses, enrollCourse } from "@/api/course";
+  VideoPlay,
+} from '@element-plus/icons-vue'
+import { notification } from '@/services/notification'
+import { getCategories, getCourses, enrollCourse } from '@/api/course'
 
-const router = useRouter();
+const router = useRouter()
 
-const searchQuery = ref("");
-const selectedCategory = ref(null);
-const sortBy = ref(0);
-const showEnrolledOnly = ref(false);
+const searchQuery = ref('')
+const selectedCategory = ref(null)
+const sortBy = ref(0)
+const showEnrolledOnly = ref(false)
 
-const page = ref(1);
-const pageSize = ref(9);
-const total = ref(0);
+const page = ref(1)
+const pageSize = ref(9)
+const total = ref(0)
 
-const courses = ref([]);
-const enrolling = ref({});
-const loading = ref(false);
-const categories = ref([{ id: 0, name: "默认分类" }]);
+const courses = ref([])
+const enrolling = ref({})
+const loading = ref(false)
+const categories = ref([{ id: 0, name: '默认分类' }])
 
 const difficultyMap = {
-  1: { label: "初级", color: "#67c23a", type: "success" },
-  2: { label: "中级", color: "#e6a23c", type: "warning" },
-  3: { label: "高级", color: "#f56c6c", type: "danger" },
-};
+  1: { label: '初级', color: '#67c23a', type: 'success' },
+  2: { label: '中级', color: '#e6a23c', type: 'warning' },
+  3: { label: '高级', color: '#f56c6c', type: 'danger' },
+}
 
 const getDifficultyLevel = (value) => {
-  const level = Number(value);
-  if (!Number.isFinite(level) || level <= 1) return 1;
-  if (level >= 3) return 3;
-  return 2;
-};
+  const level = Number(value)
+  if (!Number.isFinite(level) || level <= 1) return 1
+  if (level >= 3) return 3
+  return 2
+}
 
-const difficultyText = (value) => difficultyMap[getDifficultyLevel(value)]?.label || "未知";
+const difficultyText = (value) => difficultyMap[getDifficultyLevel(value)]?.label || '未知'
 
-const difficultyTagType = (value) => difficultyMap[getDifficultyLevel(value)]?.type || "info";
+const difficultyTagType = (value) => difficultyMap[getDifficultyLevel(value)]?.type || 'info'
 
 const clampPercent = (value) => {
-  const number = Math.round(Number(value) || 0);
-  return Math.min(100, Math.max(0, number));
-};
+  const number = Math.round(Number(value) || 0)
+  return Math.min(100, Math.max(0, number))
+}
 
 const normalizeCourse = (course) => ({
   ...course,
   id: Number(course?.id),
-  title: course?.title || `课程 #${course?.id ?? ""}`,
-  cover: course?.cover || course?.coverUrl || "",
-  category: course?.category || course?.categoryName || "未分类",
-  description: course?.description || "",
+  title: course?.title || `课程 #${course?.id ?? ''}`,
+  cover: course?.cover || course?.coverUrl || '',
+  category: course?.category || course?.categoryName || '未分类',
+  description: course?.description || '',
   difficulty: getDifficultyLevel(course?.difficulty),
   learners: Number(course?.learners || 0),
   enrolled: Boolean(course?.enrolled),
   progress: clampPercent(course?.progress),
   tagList: Array.isArray(course?.tagList) ? course.tagList : [],
-});
+})
 
 const filteredCourses = computed(() => {
   if (!showEnrolledOnly.value) {
-    return courses.value;
+    return courses.value
   }
-  return courses.value.filter((course) => course.enrolled);
-});
+  return courses.value.filter((course) => course.enrolled)
+})
 
-const enrolledCount = computed(() => courses.value.filter((course) => course.enrolled).length);
+const enrolledCount = computed(() => courses.value.filter((course) => course.enrolled).length)
 
-const formatLearners = (value) => Number(value || 0).toLocaleString();
+const formatLearners = (value) => Number(value || 0).toLocaleString()
 
 const fetchCategories = async () => {
   try {
-    const res = await getCategories();
-    categories.value = Array.isArray(res.data?.data) ? res.data.data : [];
+    const res = await getCategories()
+    categories.value = Array.isArray(res.data?.data) ? res.data.data : []
   } catch (e) {
-    notification.error("获取分类列表失败", e);
+    notification.error('获取分类列表失败', e)
   }
-};
+}
 
 const searchCourses = async () => {
-  loading.value = true;
+  loading.value = true
   try {
     const res = await getCourses({
       page: page.value,
@@ -264,75 +273,74 @@ const searchCourses = async () => {
       categoryId: selectedCategory.value,
       sortBy: sortBy.value,
       status: 1,
-    });
+    })
 
-    const payload = res.data?.data || {};
+    const payload = res.data?.data || {}
     courses.value = Array.isArray(payload.records)
       ? payload.records.map(normalizeCourse).filter((course) => Number.isFinite(course.id))
-      : [];
-    total.value = Number(payload.total || 0);
-    notification.success("搜索成功");
+      : []
+    total.value = Number(payload.total || 0)
+    notification.success('搜索成功')
   } catch (e) {
-    notification.error("搜索失败", e);
+    notification.error('搜索失败', e)
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 
 const applyFilters = () => {
-  page.value = 1;
-  searchCourses();
-};
+  page.value = 1
+  searchCourses()
+}
 
 const resetFilters = () => {
-  searchQuery.value = "";
-  selectedCategory.value = null;
-  sortBy.value = 0;
-  showEnrolledOnly.value = false;
-  applyFilters();
-};
+  searchQuery.value = ''
+  selectedCategory.value = null
+  sortBy.value = 0
+  showEnrolledOnly.value = false
+  applyFilters()
+}
 
 const handlePageChange = (nextPage) => {
-  page.value = nextPage;
-  searchCourses();
-};
+  page.value = nextPage
+  searchCourses()
+}
 
 const handleSizeChange = (size) => {
-  pageSize.value = size;
-  page.value = 1;
-  searchCourses();
-};
+  pageSize.value = size
+  page.value = 1
+  searchCourses()
+}
 
 const openCourse = (course) => {
   router.push({
-    name: "CourseDetail",
-    params: { id: course.id },
-  });
-};
+    name: 'CourseDetail',
+    params: { courseId: course.id },
+  })
+}
 
 const enroll = async (course) => {
-  if (enrolling.value[course.id]) return;
-  enrolling.value[course.id] = true;
+  if (enrolling.value[course.id]) return
+  enrolling.value[course.id] = true
   try {
-    notification.debug("加入课程", course.id);
-    const res = await enrollCourse(course.id);
+    notification.debug('加入课程', course.id)
+    const res = await enrollCourse(course.id)
     if (res.data.code !== 200) {
-      notification.error(res.data.msg || "加入课程失败", res.data);
-      return;
+      notification.error(res.data.msg || '加入课程失败', res.data)
+      return
     }
-    notification.success(`已成功加入课程《${course.title}》`);
-    course.enrolled = true;
-    course.progress = 0;
+    notification.success(`已成功加入课程《${course.title}》`)
+    course.enrolled = true
+    course.progress = 0
   } finally {
-    enrolling.value[course.id] = false;
+    enrolling.value[course.id] = false
   }
-};
+}
 
 onMounted(async () => {
-  await fetchCategories();
-  searchCourses();
-});
-
+  await fetchCategories()
+  searchCourses()
+})
 </script>
 
 <style scoped>
@@ -453,7 +461,10 @@ onMounted(async () => {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   overflow: hidden;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .course-card:hover {

@@ -39,33 +39,33 @@ export const routes = [
     component: MainLayout,
     children: [
       { path: '', redirect: { name: 'CourseList' } },
-      { path: 'course', name: 'CourseList', component: CourseList },
-      { path: 'courseDetail/:id', name: 'CourseDetail', component: CourseDetail },
+      { path: 'courses', name: 'CourseList', component: CourseList },
+      { path: 'courses/:courseId', name: 'CourseDetail', component: CourseDetail },
       {
         path: 'onboarding',
         name: 'Onboarding',
         component: Onboarding,
         meta: { skipOnboarding: true },
       },
-      { path: 'recommend', name: 'Recommend', component: Recommend },
+      { path: 'recommendations', name: 'Recommend', component: Recommend },
       { path: 'dashboard', name: 'Dashboard', component: Dashboard },
-      { path: 'agent', name: 'AgentAssistant', component: AgentAssistant },
-      { path: 'graph', name: 'KnowledgeGraph', component: KnowledgeGraph },
+      { path: 'assistant', name: 'AgentAssistant', component: AgentAssistant },
+      { path: 'knowledge-graph', name: 'KnowledgeGraph', component: KnowledgeGraph },
       { path: 'profile', name: 'Profile', component: Profile },
       {
-        path: 'admin/course',
+        path: 'admin/courses',
         name: 'AdminCourseList',
         component: CourseManage,
         meta: { roles: ['ADMIN'] },
       },
       {
-        path: 'admin/course/edit/:id',
+        path: 'admin/courses/:courseId/edit',
         name: 'CourseEdit',
         component: CourseEdit,
         meta: { roles: ['ADMIN'] },
       },
       {
-        path: 'admin/course/register',
+        path: 'admin/courses/new',
         name: 'CourseRegister',
         component: CourseRegister,
         meta: { roles: ['ADMIN'] },
@@ -77,7 +77,7 @@ export const routes = [
         meta: { roles: ['ADMIN'] },
       },
       {
-        path: 'admin/users/edit/:id',
+        path: 'admin/users/:userId/edit',
         name: 'UserEdit',
         component: UserEdit,
         meta: { roles: ['ADMIN'] },
@@ -88,6 +88,7 @@ export const routes = [
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: NotFound,
+    meta: { public: true },
   },
 ]
 

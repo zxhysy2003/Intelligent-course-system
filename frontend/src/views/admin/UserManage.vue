@@ -15,15 +15,24 @@
         <el-option label="管理员" value="ADMIN" />
         <el-option label="学生" value="STUDENT" />
       </el-select>
-      <el-select v-model="query.status" class="toolbar-item select" clearable placeholder="全部状态">
+      <el-select
+        v-model="query.status"
+        class="toolbar-item select"
+        clearable
+        placeholder="全部状态"
+      >
         <el-option label="启用" :value="1" />
         <el-option label="禁用" :value="0" />
       </el-select>
 
       <el-button type="primary" :loading="loading" @click="searchUsers">搜索</el-button>
       <el-button @click="resetFilters">重置</el-button>
-      <el-button type="warning" plain :disabled="!selectedIds.length" @click="batchSetStatus(0)">批量禁用</el-button>
-      <el-button type="success" plain :disabled="!selectedIds.length" @click="batchSetStatus(1)">批量启用</el-button>
+      <el-button type="warning" plain :disabled="!selectedIds.length" @click="batchSetStatus(0)"
+        >批量禁用</el-button
+      >
+      <el-button type="success" plain :disabled="!selectedIds.length" @click="batchSetStatus(1)"
+        >批量启用</el-button
+      >
       <el-button type="danger" plain :disabled="!selectedIds.length" @click="batchDelete">
         删除用户<span v-if="selectedIds.length">（{{ selectedIds.length }}）</span>
       </el-button>
@@ -48,7 +57,7 @@
           <el-select
             :model-value="row.role"
             size="small"
-            @change="value => updateRole(row, value)"
+            @change="(value) => updateRole(row, value)"
           >
             <el-option label="管理员" value="ADMIN" />
             <el-option label="学生" value="STUDENT" />
@@ -58,26 +67,22 @@
       <el-table-column label="状态" width="110" align="center">
         <template #default="{ row }">
           <el-tag :type="row.status === 1 ? 'success' : 'info'">
-            {{ row.status === 1 ? "启用" : "禁用" }}
+            {{ row.status === 1 ? '启用' : '禁用' }}
           </el-tag>
         </template>
       </el-table-column>
       <el-table-column label="操作" width="280" fixed="right">
         <template #default="{ row }">
           <el-space>
-            <el-button size="small" type="primary" @click="goToUserEdit(row)">
-              修改
-            </el-button>
+            <el-button size="small" type="primary" @click="goToUserEdit(row)"> 修改 </el-button>
             <el-button
               size="small"
               :type="row.status === 1 ? 'warning' : 'success'"
               @click="toggleStatus(row)"
             >
-              {{ row.status === 1 ? "禁用" : "启用" }}
+              {{ row.status === 1 ? '禁用' : '启用' }}
             </el-button>
-            <el-button size="small" type="danger" plain @click="deleteOne(row)">
-              删除
-            </el-button>
+            <el-button size="small" type="danger" plain @click="deleteOne(row)"> 删除 </el-button>
           </el-space>
         </template>
       </el-table-column>
@@ -99,56 +104,77 @@
 </template>
 
 <script setup>
-import { reactive, ref } from "vue";
-import { ElMessageBox } from "element-plus";
-import { useRouter } from "vue-router";
-import { notification } from "@/services/notification";
+import { reactive, ref } from 'vue'
+import { ElMessageBox } from 'element-plus'
+import { useRouter } from 'vue-router'
+import { notification } from '@/services/notification'
 import {
   deleteAdminUsers,
   getAdminUsers,
   updateAdminUserRole,
   updateAdminUserStatus,
-} from "@/api/user";
+} from '@/api/user'
 
-const router = useRouter();
-const loading = ref(false);
-const users = ref([]);
-const total = ref(0);
-const selectedIds = ref([]);
+const router = useRouter()
+const loading = ref(false)
+const users = ref([])
+const total = ref(0)
+const selectedIds = ref([])
 
 const query = reactive({
   page: 1,
   pageSize: 10,
-  keyword: "",
+  keyword: '',
   role: null,
   status: null,
-});
+})
 
 const normalizeUser = (item) => {
-  const id = item?.id ?? item?.userId ?? "";
-  const rawStatus = Number(item?.status);
+  const id = item?.id ?? item?.userId ?? ''
+  const rawStatus = Number(item?.status)
   return {
     id: String(id),
-    username: item?.username || "-",
-    nickname: item?.nickname || "-",
-    email: item?.email || "-",
-    role: item?.role || "STUDENT",
+    username: item?.username || '-',
+    nickname: item?.nickname || '-',
+    email: item?.email || '-',
+    role: item?.role || 'STUDENT',
     status: Number.isFinite(rawStatus) ? rawStatus : 1,
-  };
-};
+  }
+}
 
 const useMockUsers = () => {
   const list = [
-    { id: "10001", username: "admin", nickname: "系统管理员", email: "admin@test.com", role: "ADMIN", status: 1 },
-    { id: "10002", username: "alice", nickname: "Alice", email: "alice@test.com", role: "STUDENT", status: 1 },
-    { id: "10003", username: "bob", nickname: "Bob", email: "bob@test.com", role: "STUDENT", status: 0 },
-  ];
-  users.value = list.map(normalizeUser);
-  total.value = list.length;
-};
+    {
+      id: '10001',
+      username: 'admin',
+      nickname: '系统管理员',
+      email: 'admin@test.com',
+      role: 'ADMIN',
+      status: 1,
+    },
+    {
+      id: '10002',
+      username: 'alice',
+      nickname: 'Alice',
+      email: 'alice@test.com',
+      role: 'STUDENT',
+      status: 1,
+    },
+    {
+      id: '10003',
+      username: 'bob',
+      nickname: 'Bob',
+      email: 'bob@test.com',
+      role: 'STUDENT',
+      status: 0,
+    },
+  ]
+  users.value = list.map(normalizeUser)
+  total.value = list.length
+}
 
 const searchUsers = async () => {
-  loading.value = true;
+  loading.value = true
   try {
     const res = await getAdminUsers({
       page: query.page,
@@ -156,156 +182,156 @@ const searchUsers = async () => {
       keyword: query.keyword || null,
       role: query.role,
       status: query.status,
-    });
-    const payload = res?.data?.data;
-    const records = payload?.records || payload || [];
-    users.value = Array.isArray(records) ? records.map(normalizeUser) : [];
-    total.value = Number(payload?.total ?? users.value.length);
+    })
+    const payload = res?.data?.data
+    const records = payload?.records || payload || []
+    users.value = Array.isArray(records) ? records.map(normalizeUser) : []
+    total.value = Number(payload?.total ?? users.value.length)
   } catch {
-    notification.warn("用户接口暂不可用，已显示本地示例数据");
-    useMockUsers();
+    notification.warn('用户接口暂不可用，已显示本地示例数据')
+    useMockUsers()
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 
 const resetFilters = () => {
-  query.page = 1;
-  query.pageSize = 10;
-  query.keyword = "";
-  query.role = null;
-  query.status = null;
-  searchUsers();
-};
+  query.page = 1
+  query.pageSize = 10
+  query.keyword = ''
+  query.role = null
+  query.status = null
+  searchUsers()
+}
 
 const onSelectionChange = (rows) => {
-  selectedIds.value = rows.map(row => row.id);
-};
+  selectedIds.value = rows.map((row) => row.id)
+}
 
 const handlePageChange = (p) => {
-  query.page = p;
-  searchUsers();
-};
+  query.page = p
+  searchUsers()
+}
 
 const handleSizeChange = (size) => {
-  query.pageSize = size;
-  query.page = 1;
-  searchUsers();
-};
+  query.pageSize = size
+  query.page = 1
+  searchUsers()
+}
 
 const updateRole = async (row, role) => {
-  if (row.role === role) return;
-  const oldRole = row.role;
-  row.role = role;
+  if (row.role === role) return
+  const oldRole = row.role
+  row.role = role
   try {
-    const res = await updateAdminUserRole(row.id, role);
+    const res = await updateAdminUserRole(row.id, role)
     if (res?.data?.code !== 200) {
-      row.role = oldRole;
-      notification.error(res?.data?.msg || "更新角色失败", res?.data);
-      return;
+      row.role = oldRole
+      notification.error(res?.data?.msg || '更新角色失败', res?.data)
+      return
     }
-    notification.success("角色更新成功");
+    notification.success('角色更新成功')
   } catch (e) {
-    row.role = oldRole;
-    notification.error("更新角色失败", e);
+    row.role = oldRole
+    notification.error('更新角色失败', e)
   }
-};
+}
 
 const setUserStatus = async (id, status) => {
-  const res = await updateAdminUserStatus(id, status);
+  const res = await updateAdminUserStatus(id, status)
   if (res?.data?.code !== 200) {
-    throw new Error(res?.data?.msg || "更新状态失败");
+    throw new Error(res?.data?.msg || '更新状态失败')
   }
-};
+}
 
 const toggleStatus = async (row) => {
-  const target = row.status === 1 ? 0 : 1;
+  const target = row.status === 1 ? 0 : 1
   try {
-    await setUserStatus(row.id, target);
-    row.status = target;
-    notification.success(target === 1 ? "用户已启用" : "用户已禁用");
+    await setUserStatus(row.id, target)
+    row.status = target
+    notification.success(target === 1 ? '用户已启用' : '用户已禁用')
   } catch (e) {
-    notification.error(e);
+    notification.error(e)
   }
-};
+}
 
 const goToUserEdit = (row) => {
   router.push({
-    name: "UserEdit",
-    params: { id: row.id },
-  });
-};
+    name: 'UserEdit',
+    params: { userId: row.id },
+  })
+}
 
 const batchSetStatus = async (status) => {
-  if (!selectedIds.value.length) return;
+  if (!selectedIds.value.length) return
   const jobs = users.value
-    .filter(item => selectedIds.value.includes(item.id) && item.status !== status)
-    .map(item => setUserStatus(item.id, status));
+    .filter((item) => selectedIds.value.includes(item.id) && item.status !== status)
+    .map((item) => setUserStatus(item.id, status))
   try {
-    await Promise.all(jobs);
-    users.value.forEach(item => {
-      if (selectedIds.value.includes(item.id)) item.status = status;
-    });
-    notification.success(status === 1 ? "批量启用成功" : "批量禁用成功");
+    await Promise.all(jobs)
+    users.value.forEach((item) => {
+      if (selectedIds.value.includes(item.id)) item.status = status
+    })
+    notification.success(status === 1 ? '批量启用成功' : '批量禁用成功')
   } catch (e) {
-    notification.error("批量更新状态失败", e);
+    notification.error('批量更新状态失败', e)
   }
-};
+}
 
 const doDelete = async (ids) => {
-  const res = await deleteAdminUsers(ids);
+  const res = await deleteAdminUsers(ids)
   if (res?.data?.code !== 200) {
-    throw new Error(res?.data?.msg || "删除失败");
+    throw new Error(res?.data?.msg || '删除失败')
   }
-};
+}
 
 const deleteOne = async (row) => {
   try {
-    await ElMessageBox.confirm(`确认删除用户「${row.username}」吗？删除后不可恢复。`, "删除确认", {
-      type: "warning",
-      confirmButtonText: "确认删除",
-      cancelButtonText: "取消",
+    await ElMessageBox.confirm(`确认删除用户「${row.username}」吗？删除后不可恢复。`, '删除确认', {
+      type: 'warning',
+      confirmButtonText: '确认删除',
+      cancelButtonText: '取消',
       closeOnClickModal: false,
-    });
-    await doDelete([row.id]);
-    users.value = users.value.filter(item => item.id !== row.id);
-    selectedIds.value = selectedIds.value.filter(id => id !== row.id);
-    total.value = Math.max(0, total.value - 1);
-    notification.success("删除成功");
+    })
+    await doDelete([row.id])
+    users.value = users.value.filter((item) => item.id !== row.id)
+    selectedIds.value = selectedIds.value.filter((id) => id !== row.id)
+    total.value = Math.max(0, total.value - 1)
+    notification.success('删除成功')
   } catch (e) {
-    if (e !== "cancel" && e !== "close") {
-      notification.error("删除失败", e);
+    if (e !== 'cancel' && e !== 'close') {
+      notification.error('删除失败', e)
     }
   }
-};
+}
 
 const batchDelete = async () => {
-  if (!selectedIds.value.length) return;
+  if (!selectedIds.value.length) return
   try {
     await ElMessageBox.confirm(
       `确认删除已选中的 ${selectedIds.value.length} 个用户吗？删除后不可恢复。`,
-      "再次确认删除",
+      '再次确认删除',
       {
-        type: "warning",
-        confirmButtonText: "确认删除",
-        cancelButtonText: "取消",
+        type: 'warning',
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消',
         closeOnClickModal: false,
-      }
-    );
-    await doDelete(selectedIds.value);
-    const selectedSet = new Set(selectedIds.value);
-    users.value = users.value.filter(item => !selectedSet.has(item.id));
-    total.value = Math.max(0, total.value - selectedIds.value.length);
-    selectedIds.value = [];
-    notification.success("批量删除成功");
+      },
+    )
+    await doDelete(selectedIds.value)
+    const selectedSet = new Set(selectedIds.value)
+    users.value = users.value.filter((item) => !selectedSet.has(item.id))
+    total.value = Math.max(0, total.value - selectedIds.value.length)
+    selectedIds.value = []
+    notification.success('批量删除成功')
   } catch (e) {
-    if (e !== "cancel" && e !== "close") {
-      notification.error("批量删除失败", e);
+    if (e !== 'cancel' && e !== 'close') {
+      notification.error('批量删除失败', e)
     }
   }
-};
+}
 
-searchUsers();
+searchUsers()
 </script>
 
 <style scoped>

@@ -60,7 +60,7 @@ import {
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
-const courseId = route.params.id
+const courseId = route.params.courseId
 
 let disposed = false
 
@@ -84,11 +84,12 @@ const playbackSnapshot = reactive({
   watchedSeconds: 0,
 })
 
-const canPersistProgress = computed(() => (
-  enrollmentStatus.value === ENROLLMENT_STATUS.ENROLLED
-  && playerReady.value
-  && Boolean(videoUrl.value)
-))
+const canPersistProgress = computed(
+  () =>
+    enrollmentStatus.value === ENROLLMENT_STATUS.ENROLLED &&
+    playerReady.value &&
+    Boolean(videoUrl.value),
+)
 
 const loadCourseRelation = async () => {
   if (disposed) return
@@ -301,7 +302,7 @@ const handleEnrollCourse = async () => {
 
 const goToKnowledgeGraph = () => {
   router.push({
-    path: '/graph',
+    path: '/knowledge-graph',
     query: { courseId: String(courseId) },
   })
 }

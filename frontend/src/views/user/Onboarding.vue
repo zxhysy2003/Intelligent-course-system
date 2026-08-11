@@ -134,210 +134,209 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   ArrowRight,
   CircleCheck,
   DataAnalysis,
   MagicStick,
   Reading,
-  Refresh
-} from "@element-plus/icons-vue";
-import { getOnboardingOptions } from "@/api/onboarding";
-import { useOnboardingStore } from "@/store/onboarding";
-import { notification } from "@/services/notification";
+  Refresh,
+} from '@element-plus/icons-vue'
+import { getOnboardingOptions } from '@/api/onboarding'
+import { useOnboardingStore } from '@/store/onboarding'
+import { notification } from '@/services/notification'
 
-const router = useRouter();
-const route = useRoute();
-const onboardingStore = useOnboardingStore();
+const router = useRouter()
+const route = useRoute()
+const onboardingStore = useOnboardingStore()
 
-const activeStep = ref(0);
-const maxStep = 2;
-const loading = ref(false);
-const submitting = ref(false);
+const activeStep = ref(0)
+const maxStep = 2
+const loading = ref(false)
+const submitting = ref(false)
 
 const options = ref({
   tags: [],
   levels: [],
   learningGoals: [],
-});
+})
 
 const form = reactive({
   currentLevel: null,
-  learningGoal: "",
+  learningGoal: '',
   tagIds: [],
-});
+})
 
 const normalizeNumber = (value) => {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-};
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
 
 const normalizeTags = (tags) => {
-  if (!Array.isArray(tags)) return [];
+  if (!Array.isArray(tags)) return []
   return tags
     .map((tag) => ({
       id: normalizeNumber(tag?.id),
-      name: tag?.name || "",
-      type: tag?.type || "OTHER",
+      name: tag?.name || '',
+      type: tag?.type || 'OTHER',
     }))
-    .filter((tag) => tag.id !== null && tag.name);
-};
+    .filter((tag) => tag.id !== null && tag.name)
+}
 
 const normalizeOptions = (payload) => ({
   tags: normalizeTags(payload?.tags),
   levels: Array.isArray(payload?.levels) ? payload.levels : [],
   learningGoals: Array.isArray(payload?.learningGoals) ? payload.learningGoals : [],
-});
+})
 
-const levelOptions = computed(() => options.value.levels);
+const levelOptions = computed(() => options.value.levels)
 
 const learningGoalOptions = computed(() => [
   ...options.value.learningGoals,
-  { value: "", label: "暂不确定" },
-]);
+  { value: '', label: '暂不确定' },
+])
 
 const tagGroups = computed(() => {
-  const groups = new Map();
+  const groups = new Map()
   options.value.tags.forEach((tag) => {
-    const type = tag.type || "OTHER";
+    const type = tag.type || 'OTHER'
     if (!groups.has(type)) {
-      groups.set(type, []);
+      groups.set(type, [])
     }
-    groups.get(type).push(tag);
-  });
+    groups.get(type).push(tag)
+  })
 
-  return Array.from(groups.entries()).map(([type, items]) => ({ type, items }));
-});
+  return Array.from(groups.entries()).map(([type, items]) => ({ type, items }))
+})
 
 const tagTypeLabel = (type) => {
   const labels = {
-    TECH: "技术方向",
-    FIELD: "应用领域",
-    THEORY: "理论基础",
-    OTHER: "其他方向",
-  };
-  return labels[type] || type;
-};
+    TECH: '技术方向',
+    FIELD: '应用领域',
+    THEORY: '理论基础',
+    OTHER: '其他方向',
+  }
+  return labels[type] || type
+}
 
 const levelHint = (value) => {
   const hints = {
-    1: "从概念和基础语法开始",
-    2: "有入门经验，需要体系化提升",
-    3: "已有项目或课程基础",
-  };
-  return hints[value] || "按当前学习体验选择";
-};
+    1: '从概念和基础语法开始',
+    2: '有入门经验，需要体系化提升',
+    3: '已有项目或课程基础',
+  }
+  return hints[value] || '按当前学习体验选择'
+}
 
 const goalHint = (value) => {
   const hints = {
-    JOB: "强化岗位技能与实践项目",
-    PROJECT: "围绕完整项目补齐能力",
-    FOUNDATION: "夯实长期学习底座",
-    EXAM: "聚焦考点与阶段复习",
-    "": "先根据兴趣探索课程",
-  };
-  return hints[value] || "保持灵活的学习路径";
-};
+    JOB: '强化岗位技能与实践项目',
+    PROJECT: '围绕完整项目补齐能力',
+    FOUNDATION: '夯实长期学习底座',
+    EXAM: '聚焦考点与阶段复习',
+    '': '先根据兴趣探索课程',
+  }
+  return hints[value] || '保持灵活的学习路径'
+}
 
 const applyStatusToForm = (status) => {
-  form.currentLevel = status.currentLevel ?? null;
-  form.learningGoal = status.learningGoal ?? "";
-  form.tagIds = Array.isArray(status.tagIds) ? [...status.tagIds] : [];
-};
+  form.currentLevel = status.currentLevel ?? null
+  form.learningGoal = status.learningGoal ?? ''
+  form.tagIds = Array.isArray(status.tagIds) ? [...status.tagIds] : []
+}
 
 const fetchOptions = async () => {
-  const res = await getOnboardingOptions();
+  const res = await getOnboardingOptions()
   if (res?.data?.code !== 200) {
-    throw new Error(res?.data?.msg || "获取引导选项失败");
+    throw new Error(res?.data?.msg || '获取引导选项失败')
   }
-  options.value = normalizeOptions(res.data.data);
-};
+  options.value = normalizeOptions(res.data.data)
+}
 
 const refreshData = async () => {
-  loading.value = true;
+  loading.value = true
   try {
-    await Promise.all([
-      fetchOptions(),
-      onboardingStore.fetchStatus(true),
-    ]);
-    applyStatusToForm(onboardingStore.status);
+    await Promise.all([fetchOptions(), onboardingStore.fetchStatus(true)])
+    applyStatusToForm(onboardingStore.status)
   } catch (e) {
-    notification.error("加载引导信息失败", e);
+    notification.error('加载引导信息失败', e)
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 
-const isTagSelected = (tagId) => form.tagIds.includes(tagId);
+const isTagSelected = (tagId) => form.tagIds.includes(tagId)
 
 const toggleTag = (tagId) => {
   if (isTagSelected(tagId)) {
-    form.tagIds = form.tagIds.filter((id) => id !== tagId);
-    return;
+    form.tagIds = form.tagIds.filter((id) => id !== tagId)
+    return
   }
-  form.tagIds = [...form.tagIds, tagId];
-};
+  form.tagIds = [...form.tagIds, tagId]
+}
 
 const clearTags = () => {
-  form.tagIds = [];
-};
+  form.tagIds = []
+}
 
 const validateStep = (step) => {
   if (step === 0 && !form.currentLevel) {
-    notification.warn("请选择当前基础");
-    return false;
+    notification.warn('请选择当前基础')
+    return false
   }
 
   if (step === 2 && !form.tagIds.length) {
-    notification.warn("请至少选择一个兴趣方向");
-    return false;
+    notification.warn('请至少选择一个兴趣方向')
+    return false
   }
 
-  return true;
-};
+  return true
+}
 
 const nextStep = () => {
-  if (!validateStep(activeStep.value)) return;
-  activeStep.value = Math.min(maxStep, activeStep.value + 1);
-};
+  if (!validateStep(activeStep.value)) return
+  activeStep.value = Math.min(maxStep, activeStep.value + 1)
+}
 
 const prevStep = () => {
-  activeStep.value = Math.max(0, activeStep.value - 1);
-};
+  activeStep.value = Math.max(0, activeStep.value - 1)
+}
 
 const resolveRedirectPath = () => {
-  const redirect = Array.isArray(route.query.redirect) ? route.query.redirect[0] : route.query.redirect;
-  if (redirect && redirect.startsWith("/") && redirect !== "/onboarding") {
-    return redirect;
+  const redirect = Array.isArray(route.query.redirect)
+    ? route.query.redirect[0]
+    : route.query.redirect
+  if (redirect && redirect.startsWith('/') && redirect !== '/onboarding') {
+    return redirect
   }
-  return "/recommend";
-};
+  return '/recommendations'
+}
 
 const submitOnboarding = async () => {
-  if (!validateStep(0) || !validateStep(2)) return;
-  if (submitting.value) return;
+  if (!validateStep(0) || !validateStep(2)) return
+  if (submitting.value) return
 
-  submitting.value = true;
+  submitting.value = true
   try {
     await onboardingStore.submit({
       currentLevel: form.currentLevel,
       learningGoal: form.learningGoal || null,
       tagIds: form.tagIds,
-    });
-    notification.success("引导信息已保存");
-    router.replace(resolveRedirectPath());
+    })
+    notification.success('引导信息已保存')
+    router.replace(resolveRedirectPath())
   } catch (e) {
-    notification.error(e.message || "提交引导信息失败", e);
+    notification.error(e.message || '提交引导信息失败', e)
   } finally {
-    submitting.value = false;
+    submitting.value = false
   }
-};
+}
 
 onMounted(() => {
-  refreshData();
-});
+  refreshData()
+})
 </script>
 
 <style scoped>
@@ -453,7 +452,10 @@ onMounted(() => {
   color: #1f2a44;
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease;
 }
 
 .choice-card:hover {

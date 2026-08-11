@@ -22,23 +22,23 @@
       <div class="summary-row">
         <div class="summary-item">
           <div class="label">课程 ID</div>
-          <div class="value">{{ graphData.courseId ?? "-" }}</div>
+          <div class="value">{{ graphData.courseId ?? '-' }}</div>
         </div>
         <div class="summary-item">
           <div class="label">课程名称</div>
-          <div class="value">{{ graphData.title ?? "-" }}</div>
+          <div class="value">{{ graphData.title ?? '-' }}</div>
         </div>
         <div class="summary-item">
           <div class="label">用户 ID</div>
-          <div class="value">{{ graphData.userId ?? "-" }}</div>
+          <div class="value">{{ graphData.userId ?? '-' }}</div>
         </div>
         <div class="summary-item">
           <div class="label">节点数</div>
-          <div class="value">{{ graphData.stats?.nodeCount ?? "-" }}</div>
+          <div class="value">{{ graphData.stats?.nodeCount ?? '-' }}</div>
         </div>
         <div class="summary-item">
           <div class="label">边数</div>
-          <div class="value">{{ graphData.stats?.edgeCount ?? "-" }}</div>
+          <div class="value">{{ graphData.stats?.edgeCount ?? '-' }}</div>
         </div>
         <div class="summary-item">
           <div class="label">平均掌握度</div>
@@ -52,12 +52,7 @@
       <div v-show="!chartHint" ref="chartRef" class="chart"></div>
     </el-card>
 
-    <el-dialog
-      v-model="courseSelectorVisible"
-      title="请选择课程"
-      width="520px"
-      destroy-on-close
-    >
+    <el-dialog v-model="courseSelectorVisible" title="请选择课程" width="520px" destroy-on-close>
       <el-empty v-if="!relatedCourses.length" description="该知识点暂无关联课程" />
       <div v-else class="course-option-list">
         <el-button
@@ -75,23 +70,23 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { getKnowledgeGraph } from "@/api/analysis";
-import { getCoursesByKnowledgePoint } from "@/api/course";
-import { notification } from "@/services/notification";
-import { init } from "@/utils/echarts";
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { getKnowledgeGraph } from '@/api/analysis'
+import { getCoursesByKnowledgePoint } from '@/api/course'
+import { notification } from '@/services/notification'
+import { init } from '@/utils/echarts'
 
-const router = useRouter();
-const route = useRoute();
-const chartRef = ref(null);
-const chartInstance = ref(null);
-const loading = ref(false);
-const jumping = ref(false);
-const courseKeyword = ref("");
-const chartHint = ref("请输入课程关键词");
-const relatedCourses = ref([]);
-const courseSelectorVisible = ref(false);
+const router = useRouter()
+const route = useRoute()
+const chartRef = ref(null)
+const chartInstance = ref(null)
+const loading = ref(false)
+const jumping = ref(false)
+const courseKeyword = ref('')
+const chartHint = ref('请输入课程关键词')
+const relatedCourses = ref([])
+const courseSelectorVisible = ref(false)
 
 const graphData = ref({
   courseId: null,
@@ -100,80 +95,80 @@ const graphData = ref({
   nodes: [],
   links: [],
   stats: null,
-});
+})
 
 const difficultyColor = {
-  1: "#67c23a",
-  2: "#409eff",
-  3: "#e6a23c",
-  4: "#f56c6c",
-  5: "#ad3c3c",
-};
-const outOfCourseColor = "#bfc4cd";
+  1: '#67c23a',
+  2: '#409eff',
+  3: '#e6a23c',
+  4: '#f56c6c',
+  5: '#ad3c3c',
+}
+const outOfCourseColor = '#bfc4cd'
 
 // 将 0~1 掌握度转换为百分比字符串
 const formatMastery = (value) => {
-  if (value === null || value === undefined) return "-";
-  return `${Math.round(Number(value) * 100)}%`;
-};
+  if (value === null || value === undefined) return '-'
+  return `${Math.round(Number(value) * 100)}%`
+}
 
 const normalizeCourseListFromResponse = (res) => {
-  const payload = res?.data?.data ?? res?.data;
+  const payload = res?.data?.data ?? res?.data
   if (!Array.isArray(payload)) {
-    return [];
+    return []
   }
   return payload
     .map((item) => ({
       id: Number(item?.id),
-      title: item?.title ?? "",
+      title: item?.title ?? '',
     }))
-    .filter((item) => Number.isFinite(item.id) && item.id > 0);
-};
+    .filter((item) => Number.isFinite(item.id) && item.id > 0)
+}
 
 const goToCourseDetail = (courseId) => {
-  courseSelectorVisible.value = false;
+  courseSelectorVisible.value = false
   router.push({
-    name: "CourseDetail",
-    params: { id: courseId },
-  });
-};
+    name: 'CourseDetail',
+    params: { courseId },
+  })
+}
 
 const handleNodeClick = async (params) => {
-  if (params?.dataType !== "node") return;
-  const kpId = Number(params?.data?.kpId);
+  if (params?.dataType !== 'node') return
+  const kpId = Number(params?.data?.kpId)
   if (!Number.isFinite(kpId)) {
-    notification.warn("该节点缺少 kpId，无法跳转课程");
-    return;
+    notification.warn('该节点缺少 kpId，无法跳转课程')
+    return
   }
-  if (jumping.value) return;
+  if (jumping.value) return
 
-  jumping.value = true;
+  jumping.value = true
   try {
-    const res = await getCoursesByKnowledgePoint(kpId);
-    const courses = normalizeCourseListFromResponse(res);
+    const res = await getCoursesByKnowledgePoint(kpId)
+    const courses = normalizeCourseListFromResponse(res)
     if (!courses.length) {
-      relatedCourses.value = [];
-      courseSelectorVisible.value = true;
-      return;
+      relatedCourses.value = []
+      courseSelectorVisible.value = true
+      return
     }
-    relatedCourses.value = courses;
-    courseSelectorVisible.value = true;
+    relatedCourses.value = courses
+    courseSelectorVisible.value = true
   } catch (e) {
-    notification.error("根据知识点获取课程失败", e);
+    notification.error('根据知识点获取课程失败', e)
   } finally {
-    jumping.value = false;
+    jumping.value = false
   }
-};
+}
 
 const clearChart = () => {
-  chartInstance.value?.clear();
-};
+  chartInstance.value?.clear()
+}
 
 // 将后端图结构映射为 ECharts graph 配置并渲染
 const buildChart = (data) => {
-  if (!chartRef.value) return;
+  if (!chartRef.value) return
   if (!chartInstance.value) {
-    chartInstance.value = init(chartRef.value);
+    chartInstance.value = init(chartRef.value)
   }
 
   // 节点：课程内按难度高亮，课程外统一灰色
@@ -184,72 +179,72 @@ const buildChart = (data) => {
     value: node.mastery,
     symbolSize: 18 + Number(node.mastery || 0) * 18,
     itemStyle: {
-      color: node.inCourse ? (difficultyColor[node.difficulty] || "#409eff") : outOfCourseColor,
+      color: node.inCourse ? difficultyColor[node.difficulty] || '#409eff' : outOfCourseColor,
       opacity: node.inCourse ? 1 : 0.75,
-      borderColor: node.inCourse ? "#1f2a44" : "#d5d9e0",
+      borderColor: node.inCourse ? '#1f2a44' : '#d5d9e0',
       borderWidth: node.inCourse ? 1.5 : 1,
     },
     tooltip: {
       formatter: () =>
         `${node.name}<br/>难度：${node.difficulty}<br/>掌握度：${formatMastery(node.mastery)}<br/>归属：${
-          node.inCourse ? "课程内" : "课程外"
+          node.inCourse ? '课程内' : '课程外'
         }`,
     },
-  }));
+  }))
 
   // 边：目前按依赖关系统一样式，可按 type 继续细分
   const links = (data.links || []).map((link) => ({
     source: link.source,
     target: link.target,
     lineStyle: {
-      color: link.type === "PRE_REQUIRES" ? "#909399" : "#c0c4cc",
+      color: link.type === 'PRE_REQUIRES' ? '#909399' : '#c0c4cc',
       width: 1.2,
       curveness: 0.2,
     },
     label: {
       show: false,
     },
-  }));
+  }))
 
   chartInstance.value.setOption({
-    tooltip: { trigger: "item" },
+    tooltip: { trigger: 'item' },
     series: [
       {
-        type: "graph",
-        layout: "force",
+        type: 'graph',
+        layout: 'force',
         roam: true,
         draggable: true,
         data: nodes,
         links,
-        edgeSymbol: ["arrow", "none"],
+        edgeSymbol: ['arrow', 'none'],
         edgeSymbolSize: 10,
         label: {
           show: true,
-          position: "right",
-          formatter: "{b}",
-          color: "#24324b",
+          position: 'right',
+          formatter: '{b}',
+          color: '#24324b',
         },
         force: {
           repulsion: 120,
           edgeLength: [80, 160],
         },
         emphasis: {
-          focus: "adjacency",
+          focus: 'adjacency',
         },
       },
     ],
-  });
+  })
 
-  chartInstance.value.off("click");
-  chartInstance.value.on("click", handleNodeClick);
-};
+  chartInstance.value.off('click')
+  chartInstance.value.on('click', handleNodeClick)
+}
 
 // 根据 courseId 拉取图数据，并做兜底结构化处理
 const fetchGraph = async (courseId) => {
-  loading.value = true;
+  loading.value = true
   try {
-    const res = await getKnowledgeGraph(courseId);
-    const payload = res?.data?.data ?? res?.data ?? {};
+    const res = await getKnowledgeGraph(courseId)
+    const payload = res?.data?.data ?? res?.data ?? {}
     graphData.value = {
       courseId: payload.courseId ?? courseId,
       title: payload.title ?? null,
@@ -257,25 +252,25 @@ const fetchGraph = async (courseId) => {
       nodes: Array.isArray(payload.nodes) ? payload.nodes : [],
       links: Array.isArray(payload.links) ? payload.links : [],
       stats: payload.stats ?? null,
-    };
-    if (!graphData.value.nodes.length) {
-      clearChart();
-      chartHint.value = "未查询到图谱数据";
-      return;
     }
-    chartHint.value = "";
+    if (!graphData.value.nodes.length) {
+      clearChart()
+      chartHint.value = '未查询到图谱数据'
+      return
+    }
+    chartHint.value = ''
     // 等待容器从隐藏状态切换完成，再初始化/重绘图表，避免出现空白遮挡
-    await nextTick();
-    buildChart(graphData.value);
-    chartInstance.value?.resize();
+    await nextTick()
+    buildChart(graphData.value)
+    chartInstance.value?.resize()
   } catch (e) {
-    clearChart();
-    chartHint.value = "图谱加载失败";
-    notification.error("获取知识图谱失败", e);
+    clearChart()
+    chartHint.value = '图谱加载失败'
+    notification.error('获取知识图谱失败', e)
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 
 const resetGraphData = () => {
   graphData.value = {
@@ -285,46 +280,46 @@ const resetGraphData = () => {
     nodes: [],
     links: [],
     stats: null,
-  };
-};
+  }
+}
 
 const handleSearch = async () => {
-  const keyword = courseKeyword.value?.trim();
+  const keyword = courseKeyword.value?.trim()
   if (!keyword) {
-    chartHint.value = "请输入课程关键词";
-    resetGraphData();
-    clearChart();
-    return;
+    chartHint.value = '请输入课程关键词'
+    resetGraphData()
+    clearChart()
+    return
   }
-  const courseId = Number(keyword);
+  const courseId = Number(keyword)
   if (!Number.isFinite(courseId) || courseId <= 0) {
-    chartHint.value = "课程ID格式不正确";
-    resetGraphData();
-    clearChart();
-    return;
+    chartHint.value = '课程ID格式不正确'
+    resetGraphData()
+    clearChart()
+    return
   }
-  await fetchGraph(courseId);
-};
+  await fetchGraph(courseId)
+}
 
 // 窗口变化时同步图表尺寸，避免容器变更后显示错位
 const handleResize = () => {
-  chartInstance.value?.resize();
-};
+  chartInstance.value?.resize()
+}
 
 onMounted(() => {
-  window.addEventListener("resize", handleResize);
-  const initialCourseId = Number(route.query.courseId);
+  window.addEventListener('resize', handleResize)
+  const initialCourseId = Number(route.query.courseId)
   if (Number.isFinite(initialCourseId) && initialCourseId > 0) {
-    courseKeyword.value = String(initialCourseId);
-    handleSearch();
+    courseKeyword.value = String(initialCourseId)
+    handleSearch()
   }
-});
+})
 
 onBeforeUnmount(() => {
-  window.removeEventListener("resize", handleResize);
-  chartInstance.value?.dispose();
-  chartInstance.value = null;
-});
+  window.removeEventListener('resize', handleResize)
+  chartInstance.value?.dispose()
+  chartInstance.value = null
+})
 </script>
 
 <style scoped>

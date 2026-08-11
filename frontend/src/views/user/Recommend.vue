@@ -5,7 +5,13 @@
         <h2 class="main-title">课程推荐</h2>
         <p class="sub-title">基于协同过滤算法与知识图谱的深度定制方案</p>
       </div>
-      <el-button type="primary" :icon="Refresh" @click="fetchRecommendation" :loading="loading" plain>
+      <el-button
+        type="primary"
+        :icon="Refresh"
+        @click="fetchRecommendation"
+        :loading="loading"
+        plain
+      >
         刷新推荐
       </el-button>
     </div>
@@ -21,7 +27,7 @@
       </div>
       <div class="info-card">
         <span class="label">更新于</span>
-        <span class="value">{{ lastUpdatedText || "-" }}</span>
+        <span class="value">{{ lastUpdatedText || '-' }}</span>
       </div>
       <div class="info-card source-audit-card">
         <span class="label">来源核验</span>
@@ -76,9 +82,9 @@
           <div class="metric-section">
             <div class="metric-item">
               <span class="metric-label">学习准备度</span>
-              <el-progress 
-                :percentage="toPercent(item.readiness)" 
-                :stroke-width="12" 
+              <el-progress
+                :percentage="toPercent(item.readiness)"
+                :stroke-width="12"
                 :color="progressColors"
               />
             </div>
@@ -87,13 +93,8 @@
           <div class="content-section" v-if="item.knowledgePoints.length">
             <h4 class="section-label">涵盖知识点</h4>
             <div class="tag-cloud">
-              <el-tag 
-                v-for="kp in item.knowledgePoints" 
-                :key="kp.id" 
-                class="kp-tag" 
-                round
-              >
-                {{ kp.name }} 
+              <el-tag v-for="kp in item.knowledgePoints" :key="kp.id" class="kp-tag" round>
+                {{ kp.name }}
                 <span class="diff-badge">{{ difficultyText(kp.difficulty) }}</span>
               </el-tag>
             </div>
@@ -101,11 +102,18 @@
 
           <div class="content-section" v-if="item.missingPrerequisitesMastery?.length">
             <h4 class="section-label">薄弱前置项 (需补齐)</h4>
-            <el-table :data="item.missingPrerequisitesMastery" size="small" border class="mini-table">
+            <el-table
+              :data="item.missingPrerequisitesMastery"
+              size="small"
+              border
+              class="mini-table"
+            >
               <el-table-column prop="name" label="知识点" />
               <el-table-column label="差距" align="center" width="120">
                 <template #default="{ row }">
-                  <span class="gap-text">{{ toPercent(row.have) }}% → {{ toPercent(row.need) }}%</span>
+                  <span class="gap-text"
+                    >{{ toPercent(row.have) }}% → {{ toPercent(row.need) }}%</span
+                  >
                 </template>
               </el-table-column>
             </el-table>
@@ -116,10 +124,12 @@
               <span class="section-label">建议学习路径</span>
               <el-link :underline="false" type="primary">
                 {{ isPathExpanded(item.courseId) ? '隐藏' : '查看详情' }}
-                <el-icon><ArrowDown v-if="!isPathExpanded(item.courseId)" /><ArrowUp v-else /></el-icon>
+                <el-icon
+                  ><ArrowDown v-if="!isPathExpanded(item.courseId)" /><ArrowUp v-else
+                /></el-icon>
               </el-link>
             </div>
-            
+
             <el-collapse-transition>
               <div v-show="isPathExpanded(item.courseId)" class="path-body">
                 <div v-for="(path, index) in item.learningPaths" :key="index" class="path-item">
@@ -127,7 +137,9 @@
                   <el-steps direction="vertical" :active="path.length" space="60px">
                     <el-step v-for="node in path" :key="node.id">
                       <template #title>
-                        <span class="node-link" @click="openKnowledgePointCourses(node)">{{ node.name }}</span>
+                        <span class="node-link" @click="openKnowledgePointCourses(node)">{{
+                          node.name
+                        }}</span>
                       </template>
                       <template #description>
                         难度: {{ difficultyText(node.difficulty) }}
@@ -147,9 +159,9 @@
     <el-dialog v-model="courseSelectorVisible" title="相关推荐课程" width="480px">
       <div v-loading="loadingCoursesByKp">
         <div v-if="relatedCourses.length" class="course-list">
-          <div 
-            v-for="course in relatedCourses" 
-            :key="course.id" 
+          <div
+            v-for="course in relatedCourses"
+            :key="course.id"
             class="course-option"
             @click="goToCourseDetail(course.id)"
           >
@@ -167,163 +179,165 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from "vue";
-import { useRouter } from "vue-router";
-import { useUserStore } from "@/store/user";
-import { getHybridRecommend } from "@/api/recommend";
-import { Reading, Refresh, ArrowDown, ArrowUp, ArrowRight } from '@element-plus/icons-vue';
-import { getCoursesByKnowledgePoint } from "@/api/course";
-import { notification } from "@/services/notification";
+import { computed, ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { useUserStore } from '@/store/user'
+import { getHybridRecommend } from '@/api/recommend'
+import { Reading, Refresh, ArrowDown, ArrowUp, ArrowRight } from '@element-plus/icons-vue'
+import { getCoursesByKnowledgePoint } from '@/api/course'
+import { notification } from '@/services/notification'
 
-const router = useRouter();
-const userStore = useUserStore();
+const router = useRouter()
+const userStore = useUserStore()
 
-const currentUserId = computed(() => userStore.userInfo?.userId);
+const currentUserId = computed(() => userStore.userInfo?.userId)
 const currentUserIdText = computed(() => {
-  const userId = Number(currentUserId.value);
-  return Number.isFinite(userId) && userId > 0 ? String(userId) : "未登录";
-});
+  const userId = Number(currentUserId.value)
+  return Number.isFinite(userId) && userId > 0 ? String(userId) : '未登录'
+})
 
 const recommendation = ref({
   items: [],
-});
+})
 
-const items = computed(() => recommendation.value.items || []);
+const items = computed(() => recommendation.value.items || [])
 
-const lastUpdatedText = ref("");
+const lastUpdatedText = ref('')
 
 const formatDate = (date) => {
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-};
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
 
-const loading = ref(false);
+const loading = ref(false)
 
 const toFiniteNumber = (value, fallback = 0) => {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-};
+  const number = Number(value)
+  return Number.isFinite(number) ? number : fallback
+}
 
-const normalizeArray = (value) => Array.isArray(value) ? value : [];
+const normalizeArray = (value) => (Array.isArray(value) ? value : [])
 
 const normalizeRecommendItem = (item) => ({
   courseId: toFiniteNumber(item?.courseId, 0),
-  title: item?.title ?? "",
+  title: item?.title ?? '',
   difficulty: toFiniteNumber(item?.difficulty, 0),
   recommendScore: toFiniteNumber(item?.recommendScore ?? item?.finalScore, 0),
-  reason: item?.reason ?? "",
+  reason: item?.reason ?? '',
   readiness: toFiniteNumber(item?.readiness, 0),
   recommendSource: normalizeSource(item),
   isNewCourse: Boolean(item?.isNewCourse),
   knowledgePoints: normalizeArray(item?.knowledgePoints),
   missingPrerequisitesMastery: normalizeArray(item?.missingPrerequisitesMastery),
   learningPaths: normalizeArray(item?.learningPaths).filter(Array.isArray),
-});
+})
 
 const sourceMap = {
   CF: {
-    label: "CF 路径",
-    type: "success",
-    description: "协同过滤候选通过课程状态、已选过滤和图谱准备度加权后返回",
+    label: 'CF 路径',
+    type: 'success',
+    description: '协同过滤候选通过课程状态、已选过滤和图谱准备度加权后返回',
   },
   COLD_START_USER: {
-    label: "冷启动路径",
-    type: "warning",
-    description: "用户学习行为不足时，根据初始化画像和兴趣标签生成",
+    label: '冷启动路径',
+    type: 'warning',
+    description: '用户学习行为不足时，根据初始化画像和兴趣标签生成',
   },
   COLD_START_COURSE: {
-    label: "新课注入",
-    type: "primary",
-    description: "常规推荐链路中的新课冷启动候选，经过质量门槛和曝光插槽控制",
+    label: '新课注入',
+    type: 'primary',
+    description: '常规推荐链路中的新课冷启动候选，经过质量门槛和曝光插槽控制',
   },
   HOT_FALLBACK: {
-    label: "热门兜底",
-    type: "danger",
-    description: "CF 与新课候选都不可用时，从近期热门课程中兜底补全",
+    label: '热门兜底',
+    type: 'danger',
+    description: 'CF 与新课候选都不可用时，从近期热门课程中兜底补全',
   },
   UNKNOWN: {
-    label: "来源未知",
-    type: "info",
-    description: "接口未返回推荐来源，请检查缓存或后端推荐链路",
+    label: '来源未知',
+    type: 'info',
+    description: '接口未返回推荐来源，请检查缓存或后端推荐链路',
   },
-};
-
-function normalizeSource(item) {
-  const rawSource = String(item?.recommendSource || "").trim().toUpperCase();
-  if (sourceMap[rawSource]) {
-    return rawSource;
-  }
-  return item?.isNewCourse ? "COLD_START_COURSE" : "UNKNOWN";
 }
 
-const sourceMeta = (item) => sourceMap[item?.recommendSource] || sourceMap.UNKNOWN;
+function normalizeSource(item) {
+  const rawSource = String(item?.recommendSource || '')
+    .trim()
+    .toUpperCase()
+  if (sourceMap[rawSource]) {
+    return rawSource
+  }
+  return item?.isNewCourse ? 'COLD_START_COURSE' : 'UNKNOWN'
+}
+
+const sourceMeta = (item) => sourceMap[item?.recommendSource] || sourceMap.UNKNOWN
 
 const sourceStats = computed(() => {
   const counts = items.value.reduce((acc, item) => {
-    const source = item.recommendSource || "UNKNOWN";
-    acc[source] = (acc[source] || 0) + 1;
-    return acc;
-  }, {});
+    const source = item.recommendSource || 'UNKNOWN'
+    acc[source] = (acc[source] || 0) + 1
+    return acc
+  }, {})
   return Object.keys(sourceMap).map((code) => ({
     code,
     ...sourceMap[code],
     count: counts[code] || 0,
-  }));
-});
+  }))
+})
 
 const normalizePayload = (payload) => {
-  if (!payload || typeof payload !== "object") {
-    return { items: [] };
+  if (!payload || typeof payload !== 'object') {
+    return { items: [] }
   }
 
   return {
     items: normalizeArray(payload.items)
       .map(normalizeRecommendItem)
       .filter((item) => item.courseId > 0),
-  };
-};
+  }
+}
 
 const fetchRecommendation = async () => {
-  loading.value = true;
+  loading.value = true
   try {
-    const res = await getHybridRecommend();
-    const payload = res?.data?.data ?? res?.data ?? {};
-    recommendation.value = normalizePayload(payload);
-    lastUpdatedText.value = formatDate(new Date());
+    const res = await getHybridRecommend()
+    const payload = res?.data?.data ?? res?.data ?? {}
+    recommendation.value = normalizePayload(payload)
+    lastUpdatedText.value = formatDate(new Date())
   } catch (e) {
-    notification.error("获取推荐失败", e);
+    notification.error('获取推荐失败', e)
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 
 onMounted(() => {
-  fetchRecommendation();
-});
+  fetchRecommendation()
+})
 
-const toPercent = (value) => Math.round(Number(value || 0) * 100);
+const toPercent = (value) => Math.round(Number(value || 0) * 100)
 
-const formatRecommendScore = (score) => Math.round(toFiniteNumber(score, 0));
+const formatRecommendScore = (score) => Math.round(toFiniteNumber(score, 0))
 
-const scoreTagType = (score) => formatRecommendScore(score) >= 85 ? "danger" : "success";
+const scoreTagType = (score) => (formatRecommendScore(score) >= 85 ? 'danger' : 'success')
 
 const difficultyMap = {
-  1: "初级",
-  2: "中级",
-  3: "高级"
-};
+  1: '初级',
+  2: '中级',
+  3: '高级',
+}
 
-const difficultyText = (level) => difficultyMap[level] || "未知";
+const difficultyText = (level) => difficultyMap[level] || '未知'
 
-const expandedMap = ref({});
+const expandedMap = ref({})
 
-const isPathExpanded = (courseId) => !!expandedMap.value[courseId];
+const isPathExpanded = (courseId) => !!expandedMap.value[courseId]
 
 const togglePath = (courseId) => {
-  expandedMap.value[courseId] = !expandedMap.value[courseId];
-};
+  expandedMap.value[courseId] = !expandedMap.value[courseId]
+}
 
 // 进度条颜色渐变
 const progressColors = [
@@ -332,58 +346,58 @@ const progressColors = [
   { color: '#5cb87a', percentage: 60 },
   { color: '#1989fa', percentage: 80 },
   { color: '#6f7ad3', percentage: 100 },
-];
+]
 
 const openCourse = (item) => {
   router.push({
-    name: "CourseDetail",
-    params: { id: item.courseId },
-  });
-};
+    name: 'CourseDetail',
+    params: { courseId: item.courseId },
+  })
+}
 
-const relatedCourses = ref([]);
-const courseSelectorVisible = ref(false);
-const loadingCoursesByKp = ref(false);
+const relatedCourses = ref([])
+const courseSelectorVisible = ref(false)
+const loadingCoursesByKp = ref(false)
 
 const normalizeCourseListFromResponse = (res) => {
-  const payload = res?.data?.data ?? res?.data;
-  if (!Array.isArray(payload)) return [];
+  const payload = res?.data?.data ?? res?.data
+  if (!Array.isArray(payload)) return []
   return payload
     .map((item) => ({
       id: Number(item?.id),
-      title: item?.title ?? "",
+      title: item?.title ?? '',
       difficulty: Number(item?.difficulty ?? 0),
     }))
-    .filter((item) => Number.isFinite(item.id) && item.id > 0);
-};
+    .filter((item) => Number.isFinite(item.id) && item.id > 0)
+}
 
 const openKnowledgePointCourses = async (node) => {
-  const kpId = Number(node?.id);
+  const kpId = Number(node?.id)
   if (!Number.isFinite(kpId)) {
-    notification.warn("该知识点缺少 id，无法查询关联课程");
-    return;
+    notification.warn('该知识点缺少 id，无法查询关联课程')
+    return
   }
-  if (loadingCoursesByKp.value) return;
+  if (loadingCoursesByKp.value) return
 
-  loadingCoursesByKp.value = true;
+  loadingCoursesByKp.value = true
   try {
-    const res = await getCoursesByKnowledgePoint(kpId);
-    relatedCourses.value = normalizeCourseListFromResponse(res);
-    courseSelectorVisible.value = true;
+    const res = await getCoursesByKnowledgePoint(kpId)
+    relatedCourses.value = normalizeCourseListFromResponse(res)
+    courseSelectorVisible.value = true
   } catch (e) {
-    notification.error("获取知识点关联课程失败", e);
+    notification.error('获取知识点关联课程失败', e)
   } finally {
-    loadingCoursesByKp.value = false;
+    loadingCoursesByKp.value = false
   }
-};
+}
 
 const goToCourseDetail = (courseId) => {
-  courseSelectorVisible.value = false;
+  courseSelectorVisible.value = false
   router.push({
-    name: "CourseDetail",
-    params: { id: courseId },
-  });
-};
+    name: 'CourseDetail',
+    params: { courseId },
+  })
+}
 </script>
 
 <style scoped>
@@ -534,7 +548,7 @@ const goToCourseDetail = (courseId) => {
   border-radius: 4px;
   background: #0f172a;
   color: #ffffff;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
   font-size: 11px;
 }
 
