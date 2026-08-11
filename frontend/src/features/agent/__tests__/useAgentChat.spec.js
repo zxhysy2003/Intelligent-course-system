@@ -48,9 +48,7 @@ describe('useAgentChat', () => {
 
   it('initializes sessions and selects the first session', async () => {
     mocks.listAgentSessions.mockResolvedValue(ok([{ id: 1, title: '第一课' }]))
-    mocks.listAgentMessages.mockResolvedValue(
-      ok([{ id: 11, role: 'ASSISTANT', content: '你好' }]),
-    )
+    mocks.listAgentMessages.mockResolvedValue(ok([{ id: 11, role: 'ASSISTANT', content: '你好' }]))
     const chat = useAgentChat()
 
     await chat.initialize()
@@ -179,7 +177,9 @@ describe('useAgentChat', () => {
   it('ignores a late chat response after switching sessions', async () => {
     const response = deferred()
     mocks.sendAgentChat.mockImplementation(() => response.promise)
-    mocks.listAgentMessages.mockResolvedValue(ok([{ id: 21, role: 'ASSISTANT', content: '当前会话' }]))
+    mocks.listAgentMessages.mockResolvedValue(
+      ok([{ id: 21, role: 'ASSISTANT', content: '当前会话' }]),
+    )
     const chat = useAgentChat()
     chat.currentSessionId.value = 1
     chat.draft.value = '旧会话问题'

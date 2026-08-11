@@ -88,7 +88,9 @@ export function sameSession(left, right) {
 }
 
 export function canRetryMessage(message) {
-  return message?.role === 'USER' && Boolean(message?.clientMessageId) && message?.status === 'failed'
+  return (
+    message?.role === 'USER' && Boolean(message?.clientMessageId) && message?.status === 'failed'
+  )
 }
 
 export function unwrapData(response) {

@@ -5,13 +5,7 @@
         <h2>学习助手</h2>
         <span>历史会话</span>
       </div>
-      <el-button
-        type="primary"
-        :icon="Plus"
-        circle
-        :loading="creating"
-        @click="emit('create')"
-      />
+      <el-button type="primary" :icon="Plus" circle :loading="creating" @click="emit('create')" />
     </div>
 
     <div v-loading="loading" class="session-list">

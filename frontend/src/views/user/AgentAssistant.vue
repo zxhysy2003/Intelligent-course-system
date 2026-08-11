@@ -59,10 +59,7 @@ import { Refresh } from '@element-plus/icons-vue'
 import AgentComposer from '@/features/agent/components/AgentComposer.vue'
 import AgentMessageList from '@/features/agent/components/AgentMessageList.vue'
 import AgentSessionPanel from '@/features/agent/components/AgentSessionPanel.vue'
-import {
-  AGENT_QUICK_PROMPTS,
-  useAgentChat,
-} from '@/features/agent/composables/useAgentChat'
+import { AGENT_QUICK_PROMPTS, useAgentChat } from '@/features/agent/composables/useAgentChat'
 import { notification } from '@/services/notification'
 
 const {

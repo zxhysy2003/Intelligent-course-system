@@ -12,7 +12,12 @@
 
     <div
       v-for="message in messages"
-      :key="message.id || message.localKey || message.clientMessageId || `${message.role}-${message.createTime}`"
+      :key="
+        message.id ||
+        message.localKey ||
+        message.clientMessageId ||
+        `${message.role}-${message.createTime}`
+      "
       class="message-row"
       :class="[message.role.toLowerCase(), message.status]"
     >
