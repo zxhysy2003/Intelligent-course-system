@@ -10,10 +10,14 @@
 
 - `src/views/user`：学习者侧页面，例如课程、推荐、仪表盘和知识图谱。
 - `src/views/admin`：后台管理页面，例如课程管理和用户管理。
+- `src/features`：按业务功能组织的局部组件、composable、模型和测试。
+- `src/layouts`：路由布局组件。
 - `src/api`：后端接口封装与 Axios 请求实例。
 - `src/store`：Pinia 状态管理。
 - `src/router/index.js`：路由、角色访问和页面注册。
-- `src/utils`：登录态、日志等通用工具。
+- `src/services`：通知等带外部副作用的前端服务。
+- `src/utils`：登录态、图表等通用工具。
+- `src/test`：Vitest 全局测试设置。
 - `src/assets`：源码内静态资源。
 - `public`：需要保持原始访问路径的公开资源。
 
@@ -38,9 +42,9 @@
 ## 编码与界面
 
 - 使用 Vue SFC、`<script setup>` 和 Composition API。
-- 从 `src` 导入时优先使用 `@` 别名。
+- 跨目录导入使用 `@` 别名；同一功能目录内部可以使用相对路径。
 - 视图和组件文件使用 `PascalCase`，例如 `CourseManage.vue`。
-- store、工具函数和局部变量使用 `camelCase`，例如 `useUserStore`。
+- API、store、工具函数和局部变量使用 `camelCase`，例如 `getCourses`、`useUserStore`。
 - 保持单个文件内部格式一致；不要为了风格统一做全局格式化。
 - 优先复用 Element Plus 和 `@element-plus/icons-vue` 的既有组件与图标。
 - 修改用户流程时同步考虑加载、空状态、错误提示和权限跳转。
@@ -52,13 +56,17 @@
 
 - `npm install`：按 `package-lock.json` 安装依赖。
 - `npm run dev`：启动 Vite 开发服务。
+- `npm run lint`：执行 ESLint 正确性检查。
+- `npm run test`：单次运行 Vitest。
+- `npm run test:watch`：监听运行 Vitest。
 - `npm run build`：执行生产构建。
 - `npm run preview`：本地预览生产构建。
+- `npm run check`：依次执行 lint、测试和生产构建。
+- `npm run format -- <文件路径>`：只格式化明确指定的已修改文件。
 
 验证要求：
 
-- 当前 `package.json` 暂无自动化测试脚本，前端验证以构建和手动走查为主。
-- 修改普通页面或组件时，至少确认 `npm run build` 可通过。
+- 修改普通页面或组件时，至少补充或更新相关测试并确认 `npm run check` 可通过。
 - 修改登录、路由、权限、请求封装或全局状态时，手动验证相关主流程。
 - 重点流程包括 `/login`、`/register`、`/course`、`/recommend`、`/dashboard`、`/admin/course` 和 `/admin/users`。
 - UI 改动应检查桌面宽度下的布局、空状态、错误提示和主要按钮交互。

@@ -50,6 +50,8 @@
 - Axios
 - ECharts 6
 - jwt-decode
+- Vitest + Vue Test Utils
+- ESLint + Prettier
 
 ## 目录结构
 
@@ -58,13 +60,18 @@ frontend
 ├── src
 │   ├── api                 # 后端接口封装
 │   ├── assets              # 静态资源
+│   ├── features            # 按业务功能组织的组件、composable 和测试
+│   ├── layouts             # 路由布局
 │   ├── router              # 路由和导航守卫
+│   ├── services            # 通知等副作用服务
 │   ├── store               # Pinia 状态管理
-│   ├── utils               # Cookie、日志等工具
+│   ├── test                # Vitest 全局测试设置
+│   ├── utils               # Cookie、图表等工具
 │   └── views
 │       ├── admin           # 管理端页面
 │       └── user            # 学生端页面
-├── public
+├── eslint.config.js
+├── jsconfig.json
 ├── index.html
 ├── package.json
 ├── package-lock.json
@@ -73,7 +80,7 @@ frontend
 
 ## 环境要求
 
-- Node.js 18+
+- Node.js `^20.19.0` 或 `>=22.12.0`
 - npm 9+
 - 可访问的后端服务，默认地址为 `http://localhost:8080`
 
@@ -87,7 +94,7 @@ frontend
 }
 ```
 
-如果本机使用 Volta，可以直接使用该版本；否则使用 Node.js 18+ 即可。
+如果本机使用 Volta，可以直接使用该版本；否则应使用满足 Vite 7 要求的 Node.js 版本。
 
 ## 本地开发
 
@@ -123,25 +130,28 @@ npm run dev
 http://127.0.0.1:5173
 ```
 
-### 4. 构建和预览
+### 4. 检查、构建和预览
 
 ```bash
+npm run lint
+npm run test
+npm run check
 npm run build
 npm run preview
 ```
 
 生产构建通过路由级懒加载拆分页面代码，并在 `vite.config.js` 中把 Vue、Element Plus、ECharts 和其他第三方依赖拆成独立 vendor chunk。ECharts 页面统一从 `src/utils/echarts.js` 使用按需注册后的 `init`，当前注册了柱状图、折线图、知识图谱和雷达图所需能力。
 
-当前项目没有配置单独的测试脚本。功能变更后建议至少手动验证登录、课程、视频播放、推荐、分析、知识图谱、学习助手和后台管理流程。
+组件和业务测试使用 Vitest，测试默认与所属功能放在 `__tests__` 目录，全局媒体元素模拟位于 `src/test/setup.js`。`npm run check` 会依次执行 ESLint、测试和生产构建；功能变更后仍应手动验证登录、课程、视频播放、推荐、分析、知识图谱、学习助手和后台管理流程。
 
 ## 代理配置
 
 代理配置位于 [`vite.config.js`](vite.config.js)：
 
-| 前端路径 | 代理目标 | 说明 |
-| --- | --- | --- |
-| `/api` | `http://localhost:8080` | 后端业务接口，代理时会去掉 `/api` 前缀 |
-| `/videos` | `http://localhost:8080` | 课程视频静态资源 |
+| 前端路径  | 代理目标                | 说明                                   |
+| --------- | ----------------------- | -------------------------------------- |
+| `/api`    | `http://localhost:8080` | 后端业务接口，代理时会去掉 `/api` 前缀 |
+| `/videos` | `http://localhost:8080` | 课程视频静态资源                       |
 
 Axios 实例定义在 [`src/api/request.js`](src/api/request.js)，默认配置：
 
@@ -178,11 +188,11 @@ Axios 实例定义在 [`src/api/request.js`](src/api/request.js)，默认配置�
 
 可选值：
 
-| 字段 | 说明 |
-| --- | --- |
-| `currentLevel` | 必填，`1` 零基础、`2` 入门、`3` 有基础 |
+| 字段           | 说明                                         |
+| -------------- | -------------------------------------------- |
+| `currentLevel` | 必填，`1` 零基础、`2` 入门、`3` 有基础       |
 | `learningGoal` | 可空，`JOB`、`PROJECT`、`FOUNDATION`、`EXAM` |
-| `tagIds` | 必填，至少一个来自 `options.tags` 的启用标签 |
+| `tagIds`       | 必填，至少一个来自 `options.tags` 的启用标签 |
 
 ## 路由说明
 
@@ -230,24 +240,27 @@ Axios 实例定义在 [`src/api/request.js`](src/api/request.js)，默认配置�
 
 前端只调用 `GET /recommend/hybrid`。推荐卡片依赖后端已经裁剪过的稳定字段：
 
-| 字段 | 用途 |
-| --- | --- |
-| `courseId`、`title`、`difficulty` | 课程跳转和基础展示 |
-| `recommendScore` | 推荐页展示分，前端优先使用该字段 |
-| `reason` | 推荐原因文案 |
-| `readiness` | 学习准备度进度条，按 0~1 转百分比 |
-| `recommendSource` | 来源核验：`CF`、`COLD_START_USER`、`COLD_START_COURSE`、`HOT_FALLBACK` |
-| `isNewCourse` | 兼容字段；缺少 `recommendSource` 时用于识别新课注入 |
-| `knowledgePoints` | 涵盖知识点 |
-| `missingPrerequisitesMastery` | 薄弱前置项 |
-| `learningPaths` | 建议学习路径 |
+| 字段                              | 用途                                                                   |
+| --------------------------------- | ---------------------------------------------------------------------- |
+| `courseId`、`title`、`difficulty` | 课程跳转和基础展示                                                     |
+| `recommendScore`                  | 推荐页展示分，前端优先使用该字段                                       |
+| `reason`                          | 推荐原因文案                                                           |
+| `readiness`                       | 学习准备度进度条，按 0~1 转百分比                                      |
+| `recommendSource`                 | 来源核验：`CF`、`COLD_START_USER`、`COLD_START_COURSE`、`HOT_FALLBACK` |
+| `isNewCourse`                     | 兼容字段；缺少 `recommendSource` 时用于识别新课注入                    |
+| `knowledgePoints`                 | 涵盖知识点                                                             |
+| `missingPrerequisitesMastery`     | 薄弱前置项                                                             |
+| `learningPaths`                   | 建议学习路径                                                           |
 
 ## 开发约定
 
 - 页面组件使用 Vue SFC 和 `<script setup>`
-- `src` 下模块导入优先使用 `@` 别名
+- 跨目录导入使用 `@` 别名，同一功能目录内部可以使用相对路径
+- 页面和组件使用 PascalCase，API 和普通函数使用 camelCase
 - 用户端页面放在 `src/views/user`
 - 管理端页面放在 `src/views/admin`
+- 页面专属组件、composable 和测试优先放在 `src/features/<feature>`
+- 路由布局放在 `src/layouts`
 - API 封装放在 `src/api`
 - Pinia store 放在 `src/store`
 - 新增页面时同步更新 `src/router/index.js`

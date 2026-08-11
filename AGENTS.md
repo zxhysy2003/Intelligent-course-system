@@ -18,7 +18,7 @@
 - `./scripts/dev.sh` 或 `./scripts/dev.bash`：同时启动推荐服务、后端和前端。
 - `cd backend && ./mvnw -q -DskipTests compile`：后端快速编译检查。
 - `cd backend && ./mvnw test`：运行后端测试。
-- `cd frontend && npm install && npm run build`：安装依赖并验证前端构建。
+- `cd frontend && npm install && npm run check`：安装依赖并执行前端 lint、测试和构建。
 - `cd recommend-service && uvicorn main:app --reload --host 127.0.0.1 --port 8000`：单独启动推荐服务。
 
 ## 全局协作原则
@@ -31,7 +31,7 @@
 
 ## 测试与验证
 
-后端业务改动优先补充 `backend/src/test/java` 下的 JUnit 测试。前端暂无测试脚本，至少执行 `npm run build` 并手动检查受影响页面。推荐服务改动需启动服务并验证 `/model/status` 或 `/recommend`。跨模块功能应按真实链路验证：前端请求、后端接口、数据库/缓存、推荐服务返回。
+后端业务改动优先补充 `backend/src/test/java` 下的 JUnit 测试。前端组件和业务改动优先补充 Vitest 测试，并执行 `npm run check`；涉及用户流程时还需手动检查受影响页面。推荐服务改动需启动服务并验证 `/model/status` 或 `/recommend`。跨模块功能应按真实链路验证：前端请求、后端接口、数据库/缓存、推荐服务返回。
 
 ## 提交与 PR
 
