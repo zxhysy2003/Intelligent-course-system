@@ -36,8 +36,8 @@
 - 路由使用 `createWebHashHistory()`
 - 除 `/login` 和 `/register` 外，其他页面都需要登录
 - `/admin/*` 路由仅允许 `role === "ADMIN"` 的用户访问
-- 非管理员访问管理页会被重定向到 `/course`
-- 普通用户首次进入学生端时会请求 `/onboarding/status`，未完成则重定向到 `/onboarding`
+- 非管理员访问管理页会被重定向到 `/courses`
+- 普通用户首次进入学生端时会请求 `/api/v1/onboarding/status`，未完成则重定向到 `/onboarding`
 
 ## 技术栈
 
@@ -150,12 +150,12 @@ npm run preview
 
 | 前端路径  | 代理目标                | 说明                                   |
 | --------- | ----------------------- | -------------------------------------- |
-| `/api`    | `http://localhost:8080` | 后端业务接口，代理时会去掉 `/api` 前缀 |
+| `/api`    | `http://localhost:8080` | 后端业务接口，保留完整 `/api/v1` 路径   |
 | `/videos` | `http://localhost:8080` | 课程视频静态资源                       |
 
 Axios 实例定义在 [`src/api/request.js`](src/api/request.js)，默认配置：
 
-- `baseURL: "/api"`
+- `baseURL: "/api/v1"`
 - `timeout: 5000`
 - 请求拦截器自动添加 `Authorization: Bearer <token>`
 
@@ -165,7 +165,7 @@ Axios 实例定义在 [`src/api/request.js`](src/api/request.js)，默认配置�
 
 登录流程：
 
-1. 登录页调用 `POST /user/login`
+1. 登录页调用 `POST /api/v1/auth/login`
 2. 后端返回 JWT
 3. Pinia 用户 store 将 token 写入 `localStorage` 的 `token`
 4. `jwt-decode` 从 token 中解析 `userId`、`username` 和 `role`
@@ -180,11 +180,11 @@ Axios 实例定义在 [`src/api/request.js`](src/api/request.js)，默认配置�
 
 流程很短，适合演示：
 
-1. 路由守卫在普通用户访问学生端页面前调用 `GET /onboarding/status`
+1. 路由守卫在普通用户访问学生端页面前调用 `GET /api/v1/onboarding/status`
 2. 如果 `completed=false`，跳转到 `/onboarding?redirect=<原目标页>`
-3. 页面通过 `GET /onboarding/options` 加载等级、学习目标和可选标签
+3. 页面通过 `GET /api/v1/onboarding/options` 加载等级、学习目标和可选标签
 4. 用户选择 `currentLevel`、可选 `learningGoal`，并至少选择一个 `tagIds`
-5. `POST /onboarding/submit` 保存画像，完成后回到原目标页；没有 redirect 时默认进入 `/recommend`
+5. `PUT /api/v1/onboarding/profile` 保存画像，完成后回到原目标页；没有 redirect 时默认进入 `/recommendations`
 
 可选值：
 
@@ -206,22 +206,22 @@ Axios 实例定义在 [`src/api/request.js`](src/api/request.js)，默认配置�
 
 ### 学生端路由
 
-- `/course`：课程列表
-- `/courseDetail/:id`：课程详情和视频学习
+- `/courses`：课程列表
+- `/courses/:courseId`：课程详情和视频学习
 - `/onboarding`：新用户引导
-- `/recommend`：个性化推荐
+- `/recommendations`：个性化推荐
 - `/dashboard`：学习进度
-- `/agent`：学习助手
-- `/graph`：知识图谱
+- `/assistant`：学习助手
+- `/knowledge-graph`：知识图谱
 - `/profile`：个人中心
 
 ### 管理端路由
 
-- `/admin/course`：课程管理
-- `/admin/course/register`：新增课程
-- `/admin/course/edit/:id`：编辑课程
+- `/admin/courses`：课程管理
+- `/admin/courses/new`：新增课程
+- `/admin/courses/:courseId/edit`：编辑课程
 - `/admin/users`：用户管理
-- `/admin/users/edit/:id`：编辑用户
+- `/admin/users/:userId/edit`：编辑用户
 
 ## API 模块
 
@@ -238,7 +238,7 @@ Axios 实例定义在 [`src/api/request.js`](src/api/request.js)，默认配置�
 
 ## 推荐页字段
 
-前端只调用 `GET /recommend/hybrid`。推荐卡片依赖后端已经裁剪过的稳定字段：
+前端只调用 `GET /api/v1/recommendations`。推荐卡片依赖后端已经裁剪过的稳定字段：
 
 | 字段                              | 用途                                                                   |
 | --------------------------------- | ---------------------------------------------------------------------- |
@@ -287,7 +287,7 @@ Pinia store 会从 `localStorage.token` 初始化用户信息。如果 token 已
 
 ### 推荐页面无数据
 
-前端只调用后端 `/recommend/hybrid`。请确认后端已经启动、推荐服务 `../recommend-service` 可用，并且后端的 `RECOMMEND_SERVICE_URL` 指向推荐服务实际地址。
+前端只调用后端 `/api/v1/recommendations`。请确认后端已经启动、推荐服务 `../recommend-service` 可用，并且后端的 `RECOMMEND_SERVICE_URL` 指向推荐服务实际地址。
 
 ## 更多文档
 

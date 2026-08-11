@@ -149,7 +149,7 @@ java -jar target/course-system-0.0.1-SNAPSHOT.jar
 - `VIDEO_DIR`、`VIDEO_BASE_URL`、`FFPROBE_PATH`：视频上传与播放。
 - `AGENT_LLM_*`：学习助手模型接入。
 
-学习助手接口统一在 `/agent/**`，由 JWT 拦截器保护。Agent 只读分析学习数据，不执行选课、收藏、删除或进度更新。`POST /agent/chat` 需要传入 `clientMessageId`，用于发送失败重试时防重复落库和重复调用模型；`AGENT_INCOMPLETE_RECOVERY_AFTER_MS` 控制半成品发送的恢复窗口，默认 90 秒。
+学习助手接口统一在 `/api/v1/assistant/**`，由 JWT 拦截器保护。Agent 只读分析学习数据，不执行选课、收藏、删除或进度更新。`POST /api/v1/assistant/messages` 需要传入 `clientMessageId`，用于发送失败重试时防重复落库和重复调用模型；`AGENT_INCOMPLETE_RECOVERY_AFTER_MS` 控制半成品发送的恢复窗口，默认 90 秒。
 
 ## 接口分组
 
@@ -161,45 +161,44 @@ Authorization: Bearer <your_token>
 
 ### 用户端
 
-- `POST /user/register`：注册
-- `POST /user/login`：登录
-- `GET /user/profile`：当前用户信息
-- `GET /course/{courseId}`：课程详情
-- `POST /course/list`：课程分页
-- `GET /course/categories`：课程分类
-- `GET /course/attend/{courseId}`：选课
-- `GET /course/video/{courseId}`：课程视频地址
-- `POST /course/relation/updateProgressSeconds`：更新学习进度
-- `POST /behavior/record`：记录学习行为
-- `GET /recommend/hybrid`：混合推荐
-- `GET /onboarding/options`：冷启动问卷选项
-- `POST /onboarding/submit`：提交冷启动问卷
-- `GET /onboarding/status`：冷启动状态
-- `GET /analysis/progress`：学习进度
-- `GET /analysis/ability-radar`：能力雷达图
-- `GET /analysis/knowledge-graph`：知识图谱
-- `GET /agent/sessions`：学习助手会话列表
-- `POST /agent/sessions`：创建学习助手会话
-- `PATCH /agent/sessions/{sessionId}`：重命名学习助手会话
-- `DELETE /agent/sessions/{sessionId}`：删除学习助手会话
-- `GET /agent/sessions/{sessionId}/messages`：学习助手消息列表
-- `POST /agent/chat`：发送学习助手消息，需携带 `clientMessageId`
+- `POST /api/v1/auth/register`、`POST /api/v1/auth/login`：注册和登录
+- `GET /api/v1/users/me`：当前用户信息
+- `POST /api/v1/courses/search`、`GET /api/v1/courses/categories`：上线课程分页和分类
+- `GET /api/v1/courses/{courseId}`：课程详情
+- `GET /api/v1/knowledge-points/{knowledgePointId}/courses`：知识点关联课程
+- `GET /api/v1/courses/{courseId}/knowledge-points`：课程知识点
+- `GET /api/v1/courses/{courseId}/video`：课程视频地址
+- `POST /api/v1/courses/{courseId}/enrollment`：选课
+- `GET /api/v1/courses/{courseId}/enrollment`：当前用户选课关系
+- `PATCH /api/v1/courses/{courseId}/enrollment/progress`：更新学习进度
+- `POST /api/v1/learning-behaviors`：记录学习行为
+- `GET /api/v1/recommendations`：融合推荐
+- `GET /api/v1/onboarding/options`、`GET /api/v1/onboarding/status`：引导选项和状态
+- `PUT /api/v1/onboarding/profile`：保存引导画像
+- `GET /api/v1/learning-analytics/progress`：学习进度
+- `GET /api/v1/learning-analytics/ability-radar`：能力雷达图
+- `GET /api/v1/learning-analytics/knowledge-graph`：知识图谱
+- `GET|POST /api/v1/assistant/sessions`：学习助手会话列表和创建
+- `PATCH|DELETE /api/v1/assistant/sessions/{sessionId}`：重命名或删除会话
+- `GET /api/v1/assistant/sessions/{sessionId}/messages`：学习助手消息列表
+- `POST /api/v1/assistant/messages`：发送学习助手消息，需携带 `clientMessageId`
 
 ### 管理端
 
-- `POST /admin/user/list`：用户分页
-- `GET /admin/user/detail/{userId}`：用户详情
-- `PUT /admin/user/role/{userId}`：修改用户角色
-- `PUT /admin/user/status/{userId}`：修改用户状态
-- `PUT /admin/user/update`：更新用户信息
-- `DELETE /admin/user/delete`：删除用户
-- `GET /admin/course/register-options`：课程注册选项
-- `POST /admin/course/register`：新增课程
-- `PUT /admin/course/update`：更新课程
-- `DELETE /admin/course/delete`：删除课程
-- `POST /admin/course/{courseId}/video`：上传课程视频
-- `GET /admin/course/detail/{courseId}`：后台课程详情
-- `PUT /admin/course/status/{courseId}`：更新课程状态
+`/api/v1/admin/**` 除 JWT 登录外还要求令牌角色为 `ADMIN`，否则返回 HTTP 403。
+
+- `POST /api/v1/admin/users/search`：用户分页
+- `GET|PUT /api/v1/admin/users/{userId}`：用户详情和更新
+- `PATCH /api/v1/admin/users/{userId}/role`：修改用户角色
+- `PATCH /api/v1/admin/users/{userId}/status`：修改用户状态
+- `DELETE /api/v1/admin/users`：批量删除用户
+- `POST /api/v1/admin/courses/search`：管理课程分页
+- `GET /api/v1/admin/courses/form-options`：课程表单选项
+- `POST /api/v1/admin/courses`：新增课程
+- `GET|PUT /api/v1/admin/courses/{courseId}`：后台课程详情和更新
+- `DELETE /api/v1/admin/courses`：批量删除课程
+- `PATCH /api/v1/admin/courses/{courseId}/status`：更新课程状态
+- `POST /api/v1/admin/courses/{courseId}/video`：上传课程视频
 
 ### 静态资源
 

@@ -2,6 +2,8 @@
 
 这套配置用于学习部署流程：在本机用 Docker Compose 同时运行前端 Nginx、Spring Boot 后端、FastAPI 推荐服务、MySQL、Redis 和 Neo4j。
 
+前端与后端使用破坏性的 `/api/v1` 契约，部署时必须同步更新前端静态资源、后端镜像和 `deploy/nginx.conf`。Nginx 的 `proxy_pass` 不带尾部 `/`，确保 `/api/v1` 不会在转发时被剥离；`/videos/**` 仍按原配置转发。
+
 ## 文件说明
 
 - `docker-compose.local.yml`：本机完整服务编排。
@@ -17,7 +19,7 @@
 Browser
   -> http://localhost:8088
   -> frontend nginx
-     -> /api    -> backend:8080
+     -> /api/v1 -> backend:8080（保留完整 URI）
      -> /videos -> backend:8080
 
 backend

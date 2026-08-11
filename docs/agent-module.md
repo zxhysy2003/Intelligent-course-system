@@ -10,21 +10,21 @@
 
 - Controller：`backend/src/main/java/com/sy/course_system/controller/client/AgentController.java`
 - API 路径：
-  - `GET /agent/sessions`：查询当前用户的有效会话
-  - `POST /agent/sessions`：创建会话
-  - `PATCH /agent/sessions/{sessionId}`：重命名会话
-  - `DELETE /agent/sessions/{sessionId}`：软删除会话
-  - `GET /agent/sessions/{sessionId}/messages`：查询会话消息
-  - `POST /agent/chat`：发送聊天消息
+  - `GET /api/v1/assistant/sessions`：查询当前用户的有效会话
+  - `POST /api/v1/assistant/sessions`：创建会话
+  - `PATCH /api/v1/assistant/sessions/{sessionId}`：重命名会话
+  - `DELETE /api/v1/assistant/sessions/{sessionId}`：软删除会话
+  - `GET /api/v1/assistant/sessions/{sessionId}/messages`：查询会话消息
+  - `POST /api/v1/assistant/messages`：发送聊天消息
 - Service：`AgentService` / `AgentServiceImpl`
 - 前端页面：`frontend/src/views/user/AgentAssistant.vue`
 - 前端接口封装：`frontend/src/api/agent.js`
-- 前端路由：`/agent`
+- 前端路由：`/assistant`
 
 ## 3. 核心流程
 
-1. 前端进入 `/agent` 页面后，通过 `ListAgentSessions` 拉取当前用户的会话列表；如果有会话，默认选择第一条并加载消息。历史消息加载后会执行 `normalizeLoadedMessages`，把“有 `clientMessageId` 但没有对应 ASSISTANT”的 USER 消息标记为可重试。
-2. 用户发送消息时，前端生成 `clientMessageId`，先在页面插入一条本地 `sending` 状态的 USER 消息，再调用 `POST /agent/chat`。
+1. 前端进入 `/assistant` 页面后，通过 `listAgentSessions` 拉取当前用户的会话列表；如果有会话，默认选择第一条并加载消息。历史消息加载后会执行 `normalizeLoadedMessages`，把“有 `clientMessageId` 但没有对应 ASSISTANT”的 USER 消息标记为可重试。
+2. 用户发送消息时，前端生成 `clientMessageId`，先在页面插入一条本地 `sending` 状态的 USER 消息，再调用 `POST /api/v1/assistant/messages`。
 3. `AgentController.chat` 从 `UserContext` 获取当前用户 ID，并调用 `AgentServiceImpl.chat`。
 4. `AgentServiceImpl` 先检查 `AGENT_ENABLED`，再校验消息内容和 `clientMessageId`。消息不能为空，长度不能超过 2000；`clientMessageId` 需要符合 `[A-Za-z0-9_-]{8,64}`。
 5. Service 根据 `clientMessageId` 查询是否已有 USER / ASSISTANT 消息：
@@ -45,7 +45,7 @@
 
 | 类 / 文件 | 作用 |
 |---|---|
-| `AgentController` | 提供 `/agent/**` 接口，并将业务异常转换为统一 `Result`。 |
+| `AgentController` | 提供 `/api/v1/assistant/**` 接口，并将业务异常转换为统一 `Result`。 |
 | `AgentServiceImpl` | Agent 主流程编排：会话校验、消息落库、幂等处理、上下文组装、模型调用、响应组装。 |
 | `AgentContextAssembler` | 从用户画像、学习分析、最近课程、混合推荐中组装 system prompt 和 sources。 |
 | `OpenAiCompatibleAgentLlmClient` | 调用 OpenAI 兼容模型接口；无密钥或 mock provider 时返回本地 mock 回答。 |
@@ -77,7 +77,7 @@ Agent 模块当前不直接访问 Redis、Neo4j 或 Python 推荐服务；这些
 - **功能开关**：所有 Service 方法都会调用 `ensureEnabled`。当 `AGENT_ENABLED=false` 时，接口返回禁用错误，不再继续创建会话或保存消息。
 - **只读业务边界**：system prompt 明确要求助手只提供学习建议、推荐解释、薄弱点分析和学习路径建议，不执行选课、收藏、删除或进度更新。
 - **会话权限与生命周期**：所有读取、更新、删除消息或会话的操作都通过 `selectActiveByIdAndUserId` 校验当前用户和 `status=1`。删除会话是软删除。
-- **发送幂等**：`POST /agent/chat` 必须传 `clientMessageId`。同一个用户、同一个角色、同一个 `clientMessageId` 只能落一条消息。
+- **发送幂等**：`POST /api/v1/assistant/messages` 必须传 `clientMessageId`。同一个用户、同一个角色、同一个 `clientMessageId` 只能落一条消息。
 - **处理中保护**：Service 内部用 `processingClientMessages` 记录 `userId:clientMessageId` 的处理中状态，避免同一条消息并发重复调用模型。
 - **半成品恢复**：如果 USER 已落库但 ASSISTANT 未落库，且处理中标记超过 `AGENT_INCOMPLETE_RECOVERY_AFTER_MS`，后续重试可以接管并补齐 ASSISTANT 消息。接管后会再次查询同一 `clientMessageId`，如果 ASSISTANT 已经由原请求写入，则直接回放已有结果，不再调用模型。
 - **幂等回放会话校验**：即使 `clientMessageId` 已存在，Service 也会重新校验 stored USER message 所属会话仍然有效。如果请求传了 `sessionId`，还必须和 stored message 的 `sessionId` 一致。

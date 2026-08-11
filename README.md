@@ -49,10 +49,10 @@ backend 同时依赖 MySQL、Redis、Neo4j 和本地视频目录；recommend-ser
 1. 注册或登录一个普通学生账号
 2. 首次进入学生端会自动跳到 `/onboarding`
 3. 依次选择当前基础、学习目标和至少一个兴趣标签
-4. 完成后进入 `/recommend`，推荐卡片会显示推荐分、原因、准备度和来源标签
+4. 完成后进入 `/recommendations`，推荐卡片会显示推荐分、原因、准备度和来源标签
 5. 可继续进入课程详情、播放视频并回写学习行为，再刷新推荐观察结果变化
 
-推荐来源字段由后端 `/recommend/hybrid` 透出为 `recommendSource`：
+推荐来源字段由后端 `GET /api/v1/recommendations` 透出为 `recommendSource`：
 
 | 值 | 含义 |
 | --- | --- |
@@ -63,7 +63,7 @@ backend 同时依赖 MySQL、Redis、Neo4j 和本地视频目录；recommend-ser
 
 ## 学习助手 Agent
 
-学生端 `/agent` 学习助手由后端内置实现，复用课程、推荐、进度和知识图谱数据生成只读学习建议。模型接入和配置项见 [backend/README.md](./backend/README.md)。
+学生端 `/assistant` 学习助手由后端内置实现，复用课程、推荐、进度和知识图谱数据生成只读学习建议。模型接入和配置项见 [backend/README.md](./backend/README.md)。
 
 ## 快速开始
 
@@ -115,7 +115,7 @@ docker compose -f docker-compose.local.yml up -d --build
 
 - 根目录负责项目总览和文档入口
 - 服务级 README 负责各自的依赖、启动、配置、接口和常见问题
-- 前端通过 `/api` 和 `/videos` 代理访问后端
+- 前端通过 `/api/v1` 访问版本化 JSON API，通过 `/videos` 访问静态视频
 - 后端通过 `RECOMMEND_SERVICE_URL` 调用推荐服务
 - 推荐服务直连 MySQL 读取后端维护的 `recommend_user_course_score` 快照表
 

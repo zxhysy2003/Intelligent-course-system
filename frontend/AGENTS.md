@@ -32,7 +32,7 @@
 
 ## 配置与接口约束
 
-- 本地开发通过 `vite.config.js` 代理 `/api` 和 `/videos` 到后端 `http://localhost:8080`。
+- 本地开发通过 `vite.config.js` 代理 `/api` 和 `/videos` 到后端 `http://localhost:8080`，并保留完整 `/api/v1` URI。
 - 不要把本地临时地址、真实令牌、账号密码或生产环境配置写回仓库。
 - 新增后端接口时，优先在 `src/api` 中封装，再由页面或 store 调用。
 - 修改接口返回结构时，同步检查所有使用该接口的页面、store 和工具函数。
@@ -68,7 +68,7 @@
 
 - 修改普通页面或组件时，至少补充或更新相关测试并确认 `npm run check` 可通过。
 - 修改登录、路由、权限、请求封装或全局状态时，手动验证相关主流程。
-- 重点流程包括 `/login`、`/register`、`/course`、`/recommend`、`/dashboard`、`/admin/course` 和 `/admin/users`。
+- 重点流程包括 `/login`、`/register`、`/courses`、`/recommendations`、`/dashboard`、`/admin/courses` 和 `/admin/users`。
 - UI 改动应检查桌面宽度下的布局、空状态、错误提示和主要按钮交互。
 
 ## 提交规范

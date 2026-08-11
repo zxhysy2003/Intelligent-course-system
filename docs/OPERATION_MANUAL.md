@@ -10,7 +10,9 @@
 
 如果想用 Docker 学习完整部署流程，可以直接使用根目录 `docker-compose.local.yml`，它会同时启动前端 Nginx、后端、推荐服务、MySQL、Redis 和 Neo4j，默认入口为 `http://localhost:8088`。详细步骤见 [`docs/DOCKER_LOCAL_DEPLOY.md`](./DOCKER_LOCAL_DEPLOY.md)。
 
-演示主线建议使用普通学生账号：登录后先完成 `/onboarding` 三步引导，再进入 `/recommend` 查看带来源核验的推荐卡片，也可以进入 `/agent` 让学习助手基于学习画像、进度、能力雷达、最近课程和推荐结果生成只读学习建议。
+页面 URL 与 JSON API 是一次性破坏性升级，不提供旧路径兼容。部署环境必须同步发布前端、后端和 Nginx 配置；Nginx 转发 `/api/v1` 时必须保留完整 URI，静态视频继续使用 `/videos/**`。
+
+演示主线建议使用普通学生账号：登录后先完成 `/onboarding` 三步引导，再进入 `/recommendations` 查看带来源核验的推荐卡片，也可以进入 `/assistant` 让学习助手基于学习画像、进度、能力雷达、最近课程和推荐结果生成只读学习建议。
 
 ## 1. 仓库结构
 
@@ -85,10 +87,10 @@ backend 同时依赖 MySQL、Redis、Neo4j、本地视频目录和可选的 Open
 
 ### 3.2 前端
 
-- Node.js 18+
+- Node.js `^20.19.0` 或 `>=22.12.0`
 - npm 9+
 
-项目 `frontend/package.json` 中配置了 Volta Node 版本 `22.22.2`。如果本机使用 Volta，可以直接让 Volta 接管 Node 版本；否则使用 Node.js 18+ 即可。
+项目 `frontend/package.json` 中配置了 Volta Node 版本 `22.22.2`。如果本机使用 Volta，可以直接让 Volta 接管 Node 版本；否则使用满足 Vite 7 要求的版本。
 
 ### 3.3 推荐服务
 
@@ -323,10 +325,10 @@ export AGENT_LLM_PROVIDER=mock
 
 ### 6.2 前端接口配置
 
-前端 Axios 默认以 `/api` 作为接口前缀，Vite 代理配置位于 `frontend/vite.config.js`：
+前端 Axios 默认以 `/api/v1` 作为接口前缀，Vite 代理保留完整路径，配置位于 `frontend/vite.config.js`：
 
 ```text
-/api    -> http://localhost:8080
+/api/v1 -> http://localhost:8080/api/v1
 /videos -> http://localhost:8080
 ```
 
@@ -526,13 +528,13 @@ npm run preview
 1. 浏览器打开 `http://127.0.0.1:5173`
 2. 前端登录或注册是否正常
 3. 普通学生首次进入学生端是否自动跳到 `/onboarding`
-4. 完成学习基础、学习目标、兴趣方向后是否跳转到 `/recommend`
+4. 完成学习基础、学习目标、兴趣方向后是否跳转到 `/recommendations`
 5. 后端 `http://127.0.0.1:8080/actuator/health` 是否可访问
 6. 推荐服务 `http://127.0.0.1:8000/docs` 是否可访问
 7. 前端课程列表、课程详情、选课、视频学习是否正常
 8. 推荐页是否能返回推荐课程，并显示 `CF`、`COLD_START_USER`、`COLD_START_COURSE` 或 `HOT_FALLBACK` 来源标签
 9. 学习进度、能力雷达图、知识图谱页面是否正常渲染
-10. 学习助手 `/agent` 是否能创建会话、发送消息；刷新后半成品 USER 消息是否显示“回答未完成，可重试”
+10. 学习助手 `/assistant` 是否能创建会话、发送消息；刷新后半成品 USER 消息是否显示“回答未完成，可重试”
 11. 管理端课程管理、用户管理、视频上传流程是否正常
 
 ## 11. 常用接口示例
@@ -546,7 +548,7 @@ Authorization: Bearer <your_token>
 ### 11.1 注册
 
 ```bash
-curl -X POST "http://127.0.0.1:8080/user/register" \
+curl -X POST "http://127.0.0.1:8080/api/v1/auth/register" \
   -H "Content-Type: application/json" \
   -d '{
     "username": "test_user",
@@ -559,7 +561,7 @@ curl -X POST "http://127.0.0.1:8080/user/register" \
 ### 11.2 登录
 
 ```bash
-curl -X POST "http://127.0.0.1:8080/user/login" \
+curl -X POST "http://127.0.0.1:8080/api/v1/auth/login" \
   -H "Content-Type: application/json" \
   -d '{
     "username": "admin",
@@ -570,14 +572,14 @@ curl -X POST "http://127.0.0.1:8080/user/login" \
 ### 11.3 获取当前用户信息
 
 ```bash
-curl "http://127.0.0.1:8080/user/profile" \
+curl "http://127.0.0.1:8080/api/v1/users/me" \
   -H "Authorization: Bearer <your_token>"
 ```
 
 ### 11.4 课程分页查询
 
 ```bash
-curl -X POST "http://127.0.0.1:8080/course/list" \
+curl -X POST "http://127.0.0.1:8080/api/v1/courses/search" \
   -H "Authorization: Bearer <your_token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -589,15 +591,17 @@ curl -X POST "http://127.0.0.1:8080/course/list" \
 ### 11.5 选课
 
 ```bash
-curl "http://127.0.0.1:8080/course/attend/1" \
+curl -X POST "http://127.0.0.1:8080/api/v1/courses/1/enrollment" \
   -H "Authorization: Bearer <your_token>"
 ```
 
 ### 11.6 记录学习行为
 
 ```bash
-curl -X POST "http://127.0.0.1:8080/behavior/record?courseId=1&behaviorType=STUDY&duration=300" \
-  -H "Authorization: Bearer <your_token>"
+curl -X POST "http://127.0.0.1:8080/api/v1/learning-behaviors" \
+  -H "Authorization: Bearer <your_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"courseId":1,"behaviorType":"STUDY","duration":300}'
 ```
 
 ### 11.7 新用户引导
@@ -605,7 +609,7 @@ curl -X POST "http://127.0.0.1:8080/behavior/record?courseId=1&behaviorType=STUD
 普通用户访问学生端页面时，前端会先查引导状态：
 
 ```bash
-curl "http://127.0.0.1:8080/onboarding/status" \
+curl "http://127.0.0.1:8080/api/v1/onboarding/status" \
   -H "Authorization: Bearer <your_token>"
 ```
 
@@ -620,7 +624,7 @@ curl "http://127.0.0.1:8080/onboarding/status" \
 引导选项：
 
 ```bash
-curl "http://127.0.0.1:8080/onboarding/options" \
+curl "http://127.0.0.1:8080/api/v1/onboarding/options" \
   -H "Authorization: Bearer <your_token>"
 ```
 
@@ -635,7 +639,7 @@ curl "http://127.0.0.1:8080/onboarding/options" \
 提交引导信息：
 
 ```bash
-curl -X POST "http://127.0.0.1:8080/onboarding/submit" \
+curl -X PUT "http://127.0.0.1:8080/api/v1/onboarding/profile" \
   -H "Authorization: Bearer <your_token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -650,7 +654,7 @@ curl -X POST "http://127.0.0.1:8080/onboarding/submit" \
 ### 11.8 获取融合推荐结果
 
 ```bash
-curl "http://127.0.0.1:8080/recommend/hybrid" \
+curl "http://127.0.0.1:8080/api/v1/recommendations" \
   -H "Authorization: Bearer <your_token>"
 ```
 
@@ -688,17 +692,17 @@ curl "http://127.0.0.1:8080/recommend/hybrid" \
 ### 11.9 获取学习分析数据
 
 ```bash
-curl "http://127.0.0.1:8080/analysis/progress?days=30" \
+curl "http://127.0.0.1:8080/api/v1/learning-analytics/progress?days=30" \
   -H "Authorization: Bearer <your_token>"
 ```
 
 ```bash
-curl "http://127.0.0.1:8080/analysis/ability-radar" \
+curl "http://127.0.0.1:8080/api/v1/learning-analytics/ability-radar" \
   -H "Authorization: Bearer <your_token>"
 ```
 
 ```bash
-curl "http://127.0.0.1:8080/analysis/knowledge-graph?courseId=1&depth=3" \
+curl "http://127.0.0.1:8080/api/v1/learning-analytics/knowledge-graph?courseId=1&depth=3" \
   -H "Authorization: Bearer <your_token>"
 ```
 
