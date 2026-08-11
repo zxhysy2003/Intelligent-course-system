@@ -119,7 +119,7 @@
         :current-page="page" 
         :page-size="pageSize"
         :page-sizes="[6, 9, 12, 18]"
-        :size="default"
+        size="default"
         :total="total" @current-change="p => { page = p; searchCourses(); }"
         @size-change="size => { pageSize = size; page = 1; searchCourses(); }" />
     </div>

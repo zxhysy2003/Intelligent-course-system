@@ -161,7 +161,7 @@ const searchUsers = async () => {
     const records = payload?.records || payload || [];
     users.value = Array.isArray(records) ? records.map(normalizeUser) : [];
     total.value = Number(payload?.total ?? users.value.length);
-  } catch (e) {
+  } catch {
     logger.warn("用户接口暂不可用，已显示本地示例数据");
     useMockUsers();
   } finally {

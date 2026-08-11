@@ -278,7 +278,7 @@ const fillEstimatedDurationSeconds = (file) => {
       URL.revokeObjectURL(objectUrl);
     };
     video.src = objectUrl;
-  } catch (e) {
+  } catch {
     logger.warn("无法读取视频时长，请手动填写时长");
   }
 };
