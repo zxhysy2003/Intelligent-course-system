@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
-import CourseActions from '../CourseActions.vue'
-import { ENROLLMENT_STATUS } from '../courseEnrollmentStatus'
+import CourseActions from '../components/CourseActions.vue'
+import { ENROLLMENT_STATUS } from '../enrollmentStatus'
 
 const global = {
   stubs: {

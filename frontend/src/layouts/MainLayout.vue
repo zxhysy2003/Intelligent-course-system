@@ -95,7 +95,7 @@
 
 <script setup>
 import { ref, computed } from "vue"
-import { useUserStore } from "../store/user"
+import { useUserStore } from "@/store/user"
 import { useRouter } from "vue-router"
 import { Document, Star, DataAnalysis, MagicStick, User, UserFilled, ArrowLeft, ArrowRight, Collection } from '@element-plus/icons-vue'
 

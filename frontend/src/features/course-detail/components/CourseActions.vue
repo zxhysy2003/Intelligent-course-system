@@ -53,7 +53,7 @@
 
 <script setup>
 import { Star } from '@element-plus/icons-vue'
-import { ENROLLMENT_STATUS, ENROLLMENT_STATUS_VALUES } from './courseEnrollmentStatus'
+import { ENROLLMENT_STATUS, ENROLLMENT_STATUS_VALUES } from '../enrollmentStatus'
 
 defineProps({
   enrollmentStatus: {

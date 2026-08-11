@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
-import KnowledgePointList from '../KnowledgePointList.vue'
+import KnowledgePointList from '../components/KnowledgePointList.vue'
 
 const global = {
   stubs: {

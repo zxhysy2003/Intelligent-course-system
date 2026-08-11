@@ -1,10 +1,10 @@
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import CourseActions from '../CourseActions.vue'
-import CourseMediaPlayer from '../CourseMediaPlayer.vue'
-import CourseDetail from '../CourseDetail.vue'
-import KnowledgePointList from '../KnowledgePointList.vue'
-import { ENROLLMENT_STATUS } from '../courseEnrollmentStatus'
+import CourseActions from '../components/CourseActions.vue'
+import CourseMediaPlayer from '../components/CourseMediaPlayer.vue'
+import CourseDetail from '@/views/user/CourseDetail.vue'
+import KnowledgePointList from '../components/KnowledgePointList.vue'
+import { ENROLLMENT_STATUS } from '../enrollmentStatus'
 
 const mocks = vi.hoisted(() => ({
   push: vi.fn(),

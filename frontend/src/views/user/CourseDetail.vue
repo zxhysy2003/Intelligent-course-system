@@ -40,14 +40,14 @@
 import { computed, onBeforeUnmount, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Loading } from '@element-plus/icons-vue'
-import CourseActions from './CourseActions.vue'
-import CourseMediaPlayer from './CourseMediaPlayer.vue'
-import KnowledgePointList from './KnowledgePointList.vue'
-import { ENROLLMENT_STATUS } from './courseEnrollmentStatus'
-import { useUserStore } from '../../store/user'
-import { setAuthTokenToCookie, clearAuthTokenCookie } from '../../utils/authCookie'
-import { logger } from '../../utils/logger'
-import { RecordLearningBehavior } from '../../api/learningBehavior'
+import CourseActions from '@/features/course-detail/components/CourseActions.vue'
+import CourseMediaPlayer from '@/features/course-detail/components/CourseMediaPlayer.vue'
+import KnowledgePointList from '@/features/course-detail/components/KnowledgePointList.vue'
+import { ENROLLMENT_STATUS } from '@/features/course-detail/enrollmentStatus'
+import { useUserStore } from '@/store/user'
+import { setAuthTokenToCookie, clearAuthTokenCookie } from '@/utils/authCookie'
+import { logger } from '@/utils/logger'
+import { RecordLearningBehavior } from '@/api/learningBehavior'
 import {
   GetCourseById,
   GetCourseVideo,
@@ -55,7 +55,7 @@ import {
   GetUserCourseRelation,
   UpdateCourseVideoProgressSeconds,
   UserAttendCourse,
-} from '../../api/course'
+} from '@/api/course'
 
 const route = useRoute()
 const router = useRouter()

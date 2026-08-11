@@ -7,15 +7,15 @@ import { useOnboardingStore } from "@/store/onboarding";
 
 const Login = () => import("@/views/Login.vue");
 const Register = () => import("@/views/Register.vue");
-const Layout = () => import("@/views/Layout.vue");
+const MainLayout = () => import("@/layouts/MainLayout.vue");
 const Profile = () => import("@/views/user/Profile.vue");
-const Course = () => import("@/views/user/Course.vue");
+const CourseList = () => import("@/views/user/CourseList.vue");
 const Recommend = () => import("@/views/user/Recommend.vue");
 const Dashboard = () => import("@/views/user/Dashboard.vue");
 const KnowledgeGraph = () => import("@/views/user/KnowledgeGraph.vue");
 const Onboarding = () => import("@/views/user/Onboarding.vue");
 const AgentAssistant = () => import("@/views/user/AgentAssistant.vue");
-const NotFound = () => import("@/views/404.vue");
+const NotFound = () => import("@/views/NotFound.vue");
 const CourseDetail = () => import("@/views/user/CourseDetail.vue");
 const CourseManage = () => import("@/views/admin/CourseManage.vue");
 const UserManage = () => import("@/views/admin/UserManage.vue");
@@ -36,10 +36,10 @@ const routes = [
     },
     {
         path: "/",
-        component: Layout,
+        component: MainLayout,
         children: [
             { path: "", redirect: "/course" },
-            { path: "course", component: Course },
+            { path: "course", component: CourseList },
             { path: "courseDetail/:id", name: "CourseDetail", component: CourseDetail },
             { path: "onboarding", name: "Onboarding", component: Onboarding },
             { path: "recommend", component: Recommend },

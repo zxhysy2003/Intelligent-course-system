@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
-import CourseMediaPlayer from '../CourseMediaPlayer.vue'
+import CourseMediaPlayer from '../components/CourseMediaPlayer.vue'
 
 const setCurrentTime = (video, value) => {
   Object.defineProperty(video, 'currentTime', {
