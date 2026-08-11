@@ -1,5 +1,5 @@
 import request from "./request";
 
-export function GetHybridRecommend() {
+export function getHybridRecommend() {
     return request.get("/recommend/hybrid");
 }

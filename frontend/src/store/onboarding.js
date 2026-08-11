@@ -1,6 +1,6 @@
 import { ref } from "vue";
 import { defineStore } from "pinia";
-import { GetOnboardingStatus, SubmitOnboarding } from "@/api/onboarding";
+import { getOnboardingStatus, submitOnboarding } from "@/api/onboarding";
 
 const defaultStatus = () => ({
     completed: false,
@@ -32,7 +32,7 @@ export const useOnboardingStore = defineStore("onboarding", () => {
             return status.value;
         }
 
-        const res = await GetOnboardingStatus();
+        const res = await getOnboardingStatus();
         if (res?.data?.code !== 200) {
             throw new Error(res?.data?.msg || "获取引导状态失败");
         }
@@ -43,7 +43,7 @@ export const useOnboardingStore = defineStore("onboarding", () => {
     };
 
     const submit = async (payload) => {
-        const res = await SubmitOnboarding(payload);
+        const res = await submitOnboarding(payload);
         if (res?.data?.code !== 200) {
             throw new Error(res?.data?.msg || "提交引导信息失败");
         }

@@ -102,13 +102,13 @@
 import { reactive, ref } from "vue";
 import { ElMessageBox } from "element-plus";
 import { useRouter } from "vue-router";
-import { logger } from "../../utils/logger";
+import { notification } from "@/services/notification";
 import {
-  DeleteAdminUsers,
-  GetAdminUsers,
-  UpdateAdminUserRole,
-  UpdateAdminUserStatus,
-} from "../../api/user";
+  deleteAdminUsers,
+  getAdminUsers,
+  updateAdminUserRole,
+  updateAdminUserStatus,
+} from "@/api/user";
 
 const router = useRouter();
 const loading = ref(false);
@@ -150,7 +150,7 @@ const useMockUsers = () => {
 const searchUsers = async () => {
   loading.value = true;
   try {
-    const res = await GetAdminUsers({
+    const res = await getAdminUsers({
       page: query.page,
       pageSize: query.pageSize,
       keyword: query.keyword || null,
@@ -162,7 +162,7 @@ const searchUsers = async () => {
     users.value = Array.isArray(records) ? records.map(normalizeUser) : [];
     total.value = Number(payload?.total ?? users.value.length);
   } catch {
-    logger.warn("用户接口暂不可用，已显示本地示例数据");
+    notification.warn("用户接口暂不可用，已显示本地示例数据");
     useMockUsers();
   } finally {
     loading.value = false;
@@ -198,21 +198,21 @@ const updateRole = async (row, role) => {
   const oldRole = row.role;
   row.role = role;
   try {
-    const res = await UpdateAdminUserRole(row.id, role);
+    const res = await updateAdminUserRole(row.id, role);
     if (res?.data?.code !== 200) {
       row.role = oldRole;
-      logger.error(res?.data?.msg || "更新角色失败", res?.data);
+      notification.error(res?.data?.msg || "更新角色失败", res?.data);
       return;
     }
-    logger.success("角色更新成功");
+    notification.success("角色更新成功");
   } catch (e) {
     row.role = oldRole;
-    logger.error("更新角色失败", e);
+    notification.error("更新角色失败", e);
   }
 };
 
 const setUserStatus = async (id, status) => {
-  const res = await UpdateAdminUserStatus(id, status);
+  const res = await updateAdminUserStatus(id, status);
   if (res?.data?.code !== 200) {
     throw new Error(res?.data?.msg || "更新状态失败");
   }
@@ -223,9 +223,9 @@ const toggleStatus = async (row) => {
   try {
     await setUserStatus(row.id, target);
     row.status = target;
-    logger.success(target === 1 ? "用户已启用" : "用户已禁用");
+    notification.success(target === 1 ? "用户已启用" : "用户已禁用");
   } catch (e) {
-    logger.error(e);
+    notification.error(e);
   }
 };
 
@@ -246,14 +246,14 @@ const batchSetStatus = async (status) => {
     users.value.forEach(item => {
       if (selectedIds.value.includes(item.id)) item.status = status;
     });
-    logger.success(status === 1 ? "批量启用成功" : "批量禁用成功");
+    notification.success(status === 1 ? "批量启用成功" : "批量禁用成功");
   } catch (e) {
-    logger.error("批量更新状态失败", e);
+    notification.error("批量更新状态失败", e);
   }
 };
 
 const doDelete = async (ids) => {
-  const res = await DeleteAdminUsers(ids);
+  const res = await deleteAdminUsers(ids);
   if (res?.data?.code !== 200) {
     throw new Error(res?.data?.msg || "删除失败");
   }
@@ -271,10 +271,10 @@ const deleteOne = async (row) => {
     users.value = users.value.filter(item => item.id !== row.id);
     selectedIds.value = selectedIds.value.filter(id => id !== row.id);
     total.value = Math.max(0, total.value - 1);
-    logger.success("删除成功");
+    notification.success("删除成功");
   } catch (e) {
     if (e !== "cancel" && e !== "close") {
-      logger.error("删除失败", e);
+      notification.error("删除失败", e);
     }
   }
 };
@@ -297,10 +297,10 @@ const batchDelete = async () => {
     users.value = users.value.filter(item => !selectedSet.has(item.id));
     total.value = Math.max(0, total.value - selectedIds.value.length);
     selectedIds.value = [];
-    logger.success("批量删除成功");
+    notification.success("批量删除成功");
   } catch (e) {
     if (e !== "cancel" && e !== "close") {
-      logger.error("批量删除失败", e);
+      notification.error("批量删除失败", e);
     }
   }
 };

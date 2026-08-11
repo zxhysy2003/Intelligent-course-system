@@ -16,7 +16,7 @@ const formatMessage = (message) => {
   }
 };
 
-export const logger = {
+export const notification = {
   success(message) {
     ElMessage.success(formatMessage(message));
   },

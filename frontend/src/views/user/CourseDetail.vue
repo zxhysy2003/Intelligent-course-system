@@ -46,15 +46,15 @@ import KnowledgePointList from '@/features/course-detail/components/KnowledgePoi
 import { ENROLLMENT_STATUS } from '@/features/course-detail/enrollmentStatus'
 import { useUserStore } from '@/store/user'
 import { setAuthTokenToCookie, clearAuthTokenCookie } from '@/utils/authCookie'
-import { logger } from '@/utils/logger'
-import { RecordLearningBehavior } from '@/api/learningBehavior'
+import { notification } from '@/services/notification'
+import { recordLearningBehavior } from '@/api/learningBehavior'
 import {
-  GetCourseById,
-  GetCourseVideo,
-  GetKnowledgePointsByCourse,
-  GetUserCourseRelation,
-  UpdateCourseVideoProgressSeconds,
-  UserAttendCourse,
+  getCourseById,
+  getCourseVideo,
+  getCourseKnowledgePoints,
+  getUserCourseRelation,
+  updateCourseVideoProgressSeconds,
+  enrollCourse,
 } from '@/api/course'
 
 const route = useRoute()
@@ -95,7 +95,7 @@ const loadCourseRelation = async () => {
 
   enrollmentStatus.value = ENROLLMENT_STATUS.LOADING
   try {
-    const res = await GetUserCourseRelation(courseId)
+    const res = await getUserCourseRelation(courseId)
     if (disposed) return
 
     if (res.data.code === 200 && res.data.data) {
@@ -108,69 +108,69 @@ const loadCourseRelation = async () => {
       userCourseRelation.progressSeconds = 0
     } else {
       enrollmentStatus.value = ENROLLMENT_STATUS.ERROR
-      logger.error('获取用户课程关系失败', res.data.msg)
+      notification.error('获取用户课程关系失败', res.data.msg)
     }
   } catch (error) {
     if (disposed) return
     enrollmentStatus.value = ENROLLMENT_STATUS.ERROR
-    logger.error('获取用户课程关系出错', error)
+    notification.error('获取用户课程关系出错', error)
   }
 }
 
 const loadCourseInfo = async () => {
   try {
-    const res = await GetCourseById(courseId)
+    const res = await getCourseById(courseId)
     if (disposed) return
 
     if (res.data.code === 200) {
       Object.assign(courseInfo, res.data.data)
     } else {
-      logger.error('获取课程信息失败', res.data.msg)
+      notification.error('获取课程信息失败', res.data.msg)
     }
   } catch (error) {
     if (disposed) return
-    logger.error('获取课程信息出错', error)
+    notification.error('获取课程信息出错', error)
   }
 }
 
 const loadKnowledgePoints = async () => {
   try {
-    const res = await GetKnowledgePointsByCourse(courseId)
+    const res = await getCourseKnowledgePoints(courseId)
     if (disposed) return
 
     if (res.data.code === 200) {
       knowledgePoints.value = Array.isArray(res.data.data) ? res.data.data : []
     } else {
       knowledgePoints.value = []
-      logger.error('获取课程知识点失败', res.data.msg)
+      notification.error('获取课程知识点失败', res.data.msg)
     }
   } catch (error) {
     if (disposed) return
     knowledgePoints.value = []
-    logger.error('获取课程知识点出错', error)
+    notification.error('获取课程知识点出错', error)
   }
 }
 
 const loadCourseDetail = async () => {
   if (!courseId) {
-    logger.error('课程ID不存在')
+    notification.error('课程ID不存在')
     loading.value = false
     return
   }
 
   let response
   try {
-    response = await GetCourseVideo(courseId)
+    response = await getCourseVideo(courseId)
   } catch (error) {
     if (disposed) return
-    logger.error('获取课程视频异常，请稍后重试', error)
+    notification.error('获取课程视频异常，请稍后重试', error)
     loading.value = false
     return
   }
 
   if (disposed) return
   if (response.data.code !== 200) {
-    logger.error(`获取课程视频失败: ${response.data.msg}`, response.data)
+    notification.error(`获取课程视频失败: ${response.data.msg}`, response.data)
     loading.value = false
     return
   }
@@ -205,20 +205,20 @@ const sendViewRecord = async () => {
   viewRecorded.value = true
 
   try {
-    const res = await RecordLearningBehavior({
+    const res = await recordLearningBehavior({
       courseId: Number(courseId),
       behaviorType: 'VIEW',
     })
     if (res.data.code !== 200) {
       viewRecorded.value = false
       if (!disposed) {
-        logger.error('记录学习行为失败', res.data.msg)
+        notification.error('记录学习行为失败', res.data.msg)
       }
     }
   } catch (error) {
     viewRecorded.value = false
     if (!disposed) {
-      logger.error('记录学习行为出错', error)
+      notification.error('记录学习行为出错', error)
     }
   }
 }
@@ -240,7 +240,7 @@ const handlePlaybackProgress = (snapshot) => {
 
 const handleVideoError = (error) => {
   if (!disposed) {
-    logger.error('视频加载失败，请检查网络或权限', error)
+    notification.error('视频加载失败，请检查网络或权限', error)
   }
 }
 
@@ -251,22 +251,22 @@ const handleFavorite = async () => {
   const behaviorType = targetFavoriteState ? 'FAVORITE' : 'UNFAVORITE'
 
   try {
-    const res = await RecordLearningBehavior({
+    const res = await recordLearningBehavior({
       courseId: Number(courseId),
       behaviorType,
     })
     if (disposed) return
     if (res.data.code !== 200) {
-      logger.error('操作失败，请重试', res.data.msg)
+      notification.error('操作失败，请重试', res.data.msg)
       return
     }
 
     userCourseRelation.isFavorite = targetFavoriteState
-    logger.success(targetFavoriteState ? '已收藏' : '已取消收藏')
-    logger.debug('收藏操作成功', behaviorType)
+    notification.success(targetFavoriteState ? '已收藏' : '已取消收藏')
+    notification.debug('收藏操作成功', behaviorType)
   } catch (error) {
     if (!disposed) {
-      logger.error('操作失败，请重试', error)
+      notification.error('操作失败，请重试', error)
     }
   } finally {
     if (!disposed) {
@@ -280,17 +280,17 @@ const handleEnrollCourse = async () => {
   enrollLoading.value = true
 
   try {
-    const res = await UserAttendCourse(courseId)
+    const res = await enrollCourse(courseId)
     if (disposed) return
     if (res.data.code === 200) {
       enrollmentStatus.value = ENROLLMENT_STATUS.ENROLLED
-      logger.success('成功加入课程')
+      notification.success('成功加入课程')
     } else {
-      logger.error('加入课程失败', res.data.msg)
+      notification.error('加入课程失败', res.data.msg)
     }
   } catch (error) {
     if (!disposed) {
-      logger.error('加入课程异常', error)
+      notification.error('加入课程异常', error)
     }
   } finally {
     if (!disposed) {
@@ -320,29 +320,29 @@ const persistPlaybackSession = async () => {
 
   if (viewRecorded.value && playbackSnapshot.watchedSeconds > 0) {
     try {
-      await RecordLearningBehavior({
+      await recordLearningBehavior({
         courseId: Number(courseId),
         behaviorType: 'STUDY',
         duration: Math.round(playbackSnapshot.watchedSeconds),
       })
-      logger.debug('离开前记录观看时长', Math.round(playbackSnapshot.watchedSeconds))
+      notification.debug('离开前记录观看时长', Math.round(playbackSnapshot.watchedSeconds))
     } catch (error) {
-      logger.error('记录观看时长失败', error)
+      notification.error('记录观看时长失败', error)
     }
   }
 
   try {
-    const res = await UpdateCourseVideoProgressSeconds({
+    const res = await updateCourseVideoProgressSeconds({
       courseId: Number(courseId),
       progressSeconds: Math.floor(playbackSnapshot.currentTime),
     })
     if (res.data.code === 200) {
-      logger.debug('更新断点续播时间', Math.floor(playbackSnapshot.currentTime))
+      notification.debug('更新断点续播时间', Math.floor(playbackSnapshot.currentTime))
     } else {
-      logger.error('更新断点续播时间失败', res.data.msg)
+      notification.error('更新断点续播时间失败', res.data.msg)
     }
   } catch (error) {
-    logger.error('更新断点续播时间失败', error)
+    notification.error('更新断点续播时间失败', error)
   }
 }
 

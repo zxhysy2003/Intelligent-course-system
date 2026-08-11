@@ -77,9 +77,9 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { GetKnowledgeGraph } from "@/api/analysis";
-import { GetCourseByKp } from "@/api/course";
-import { logger } from "@/utils/logger";
+import { getKnowledgeGraph } from "@/api/analysis";
+import { getCoursesByKnowledgePoint } from "@/api/course";
+import { notification } from "@/services/notification";
 import { init } from "@/utils/echarts";
 
 const router = useRouter();
@@ -142,14 +142,14 @@ const handleNodeClick = async (params) => {
   if (params?.dataType !== "node") return;
   const kpId = Number(params?.data?.kpId);
   if (!Number.isFinite(kpId)) {
-    logger.warn("该节点缺少 kpId，无法跳转课程");
+    notification.warn("该节点缺少 kpId，无法跳转课程");
     return;
   }
   if (jumping.value) return;
 
   jumping.value = true;
   try {
-    const res = await GetCourseByKp(kpId);
+    const res = await getCoursesByKnowledgePoint(kpId);
     const courses = normalizeCourseListFromResponse(res);
     if (!courses.length) {
       relatedCourses.value = [];
@@ -159,7 +159,7 @@ const handleNodeClick = async (params) => {
     relatedCourses.value = courses;
     courseSelectorVisible.value = true;
   } catch (e) {
-    logger.error("根据知识点获取课程失败", e);
+    notification.error("根据知识点获取课程失败", e);
   } finally {
     jumping.value = false;
   }
@@ -248,7 +248,7 @@ const buildChart = (data) => {
 const fetchGraph = async (courseId) => {
   loading.value = true;
   try {
-    const res = await GetKnowledgeGraph(courseId);
+    const res = await getKnowledgeGraph(courseId);
     const payload = res?.data?.data ?? res?.data ?? {};
     graphData.value = {
       courseId: payload.courseId ?? courseId,
@@ -271,7 +271,7 @@ const fetchGraph = async (courseId) => {
   } catch (e) {
     clearChart();
     chartHint.value = "图谱加载失败";
-    logger.error("获取知识图谱失败", e);
+    notification.error("获取知识图谱失败", e);
   } finally {
     loading.value = false;
   }

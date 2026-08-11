@@ -8,36 +8,36 @@ export function getProfile() {
     return request.get("/user/profile");
 }
 
-export function Register(data) {
+export function registerUser(data) {
     return request.post("/user/register", data);
 }
 
-export function GetAdminUsers(params) {
+export function getAdminUsers(params) {
     return request.post("/admin/user/list", params);
 }
 
-export function UpdateAdminUserRole(userId, role) {
+export function updateAdminUserRole(userId, role) {
     return request.put(`/admin/user/role/${userId}`, null, {
         params: { role }
     });
 }
 
-export function UpdateAdminUserStatus(userId, status) {
+export function updateAdminUserStatus(userId, status) {
     return request.put(`/admin/user/status/${userId}`, null, {
         params: { status }
     });
 }
 
-export function DeleteAdminUsers(userIds) {
+export function deleteAdminUsers(userIds) {
     return request.delete("/admin/user/delete", {
         data: { userIds }
     });
 }
 
-export function GetAdminUserDetail(userId) {
+export function getAdminUserDetail(userId) {
     return request.get(`/admin/user/detail/${userId}`);
 }
 
-export function UpdateAdminUser(data) {
+export function updateAdminUser(data) {
     return request.put("/admin/user/update", data);
 }

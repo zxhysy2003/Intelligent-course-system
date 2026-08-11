@@ -47,10 +47,10 @@
 <script setup>
 import { reactive, ref } from "vue"
 import { useRouter } from "vue-router"
-import { login } from "../api/user"
-import { useUserStore } from "../store/user"
-import { useOnboardingStore } from "../store/onboarding"
-import { logger } from "../utils/logger"
+import { login } from "@/api/user"
+import { useUserStore } from "@/store/user"
+import { useOnboardingStore } from "@/store/onboarding"
+import { notification } from "@/services/notification"
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -82,16 +82,16 @@ const doLogin = async () => {
         
         const res = await login(form);
         if (res.data.code !== 200) {
-            return logger.error(res.data.msg, res.data);
+            return notification.error(res.data.msg, res.data);
         }
         const token = res.data.data;
         
         userStore.setToken(token);
         onboardingStore.reset();
-        logger.success("登录成功");
+        notification.success("登录成功");
         router.push("/");
     } catch (error) {
-        logger.error("登录失败，请检查用户名和密码", error);
+        notification.error("登录失败，请检查用户名和密码", error);
     } finally {
         submitting.value = false;
     }

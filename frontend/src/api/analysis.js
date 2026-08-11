@@ -1,17 +1,17 @@
 import request from "./request";
 
-export function GetKnowledgeGraph(courseId) {
+export function getKnowledgeGraph(courseId) {
   return request.get("/analysis/knowledge-graph", {
     params: { courseId },
   });
 }
 
-export function GetLearningProgress(days) {
+export function getLearningProgress(days) {
   return request.get("/analysis/progress", {
     params: { days },
   });
 }
 
-export function GetAbilityRadar() {
+export function getAbilityRadar() {
   return request.get("/analysis/ability-radar");
 }

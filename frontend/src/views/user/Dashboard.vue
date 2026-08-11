@@ -52,8 +52,8 @@
 
 <script setup>
 import { onMounted, onBeforeUnmount, ref } from "vue";
-import { GetLearningProgress } from "@/api/analysis";
-import { logger } from "@/utils/logger";
+import { getLearningProgress } from "@/api/analysis";
+import { notification } from "@/services/notification";
 import { init } from "@/utils/echarts";
 
 const chartRef = ref(null);
@@ -177,12 +177,12 @@ const normalizeProgressData = (payload) => {
 const fetchProgress = async () => {
   loading.value = true;
   try {
-    const res = await GetLearningProgress(selectedDays.value);
+    const res = await getLearningProgress(selectedDays.value);
     const payload = res?.data?.data ?? {};
     progressData.value = normalizeProgressData(payload);
     renderChart();
   } catch (e) {
-    logger.error("获取学习进度失败", e);
+    notification.error("获取学习进度失败", e);
     progressData.value = normalizeProgressData(null);
     renderChart();
   } finally {

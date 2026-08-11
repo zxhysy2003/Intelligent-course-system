@@ -133,8 +133,8 @@ import { ref, watch, onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 import { Search, User } from "@element-plus/icons-vue";
 import { ElMessageBox } from "element-plus";
-import { logger } from "../../utils/logger";
-import { GetCategories, GetCourses, DeleteCourses, UpdateCourseStatus } from "../../api/course";
+import { notification } from "@/services/notification";
+import { getCategories, getCourses, deleteCourses, updateCourseStatus } from "@/api/course";
 
 const router = useRouter();
 
@@ -178,10 +178,10 @@ const getDifficultyLevel = (value) => {
 // 组件挂载时获取分类列表和初始课程列表
 onMounted(async () => {
   try {
-    const res = await GetCategories();
+    const res = await getCategories();
     categories.value = res.data?.data || [];
   } catch (e) {
-    logger.error("获取分类列表失败", e);
+    notification.error("获取分类列表失败", e);
   }
   // 初始搜索
   searchCourses();
@@ -201,7 +201,7 @@ const resetFilters = () => {
 const searchCourses = async () => {
   loading.value = true;
   try {
-    const res = await GetCourses({
+    const res = await getCourses({
       page: page.value,
       pageSize: pageSize.value,
       keyword: searchQuery.value,
@@ -209,13 +209,13 @@ const searchCourses = async () => {
       sortBy: sortBy.value,
     });
 
-    logger.debug("搜索课程结果", res);
+    notification.debug("搜索课程结果", res);
 
     courses.value = res.data.data?.records || [];
     total.value = res.data.data?.total || 0;
-    logger.success("搜索成功");
+    notification.success("搜索成功");
   } catch (e) {
-    logger.error("搜索失败", e);
+    notification.error("搜索失败", e);
   } finally {
     loading.value = false;
   }
@@ -259,17 +259,17 @@ const deleteSelected = async () => {
   }
 
   try {
-    const res = await DeleteCourses(selectedIds.value);
+    const res = await deleteCourses(selectedIds.value);
     if (res.data.code !== 200) {
-      logger.error(res.data.msg || "删除课程失败", res.data);
+      notification.error(res.data.msg || "删除课程失败", res.data);
       return;
     }
     const selectedSet = new Set(selectedIds.value);
     courses.value = courses.value.filter(course => !selectedSet.has(course.id));
     selectedIds.value = [];
-    logger.success("删除课程成功");
+    notification.success("删除课程成功");
   } catch (e) {
-    logger.error("删除课程失败", e);
+    notification.error("删除课程失败", e);
   }
 };
 
@@ -305,15 +305,15 @@ const isOnline = (status) => Number(status) === 1;
 const toggleStatus = async (course) => {
   const targetStatus = isOnline(course.status) ? 2 : 1;
   try {
-    const res = await UpdateCourseStatus(course.id, targetStatus);
+    const res = await updateCourseStatus(course.id, targetStatus);
     if (res?.data?.code !== 200) {
-      logger.error(res?.data?.msg || "更新课程状态失败", res?.data);
+      notification.error(res?.data?.msg || "更新课程状态失败", res?.data);
       return;
     }
     course.status = targetStatus;
-    logger.success(targetStatus === 1 ? "课程已上线" : "课程已下线");
+    notification.success(targetStatus === 1 ? "课程已上线" : "课程已下线");
   } catch (e) {
-    logger.error("更新课程状态失败", e);
+    notification.error("更新课程状态失败", e);
   }
 };
 

@@ -144,9 +144,9 @@ import {
   Reading,
   Refresh
 } from "@element-plus/icons-vue";
-import { GetOnboardingOptions } from "@/api/onboarding";
+import { getOnboardingOptions } from "@/api/onboarding";
 import { useOnboardingStore } from "@/store/onboarding";
-import { logger } from "@/utils/logger";
+import { notification } from "@/services/notification";
 
 const router = useRouter();
 const route = useRoute();
@@ -248,7 +248,7 @@ const applyStatusToForm = (status) => {
 };
 
 const fetchOptions = async () => {
-  const res = await GetOnboardingOptions();
+  const res = await getOnboardingOptions();
   if (res?.data?.code !== 200) {
     throw new Error(res?.data?.msg || "获取引导选项失败");
   }
@@ -264,7 +264,7 @@ const refreshData = async () => {
     ]);
     applyStatusToForm(onboardingStore.status);
   } catch (e) {
-    logger.error("加载引导信息失败", e);
+    notification.error("加载引导信息失败", e);
   } finally {
     loading.value = false;
   }
@@ -286,12 +286,12 @@ const clearTags = () => {
 
 const validateStep = (step) => {
   if (step === 0 && !form.currentLevel) {
-    logger.warn("请选择当前基础");
+    notification.warn("请选择当前基础");
     return false;
   }
 
   if (step === 2 && !form.tagIds.length) {
-    logger.warn("请至少选择一个兴趣方向");
+    notification.warn("请至少选择一个兴趣方向");
     return false;
   }
 
@@ -326,10 +326,10 @@ const submitOnboarding = async () => {
       learningGoal: form.learningGoal || null,
       tagIds: form.tagIds,
     });
-    logger.success("引导信息已保存");
+    notification.success("引导信息已保存");
     router.replace(resolveRedirectPath());
   } catch (e) {
-    logger.error(e.message || "提交引导信息失败", e);
+    notification.error(e.message || "提交引导信息失败", e);
   } finally {
     submitting.value = false;
   }

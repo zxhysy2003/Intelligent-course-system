@@ -168,13 +168,13 @@
 import { onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
-  GetCategories,
-  GetCourseRegisterOptions,
-  GetAdminCourseDetail,
-  UpdateCourse,
-  UploadCourseVideo,
+  getCategories,
+  getCourseRegisterOptions,
+  getAdminCourseDetail,
+  updateCourse,
+  uploadCourseVideo,
 } from "@/api/course";
-import { logger } from "@/utils/logger";
+import { notification } from "@/services/notification";
 
 const route = useRoute();
 const router = useRouter();
@@ -247,8 +247,8 @@ const rules = {
 const beforeVideoUpload = (file) => {
   const okType = ["video/mp4", "video/webm", "video/ogg"].includes(file.type);
   const okSize = file.size / 1024 / 1024 < 500;
-  if (!okType) logger.warn("仅支持 mp4/webm/ogg 视频格式");
-  if (!okSize) logger.warn("视频大小不能超过 500MB");
+  if (!okType) notification.warn("仅支持 mp4/webm/ogg 视频格式");
+  if (!okSize) notification.warn("视频大小不能超过 500MB");
   return okType && okSize;
 };
 
@@ -309,16 +309,16 @@ const fillDetail = (detail) => {
 
 const fetchPageData = async () => {
   if (!courseId) {
-    logger.error("课程ID缺失，无法编辑");
+    notification.error("课程ID缺失，无法编辑");
     return;
   }
 
   loading.value = true;
   try {
     const [categoryRes, optionRes, detailRes] = await Promise.all([
-      GetCategories(),
-      GetCourseRegisterOptions(),
-      GetAdminCourseDetail(courseId),
+      getCategories(),
+      getCourseRegisterOptions(),
+      getAdminCourseDetail(courseId),
     ]);
 
     categories.value = Array.isArray(categoryRes?.data?.data) ? categoryRes.data.data : [];
@@ -342,7 +342,7 @@ const fetchPageData = async () => {
 
     fillDetail(detail);
   } catch (e) {
-    logger.error("加载课程编辑数据失败", e);
+    notification.error("加载课程编辑数据失败", e);
   } finally {
     loading.value = false;
   }
@@ -366,25 +366,25 @@ const submitForm = async () => {
       knowledgePointIds: form.knowledgePointIds,
     };
 
-    const updateRes = await UpdateCourse(payload);
+    const updateRes = await updateCourse(payload);
     if (updateRes?.data?.code !== 200) {
-      logger.error(updateRes?.data?.msg || "课程更新失败", updateRes?.data);
+      notification.error(updateRes?.data?.msg || "课程更新失败", updateRes?.data);
       return;
     }
 
     if (selectedVideoFile.value) {
-      const uploadRes = await UploadCourseVideo(form.id, selectedVideoFile.value);
+      const uploadRes = await uploadCourseVideo(form.id, selectedVideoFile.value);
       if (uploadRes?.data?.code !== 200) {
-        logger.error(uploadRes?.data?.msg || "视频上传失败", uploadRes?.data);
+        notification.error(uploadRes?.data?.msg || "视频上传失败", uploadRes?.data);
         return;
       }
     }
 
-    logger.success(selectedVideoFile.value ? "课程更新并上传视频成功" : "课程更新成功");
+    notification.success(selectedVideoFile.value ? "课程更新并上传视频成功" : "课程更新成功");
     selectedVideoFile.value = null;
     selectedVideoName.value = "";
   } catch (e) {
-    logger.error("请先完善课程信息", e);
+    notification.error("请先完善课程信息", e);
   } finally {
     submitting.value = false;
   }

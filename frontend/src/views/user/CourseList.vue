@@ -179,8 +179,8 @@ import {
   User,
   VideoPlay
 } from "@element-plus/icons-vue";
-import { logger } from "@/utils/logger";
-import { GetCategories, GetCourses, UserAttendCourse } from "@/api/course";
+import { notification } from "@/services/notification";
+import { getCategories, getCourses, enrollCourse } from "@/api/course";
 
 const router = useRouter();
 
@@ -247,17 +247,17 @@ const formatLearners = (value) => Number(value || 0).toLocaleString();
 
 const fetchCategories = async () => {
   try {
-    const res = await GetCategories();
+    const res = await getCategories();
     categories.value = Array.isArray(res.data?.data) ? res.data.data : [];
   } catch (e) {
-    logger.error("获取分类列表失败", e);
+    notification.error("获取分类列表失败", e);
   }
 };
 
 const searchCourses = async () => {
   loading.value = true;
   try {
-    const res = await GetCourses({
+    const res = await getCourses({
       page: page.value,
       pageSize: pageSize.value,
       keyword: searchQuery.value,
@@ -271,9 +271,9 @@ const searchCourses = async () => {
       ? payload.records.map(normalizeCourse).filter((course) => Number.isFinite(course.id))
       : [];
     total.value = Number(payload.total || 0);
-    logger.success("搜索成功");
+    notification.success("搜索成功");
   } catch (e) {
-    logger.error("搜索失败", e);
+    notification.error("搜索失败", e);
   } finally {
     loading.value = false;
   }
@@ -314,13 +314,13 @@ const enroll = async (course) => {
   if (enrolling.value[course.id]) return;
   enrolling.value[course.id] = true;
   try {
-    logger.debug("加入课程", course.id);
-    const res = await UserAttendCourse(course.id);
+    notification.debug("加入课程", course.id);
+    const res = await enrollCourse(course.id);
     if (res.data.code !== 200) {
-      logger.error(res.data.msg || "加入课程失败", res.data);
+      notification.error(res.data.msg || "加入课程失败", res.data);
       return;
     }
-    logger.success(`已成功加入课程《${course.title}》`);
+    notification.success(`已成功加入课程《${course.title}》`);
     course.enrolled = true;
     course.progress = 0;
   } finally {

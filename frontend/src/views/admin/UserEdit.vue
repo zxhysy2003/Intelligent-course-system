@@ -75,8 +75,8 @@
 <script setup>
 import { onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { logger } from "@/utils/logger";
-import { GetAdminUserDetail, UpdateAdminUser } from "@/api/user";
+import { notification } from "@/services/notification";
+import { getAdminUserDetail, updateAdminUser } from "@/api/user";
 
 const route = useRoute();
 const router = useRouter();
@@ -121,20 +121,20 @@ const fillForm = (raw) => {
 
 const loadDetail = async () => {
   if (!userId) {
-    logger.error("无效的用户ID");
+    notification.error("无效的用户ID");
     goBack();
     return;
   }
   loading.value = true;
   try {
-    const res = await GetAdminUserDetail(userId);
+    const res = await getAdminUserDetail(userId);
     if (res?.data?.code !== 200) {
-      logger.error(res?.data?.msg || "获取用户详情失败", res?.data);
+      notification.error(res?.data?.msg || "获取用户详情失败", res?.data);
       return;
     }
     fillForm(res?.data?.data);
   } catch (e) {
-    logger.error("获取用户详情失败", e);
+    notification.error("获取用户详情失败", e);
   } finally {
     loading.value = false;
   }
@@ -156,15 +156,15 @@ const submitForm = async () => {
       role: form.role,
       status: form.status,
     };
-    const res = await UpdateAdminUser(payload);
+    const res = await updateAdminUser(payload);
     if (res?.data?.code !== 200) {
-      logger.error(res?.data?.msg || "更新用户失败", res?.data);
+      notification.error(res?.data?.msg || "更新用户失败", res?.data);
       return;
     }
-    logger.success("用户信息更新成功");
+    notification.success("用户信息更新成功");
     goBack();
   } catch (e) {
-    logger.error("更新用户失败", e);
+    notification.error("更新用户失败", e);
   } finally {
     submitting.value = false;
   }

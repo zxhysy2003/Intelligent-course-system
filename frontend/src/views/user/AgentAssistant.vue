@@ -121,12 +121,12 @@ import { computed, onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Delete, EditPen, MagicStick, Plus, Promotion, Refresh, User } from "@element-plus/icons-vue";
 import {
-  CreateAgentSession,
-  DeleteAgentSession,
-  ListAgentMessages,
-  ListAgentSessions,
-  RenameAgentSession,
-  SendAgentChat,
+  createAgentSession,
+  deleteAgentSession,
+  listAgentMessages,
+  listAgentSessions,
+  renameAgentSession,
+  sendAgentChat,
 } from "@/api/agent";
 
 const sessions = ref([]);
@@ -159,7 +159,7 @@ onMounted(async () => {
 async function loadSessions() {
   loadingSessions.value = true;
   try {
-    const res = await ListAgentSessions();
+    const res = await listAgentSessions();
     sessions.value = unwrapData(res) || [];
   } catch (e) {
     showError(e, "获取会话失败");
@@ -184,7 +184,7 @@ async function loadMessages(sessionId) {
   const requestedSessionId = sessionId;
   loadingMessages.value = true;
   try {
-    const res = await ListAgentMessages(requestedSessionId);
+    const res = await listAgentMessages(requestedSessionId);
     if (sameSession(currentSessionId.value, requestedSessionId)) {
       messages.value = normalizeLoadedMessages(unwrapData(res) || []);
     }
@@ -223,7 +223,7 @@ function normalizeLoadedMessages(loadedMessages) {
 async function createSession() {
   creating.value = true;
   try {
-    const res = await CreateAgentSession("新的学习对话");
+    const res = await createAgentSession("新的学习对话");
     const session = unwrapData(res);
     await loadSessions();
     if (session?.id) {
@@ -244,7 +244,7 @@ async function renameSession() {
       inputValidator: (value) => Boolean(value && value.trim()),
       inputErrorMessage: "标题不能为空",
     });
-    await RenameAgentSession(currentSessionId.value, value.trim());
+    await renameAgentSession(currentSessionId.value, value.trim());
     await loadSessions();
   } catch (e) {
     if (e !== "cancel") {
@@ -258,7 +258,7 @@ async function removeSession() {
     await ElMessageBox.confirm("删除后会话将不再显示，历史消息不会出现在列表中。", "删除会话", {
       type: "warning",
     });
-    const res = await DeleteAgentSession(currentSessionId.value);
+    const res = await deleteAgentSession(currentSessionId.value);
     unwrapData(res);
     currentSessionId.value = null;
     messages.value = [];
@@ -330,7 +330,7 @@ async function submitChat({ sessionId, content, clientMessageId, localKey }) {
   const sendingSessionId = sessionId;
   sending.value = true;
   try {
-    const res = await SendAgentChat({
+    const res = await sendAgentChat({
       sessionId: sendingSessionId,
       message: content,
       clientMessageId,

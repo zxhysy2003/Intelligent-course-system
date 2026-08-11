@@ -57,8 +57,8 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { logger } from '../utils/logger'
-import { Register } from '../api/user'
+import { notification } from '@/services/notification'
+import { registerUser } from '@/api/user'
 
 const router = useRouter()
 const formRef = ref(null)
@@ -97,17 +97,17 @@ const handleSubmit = async () => {
         await formRef.value.validate()
 
         // 调用注册 API
-        const response = await Register(form)
+        const response = await registerUser(form)
         if (response.data.code !== 200) {
-            return logger.error(response.data.msg, response.data)
+            return notification.error(response.data.msg, response.data)
         }
         
-        logger.success('注册成功，跳转到登录页面')
+        notification.success('注册成功，跳转到登录页面')
         setTimeout(() => {
             router.push('/login')
         }, 1500)
     } catch (error) {
-        logger.error('注册失败，请检查表单信息', error)
+        notification.error('注册失败，请检查表单信息', error)
     }
 }
 </script>

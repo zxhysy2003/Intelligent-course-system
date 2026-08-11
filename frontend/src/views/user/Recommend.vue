@@ -170,10 +170,10 @@
 import { computed, ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useUserStore } from "@/store/user";
-import { GetHybridRecommend } from "@/api/recommend";
+import { getHybridRecommend } from "@/api/recommend";
 import { Reading, Refresh, ArrowDown, ArrowUp, ArrowRight } from '@element-plus/icons-vue';
-import { GetCourseByKp } from "@/api/course";
-import { logger } from "@/utils/logger";
+import { getCoursesByKnowledgePoint } from "@/api/course";
+import { notification } from "@/services/notification";
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -288,12 +288,12 @@ const normalizePayload = (payload) => {
 const fetchRecommendation = async () => {
   loading.value = true;
   try {
-    const res = await GetHybridRecommend();
+    const res = await getHybridRecommend();
     const payload = res?.data?.data ?? res?.data ?? {};
     recommendation.value = normalizePayload(payload);
     lastUpdatedText.value = formatDate(new Date());
   } catch (e) {
-    logger.error("获取推荐失败", e);
+    notification.error("获取推荐失败", e);
   } finally {
     loading.value = false;
   }
@@ -360,18 +360,18 @@ const normalizeCourseListFromResponse = (res) => {
 const openKnowledgePointCourses = async (node) => {
   const kpId = Number(node?.id);
   if (!Number.isFinite(kpId)) {
-    logger.warn("该知识点缺少 id，无法查询关联课程");
+    notification.warn("该知识点缺少 id，无法查询关联课程");
     return;
   }
   if (loadingCoursesByKp.value) return;
 
   loadingCoursesByKp.value = true;
   try {
-    const res = await GetCourseByKp(kpId);
+    const res = await getCoursesByKnowledgePoint(kpId);
     relatedCourses.value = normalizeCourseListFromResponse(res);
     courseSelectorVisible.value = true;
   } catch (e) {
-    logger.error("获取知识点关联课程失败", e);
+    notification.error("获取知识点关联课程失败", e);
   } finally {
     loadingCoursesByKp.value = false;
   }

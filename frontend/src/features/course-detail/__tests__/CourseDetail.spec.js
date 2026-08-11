@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   recordBehavior: vi.fn(),
   setCookie: vi.fn(),
   clearCookie: vi.fn(),
-  logger: {
+  notification: {
     success: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
@@ -38,19 +38,19 @@ vi.mock('../../../utils/authCookie', () => ({
   clearAuthTokenCookie: mocks.clearCookie,
 }))
 
-vi.mock('../../../utils/logger', () => ({ logger: mocks.logger }))
+vi.mock('@/services/notification', () => ({ notification: mocks.notification }))
 
 vi.mock('../../../api/course', () => ({
-  GetCourseVideo: mocks.getCourseVideo,
-  GetUserCourseRelation: mocks.getCourseRelation,
-  GetCourseById: mocks.getCourseById,
-  GetKnowledgePointsByCourse: mocks.getKnowledgePoints,
-  UserAttendCourse: mocks.attendCourse,
-  UpdateCourseVideoProgressSeconds: mocks.updateProgress,
+  getCourseVideo: mocks.getCourseVideo,
+  getUserCourseRelation: mocks.getCourseRelation,
+  getCourseById: mocks.getCourseById,
+  getCourseKnowledgePoints: mocks.getKnowledgePoints,
+  enrollCourse: mocks.attendCourse,
+  updateCourseVideoProgressSeconds: mocks.updateProgress,
 }))
 
 vi.mock('../../../api/learningBehavior', () => ({
-  RecordLearningBehavior: mocks.recordBehavior,
+  recordLearningBehavior: mocks.recordBehavior,
 }))
 
 const success = (data) => Promise.resolve({ data: { code: 200, data } })
@@ -143,7 +143,7 @@ describe('CourseDetail', () => {
     const wrapper = await mountPage()
 
     expect(wrapper.text()).toContain('暂无视频资源')
-    expect(mocks.logger.error).toHaveBeenCalledWith('获取课程视频异常，请稍后重试', error)
+    expect(mocks.notification.error).toHaveBeenCalledWith('获取课程视频异常，请稍后重试', error)
   })
 
   it('关系接口失败时进入 error，并可重试为未选课状态', async () => {
@@ -155,7 +155,7 @@ describe('CourseDetail', () => {
     const actions = wrapper.findComponent(CourseActions)
 
     expect(actions.props('enrollmentStatus')).toBe(ENROLLMENT_STATUS.ERROR)
-    expect(mocks.logger.error).toHaveBeenCalledWith('获取用户课程关系出错', relationError)
+    expect(mocks.notification.error).toHaveBeenCalledWith('获取用户课程关系出错', relationError)
 
     actions.vm.$emit('retry-relation')
     await flushPromises()
@@ -244,7 +244,7 @@ describe('CourseDetail', () => {
     expect(mocks.setCookie).not.toHaveBeenCalled()
     expect(mocks.getCourseRelation).not.toHaveBeenCalled()
     expect(mocks.updateProgress).not.toHaveBeenCalled()
-    expect(mocks.logger.error).not.toHaveBeenCalled()
+    expect(mocks.notification.error).not.toHaveBeenCalled()
   })
 
   it('卸载后忽略迟到的课程关系并停止后续读取', async () => {
@@ -263,7 +263,7 @@ describe('CourseDetail', () => {
     expect(mocks.getCourseById).not.toHaveBeenCalled()
     expect(mocks.getKnowledgePoints).not.toHaveBeenCalled()
     expect(mocks.updateProgress).not.toHaveBeenCalled()
-    expect(mocks.logger.error).not.toHaveBeenCalled()
+    expect(mocks.notification.error).not.toHaveBeenCalled()
   })
 
   it('选课请求在卸载后返回时不更新状态或显示提示', async () => {
@@ -278,7 +278,7 @@ describe('CourseDetail', () => {
     enrollRequest.resolve({ data: { code: 200, data: null } })
     await flushPromises()
 
-    expect(mocks.logger.success).not.toHaveBeenCalled()
+    expect(mocks.notification.success).not.toHaveBeenCalled()
     expect(mocks.updateProgress).not.toHaveBeenCalled()
   })
 

@@ -17,8 +17,8 @@
 
 <script setup>
 import { onMounted, onBeforeUnmount, ref, nextTick } from "vue";
-import { GetAbilityRadar } from "@/api/analysis";
-import { logger } from "@/utils/logger";
+import { getAbilityRadar } from "@/api/analysis";
+import { notification } from "@/services/notification";
 import { init } from "@/utils/echarts";
 
 const loading = ref(false);
@@ -142,7 +142,7 @@ const fetchAbilityRadar = async () => {
 
   loading.value = true;
   try {
-    const res = await GetAbilityRadar();
+    const res = await getAbilityRadar();
     const payload = res?.data?.data ?? {};
     radarData.value = normalizeRadarData(payload);
     empty.value =
@@ -156,7 +156,7 @@ const fetchAbilityRadar = async () => {
     }
   } catch (e) {
     empty.value = true;
-    logger.error("获取能力雷达图失败", e);
+    notification.error("获取能力雷达图失败", e);
   } finally {
     loading.value = false;
   }

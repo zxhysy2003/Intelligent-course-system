@@ -168,12 +168,12 @@
 <script setup>
 import { onMounted, reactive, ref } from "vue";
 import {
-  GetCategories,
-  GetCourseRegisterOptions,
-  RegisterCourse,
-  UploadCourseVideo,
+  getCategories,
+  getCourseRegisterOptions,
+  registerCourse,
+  uploadCourseVideo,
 } from "@/api/course";
-import { logger } from "@/utils/logger";
+import { notification } from "@/services/notification";
 
 const formRef = ref(null);
 const submitting = ref(false);
@@ -240,8 +240,8 @@ const rules = {
 const beforeVideoUpload = (file) => {
   const okType = ["video/mp4", "video/webm", "video/ogg"].includes(file.type);
   const okSize = file.size / 1024 / 1024 < 500;
-  if (!okType) logger.warn("仅支持 mp4/webm/ogg 视频格式");
-  if (!okSize) logger.warn("视频大小不能超过 500MB");
+  if (!okType) notification.warn("仅支持 mp4/webm/ogg 视频格式");
+  if (!okSize) notification.warn("视频大小不能超过 500MB");
   return okType && okSize;
 };
 
@@ -279,7 +279,7 @@ const fillEstimatedDurationSeconds = (file) => {
     };
     video.src = objectUrl;
   } catch {
-    logger.warn("无法读取视频时长，请手动填写时长");
+    notification.warn("无法读取视频时长，请手动填写时长");
   }
 };
 
@@ -298,7 +298,7 @@ const submitForm = async () => {
     await formRef.value.validate();
 
     if (!selectedVideoFile.value) {
-      logger.warn("请先选择课程视频");
+      notification.warn("请先选择课程视频");
       return;
     }
 
@@ -313,28 +313,28 @@ const submitForm = async () => {
       knowledgePointIds: form.knowledgePointIds,
     };
 
-    const registerRes = await RegisterCourse(payload);
+    const registerRes = await registerCourse(payload);
     if (registerRes?.data?.code !== 200) {
-      logger.error(registerRes?.data?.msg || "课程注册失败", registerRes?.data);
+      notification.error(registerRes?.data?.msg || "课程注册失败", registerRes?.data);
       return;
     }
 
     const courseId = registerRes?.data?.data;
     if (!courseId) {
-      logger.error("课程注册成功但未返回 courseId");
+      notification.error("课程注册成功但未返回 courseId");
       return;
     }
 
-    const uploadRes = await UploadCourseVideo(courseId, selectedVideoFile.value);
+    const uploadRes = await uploadCourseVideo(courseId, selectedVideoFile.value);
     if (uploadRes?.data?.code !== 200) {
-      logger.error(uploadRes?.data?.msg || "视频上传失败", uploadRes?.data);
+      notification.error(uploadRes?.data?.msg || "视频上传失败", uploadRes?.data);
       return;
     }
 
-    logger.success("课程注册并上传视频成功");
+    notification.success("课程注册并上传视频成功");
     resetForm();
   } catch (e) {
-    logger.error("请先完善课程信息", e);
+    notification.error("请先完善课程信息", e);
   } finally {
     submitting.value = false;
   }
@@ -343,8 +343,8 @@ const submitForm = async () => {
 onMounted(async () => {
   try {
     const [categoryRes, optionRes] = await Promise.all([
-      GetCategories(),
-      GetCourseRegisterOptions(),
+      getCategories(),
+      getCourseRegisterOptions(),
     ]);
     categories.value = Array.isArray(categoryRes?.data?.data) ? categoryRes.data.data : [];
 
@@ -354,7 +354,7 @@ onMounted(async () => {
       ? optionsPayload.knowledgePoints
       : [];
   } catch (e) {
-    logger.error("获取课程注册选项失败", e);
+    notification.error("获取课程注册选项失败", e);
   }
 });
 </script>

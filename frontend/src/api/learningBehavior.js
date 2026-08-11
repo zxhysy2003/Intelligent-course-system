@@ -1,5 +1,5 @@
 import request from "./request";
 
-export function RecordLearningBehavior(data) {
+export function recordLearningBehavior(data) {
   return request.post("/behavior/record", null, { params: data });
 }
