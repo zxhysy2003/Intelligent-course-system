@@ -1,10 +1,9 @@
 {
   "compilerOptions": {
     "allowJs": true,
-    "baseUrl": ".",
     "checkJs": false,
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src/**/*.js", "src/**/*.vue", "vite.config.js", "eslint.config.js"]
