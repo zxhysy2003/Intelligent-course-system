@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sy.course_system.common.Result;
+import com.sy.course_system.common.ApiPaths;
 import com.sy.course_system.common.UserContext;
 import com.sy.course_system.agent.AgentChatProcessingException;
 import com.sy.course_system.dto.agent.AgentChatRequestDTO;
@@ -23,7 +24,7 @@ import com.sy.course_system.vo.agent.AgentMessageVO;
 import com.sy.course_system.vo.agent.AgentSessionVO;
 
 @RestController
-@RequestMapping("/agent")
+@RequestMapping(ApiPaths.ASSISTANT)
 public class AgentController {
 
     private final AgentService agentService;
@@ -58,7 +59,7 @@ public class AgentController {
         return handle(() -> agentService.listMessages(UserContext.getUserId(), sessionId));
     }
 
-    @PostMapping("/chat")
+    @PostMapping("/messages")
     public Result<AgentChatResponseVO> chat(@RequestBody AgentChatRequestDTO request) {
         return handle(() -> agentService.chat(UserContext.getUserId(), request));
     }

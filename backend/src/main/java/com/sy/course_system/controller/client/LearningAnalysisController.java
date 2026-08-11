@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sy.course_system.common.Result;
+import com.sy.course_system.common.ApiPaths;
 import com.sy.course_system.common.UserContext;
 import com.sy.course_system.dto.AbilityRadarDTO;
 import com.sy.course_system.dto.ProgressChartDTO;
@@ -15,7 +16,7 @@ import com.sy.course_system.service.KnowledgeGraphService;
 import com.sy.course_system.service.LearningAnalysisService;
 
 @RestController
-@RequestMapping("/analysis")
+@RequestMapping(ApiPaths.LEARNING_ANALYTICS)
 public class LearningAnalysisController {
 
     @Autowired

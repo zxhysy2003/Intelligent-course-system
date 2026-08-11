@@ -5,8 +5,13 @@
 
     <!-- 工具栏 -->
     <div class="toolbar">
-      <el-input v-model.trim="searchQuery" placeholder="搜索课程名称、讲师或标签…" clearable @keyup.enter="searchCourses"
-        class="toolbar-item input">
+      <el-input
+        v-model.trim="searchQuery"
+        placeholder="搜索课程名称、讲师或标签…"
+        clearable
+        @keyup.enter="searchCourses"
+        class="toolbar-item input"
+      >
         <template #prefix>
           <el-icon>
             <Search />
@@ -14,7 +19,12 @@
         </template>
       </el-input>
 
-      <el-select v-model="selectedCategory" placeholder="全部分类" clearable class="toolbar-item select">
+      <el-select
+        v-model="selectedCategory"
+        placeholder="全部分类"
+        clearable
+        class="toolbar-item select"
+      >
         <el-option label="全部分类" :value="null" />
         <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
       </el-select>
@@ -63,10 +73,18 @@
             </div>
 
             <div class="meta">
-              <span class="difficulty" :style="{ color: difficultyMap[getDifficultyLevel(course.difficulty)]?.color }">
-                {{ difficultyMap[getDifficultyLevel(course.difficulty)]?.label || "未知" }}
+              <span
+                class="difficulty"
+                :style="{ color: difficultyMap[getDifficultyLevel(course.difficulty)]?.color }"
+              >
+                {{ difficultyMap[getDifficultyLevel(course.difficulty)]?.label || '未知' }}
               </span>
-              <el-rate :model-value="getDifficultyLevel(course.difficulty)" :max="3" disabled class="difficulty-rate" />
+              <el-rate
+                :model-value="getDifficultyLevel(course.difficulty)"
+                :max="3"
+                disabled
+                class="difficulty-rate"
+              />
               <span class="separator">|</span>
               <span class="category">{{ course.category }}</span>
             </div>
@@ -91,15 +109,13 @@
             <el-progress v-if="course.enrolled" :percentage="course.progress" :stroke-width="10" />
 
             <div class="actions">
-              <el-button type="primary" @click.stop="editCourse(course)">
-                修改课程
-              </el-button>
+              <el-button type="primary" @click.stop="editCourse(course)"> 修改课程 </el-button>
               <el-button
                 :type="isOnline(course.status) ? 'warning' : 'success'"
                 plain
                 @click.stop="toggleStatus(course)"
               >
-                {{ isOnline(course.status) ? "下线" : "上线" }}
+                {{ isOnline(course.status) ? '下线' : '上线' }}
               </el-button>
             </div>
           </div>
@@ -113,217 +129,222 @@
 
     <!-- 分页 -->
     <div class="pagination" v-if="courses.length">
-      <el-pagination 
-        background 
-        layout="prev, pager, next, ->, sizes" 
-        :current-page="page" 
+      <el-pagination
+        background
+        layout="prev, pager, next, ->, sizes"
+        :current-page="page"
         :page-size="pageSize"
         :page-sizes="[6, 9, 12, 18]"
         size="default"
-        :total="total" @current-change="p => { page = p; searchCourses(); }"
-        @size-change="size => { pageSize = size; page = 1; searchCourses(); }" />
+        :total="total"
+        @current-change="
+          (p) => {
+            page = p
+            searchCourses()
+          }
+        "
+        @size-change="
+          (size) => {
+            pageSize = size
+            page = 1
+            searchCourses()
+          }
+        "
+      />
     </div>
   </div>
 </template>
 
-
 <script setup>
+import { ref, watch, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { Search, User } from '@element-plus/icons-vue'
+import { ElMessageBox } from 'element-plus'
+import { notification } from '@/services/notification'
+import { getCategories, getAdminCourses, deleteCourses, updateCourseStatus } from '@/api/course'
 
-import { ref, watch, onMounted, computed } from "vue";
-import { useRouter } from "vue-router";
-import { Search, User } from "@element-plus/icons-vue";
-import { ElMessageBox } from "element-plus";
-import { notification } from "@/services/notification";
-import { getCategories, getCourses, deleteCourses, updateCourseStatus } from "@/api/course";
-
-const router = useRouter();
+const router = useRouter()
 
 // 查询与筛选
-const searchQuery = ref("");
-const selectedCategory = ref(null);
-const sortBy = ref(0);
+const searchQuery = ref('')
+const selectedCategory = ref(null)
+const sortBy = ref(0)
 // 分页
-const page = ref(1);
-const pageSize = ref(9);
-const total = ref(0);
+const page = ref(1)
+const pageSize = ref(9)
+const total = ref(0)
 
-const courses = ref([]);
-const selectedIds = ref([]);
+const courses = ref([])
+const selectedIds = ref([])
 
-const selectedCount = computed(() => selectedIds.value.length);
+const selectedCount = computed(() => selectedIds.value.length)
 
 // 搜索加载状态
-const loading = ref(false);
+const loading = ref(false)
 // 分类列表
-const categories = ref([{
-  id: 0,
-  name: "默认分类"
-}]);
-
+const categories = ref([
+  {
+    id: 0,
+    name: '默认分类',
+  },
+])
 
 // 难度等级映射
 const difficultyMap = {
-  1: { label: "初级", color: "#67c23a" },
-  2: { label: "中级", color: "#e6a23c" },
-  3: { label: "高级", color: "#f56c6c" },
-};
+  1: { label: '初级', color: '#67c23a' },
+  2: { label: '中级', color: '#e6a23c' },
+  3: { label: '高级', color: '#f56c6c' },
+}
 
 const getDifficultyLevel = (value) => {
-  const level = Number(value);
-  if (!Number.isFinite(level) || level <= 1) return 1;
-  if (level >= 3) return 3;
-  return 2;
-};
+  const level = Number(value)
+  if (!Number.isFinite(level) || level <= 1) return 1
+  if (level >= 3) return 3
+  return 2
+}
 
 // 组件挂载时获取分类列表和初始课程列表
 onMounted(async () => {
   try {
-    const res = await getCategories();
-    categories.value = res.data?.data || [];
+    const res = await getCategories()
+    categories.value = res.data?.data || []
   } catch (e) {
-    notification.error("获取分类列表失败", e);
+    notification.error('获取分类列表失败', e)
   }
   // 初始搜索
-  searchCourses();
-});
-
+  searchCourses()
+})
 
 // 重置搜索选项
 const resetFilters = () => {
-  searchQuery.value = "";
-  selectedCategory.value = null;
-  sortBy.value = 0;
-  searchCourses();
-};
-
+  searchQuery.value = ''
+  selectedCategory.value = null
+  sortBy.value = 0
+  searchCourses()
+}
 
 // 搜索课程
 const searchCourses = async () => {
-  loading.value = true;
+  loading.value = true
   try {
-    const res = await getCourses({
+    const res = await getAdminCourses({
       page: page.value,
       pageSize: pageSize.value,
       keyword: searchQuery.value,
       categoryId: selectedCategory.value,
       sortBy: sortBy.value,
-    });
+    })
 
-    notification.debug("搜索课程结果", res);
+    notification.debug('搜索课程结果', res)
 
-    courses.value = res.data.data?.records || [];
-    total.value = res.data.data?.total || 0;
-    notification.success("搜索成功");
+    courses.value = res.data.data?.records || []
+    total.value = res.data.data?.total || 0
+    notification.success('搜索成功')
   } catch (e) {
-    notification.error("搜索失败", e);
+    notification.error('搜索失败', e)
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 
 const editCourse = (course) => {
   router.push({
-    name: "CourseEdit",
-    params: { id: course.id }
-  });
-};
+    name: 'CourseEdit',
+    params: { courseId: course.id },
+  })
+}
 
 const toggleSelect = (courseId) => {
-  const current = new Set(selectedIds.value);
+  const current = new Set(selectedIds.value)
   if (current.has(courseId)) {
-    current.delete(courseId);
+    current.delete(courseId)
   } else {
-    current.add(courseId);
+    current.add(courseId)
   }
-  selectedIds.value = Array.from(current);
-};
+  selectedIds.value = Array.from(current)
+}
 
-const isSelected = (courseId) => selectedIds.value.includes(courseId);
+const isSelected = (courseId) => selectedIds.value.includes(courseId)
 
 const deleteSelected = async () => {
-  if (!selectedIds.value.length) return;
+  if (!selectedIds.value.length) return
   try {
     await ElMessageBox.confirm(
       `确认删除已选中的 ${selectedIds.value.length} 门课程吗？删除后无法恢复。`,
-      "再次确认删除",
+      '再次确认删除',
       {
-        confirmButtonText: "确认删除",
-        cancelButtonText: "取消",
-        type: "warning",
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消',
+        type: 'warning',
         distinguishCancelAndClose: true,
         closeOnClickModal: false,
-      }
-    );
+      },
+    )
   } catch {
-    return;
+    return
   }
 
   try {
-    const res = await deleteCourses(selectedIds.value);
+    const res = await deleteCourses(selectedIds.value)
     if (res.data.code !== 200) {
-      notification.error(res.data.msg || "删除课程失败", res.data);
-      return;
+      notification.error(res.data.msg || '删除课程失败', res.data)
+      return
     }
-    const selectedSet = new Set(selectedIds.value);
-    courses.value = courses.value.filter(course => !selectedSet.has(course.id));
-    selectedIds.value = [];
-    notification.success("删除课程成功");
+    const selectedSet = new Set(selectedIds.value)
+    courses.value = courses.value.filter((course) => !selectedSet.has(course.id))
+    selectedIds.value = []
+    notification.success('删除课程成功')
   } catch (e) {
-    notification.error("删除课程失败", e);
+    notification.error('删除课程失败', e)
   }
-};
+}
 
 const goToCourseRegister = () => {
   router.push({
-    name: "CourseRegister"
-  });
-};
+    name: 'CourseRegister',
+  })
+}
 
 const statusText = (status) => {
-  const value = Number(status);
-  if (value === 1) return "已上线";
-  if (value === 2) return "已下线";
-  return "草稿";
-};
+  const value = Number(status)
+  if (value === 1) return '已上线'
+  if (value === 2) return '已下线'
+  return '草稿'
+}
 
 const statusTagType = (status) => {
-  const value = Number(status);
-  if (value === 1) return "success";
-  if (value === 2) return "warning";
-  return "info";
-};
+  const value = Number(status)
+  if (value === 1) return 'success'
+  if (value === 2) return 'warning'
+  return 'info'
+}
 
 const statusClass = (status) => {
-  const value = Number(status);
-  if (value === 1) return "status-online";
-  if (value === 2) return "status-offline";
-  return "status-draft";
-};
+  const value = Number(status)
+  if (value === 1) return 'status-online'
+  if (value === 2) return 'status-offline'
+  return 'status-draft'
+}
 
-const isOnline = (status) => Number(status) === 1;
+const isOnline = (status) => Number(status) === 1
 
 const toggleStatus = async (course) => {
-  const targetStatus = isOnline(course.status) ? 2 : 1;
+  const targetStatus = isOnline(course.status) ? 2 : 1
   try {
-    const res = await updateCourseStatus(course.id, targetStatus);
+    const res = await updateCourseStatus(course.id, targetStatus)
     if (res?.data?.code !== 200) {
-      notification.error(res?.data?.msg || "更新课程状态失败", res?.data);
-      return;
+      notification.error(res?.data?.msg || '更新课程状态失败', res?.data)
+      return
     }
-    course.status = targetStatus;
-    notification.success(targetStatus === 1 ? "课程已上线" : "课程已下线");
+    course.status = targetStatus
+    notification.success(targetStatus === 1 ? '课程已上线' : '课程已下线')
   } catch (e) {
-    notification.error("更新课程状态失败", e);
+    notification.error('更新课程状态失败', e)
   }
-};
+}
 
 // 筛选项变化自动搜索（showEnrolledOnly不触发搜索，只做前端过滤）
-watch(
-  [selectedCategory, sortBy],
-  searchCourses
-);
-
-
+watch([selectedCategory, sortBy], searchCourses)
 </script>
 
 <style scoped>

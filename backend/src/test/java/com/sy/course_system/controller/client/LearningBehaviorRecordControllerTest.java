@@ -12,6 +12,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.sy.course_system.common.Result;
+import com.sy.course_system.dto.LearningBehaviorRecordDTO;
 import com.sy.course_system.enums.LearnBehaviorType;
 import com.sy.course_system.service.LearningBehaviorService;
 
@@ -31,7 +32,8 @@ class LearningBehaviorRecordControllerTest {
 
     @Test
     void recordBehaviorShouldRejectDirectFinish() {
-        Result<?> result = controller.recordBehavior(10L, LearnBehaviorType.FINISH, null);
+        LearningBehaviorRecordDTO request = request(10L, LearnBehaviorType.FINISH, null);
+        Result<?> result = controller.recordBehavior(request);
 
         assertEquals(400, result.getCode());
         assertEquals("FINISH 行为由学习进度自动生成，不能直接提交", result.getMsg());
@@ -40,9 +42,18 @@ class LearningBehaviorRecordControllerTest {
 
     @Test
     void recordBehaviorShouldDelegateSupportedBehavior() {
-        Result<?> result = controller.recordBehavior(10L, LearnBehaviorType.STUDY, 60);
+        LearningBehaviorRecordDTO request = request(10L, LearnBehaviorType.STUDY, 60);
+        Result<?> result = controller.recordBehavior(request);
 
         assertEquals(200, result.getCode());
         verify(learningBehaviorService).recordBehavior(10L, LearnBehaviorType.STUDY, 60);
+    }
+
+    private LearningBehaviorRecordDTO request(Long courseId, LearnBehaviorType behaviorType, Integer duration) {
+        LearningBehaviorRecordDTO request = new LearningBehaviorRecordDTO();
+        request.setCourseId(courseId);
+        request.setBehaviorType(behaviorType);
+        request.setDuration(duration);
+        return request;
     }
 }

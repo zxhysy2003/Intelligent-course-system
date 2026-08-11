@@ -6,13 +6,7 @@
     </div>
 
     <el-card shadow="hover" class="edit-card">
-      <el-form
-        ref="formRef"
-        :model="form"
-        :rules="rules"
-        label-position="top"
-        class="edit-form"
-      >
+      <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="edit-form">
         <el-row :gutter="14">
           <el-col :xs="24" :md="16">
             <el-form-item label="课程名称" prop="title">
@@ -27,12 +21,7 @@
           <el-col :xs="24" :md="8">
             <el-form-item label="课程分类" prop="categoryId">
               <el-select v-model="form.categoryId" placeholder="请选择分类" class="full-width">
-                <el-option
-                  v-for="c in categories"
-                  :key="c.id"
-                  :label="c.name"
-                  :value="c.id"
-                />
+                <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -42,7 +31,12 @@
           <el-col :xs="24" :md="8">
             <el-form-item label="课程难度" prop="difficulty">
               <el-select v-model="form.difficulty" placeholder="请选择难度" class="full-width">
-                <el-option v-for="d in difficultyOptions" :key="d.value" :label="d.label" :value="d.value" />
+                <el-option
+                  v-for="d in difficultyOptions"
+                  :key="d.value"
+                  :label="d.label"
+                  :value="d.value"
+                />
               </el-select>
             </el-form-item>
           </el-col>
@@ -61,11 +55,7 @@
           </el-col>
           <el-col :xs="24" :md="8">
             <el-form-item label="封面链接" prop="coverUrl">
-              <el-input
-                v-model.trim="form.coverUrl"
-                placeholder="https://..."
-                clearable
-              />
+              <el-input v-model.trim="form.coverUrl" placeholder="https://..." clearable />
             </el-form-item>
           </el-col>
         </el-row>
@@ -133,7 +123,9 @@
             <el-button type="primary" plain>选择新视频文件</el-button>
             <template #tip>
               <div class="upload-tip">
-                仅在选择视频时替换。支持 mp4/webm/ogg，建议小于 500MB。当前：{{ selectedVideoName || "未选择文件" }}
+                仅在选择视频时替换。支持 mp4/webm/ogg，建议小于 500MB。当前：{{
+                  selectedVideoName || '未选择文件'
+                }}
               </div>
             </template>
           </el-upload>
@@ -141,12 +133,7 @@
 
         <el-form-item label="封面预览">
           <div class="cover-preview-wrap">
-            <el-image
-              v-if="form.coverUrl"
-              :src="form.coverUrl"
-              fit="cover"
-              class="cover-preview"
-            >
+            <el-image v-if="form.coverUrl" :src="form.coverUrl" fit="cover" class="cover-preview">
               <template #error>
                 <div class="cover-fallback">封面加载失败</div>
               </template>
@@ -165,197 +152,196 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   getCategories,
   getCourseRegisterOptions,
   getAdminCourseDetail,
   updateCourse,
   uploadCourseVideo,
-} from "@/api/course";
-import { notification } from "@/services/notification";
+} from '@/api/course'
+import { notification } from '@/services/notification'
 
-const route = useRoute();
-const router = useRouter();
-const formRef = ref(null);
-const loading = ref(false);
-const submitting = ref(false);
-const categories = ref([]);
-const tagOptions = ref([]);
-const knowledgePointOptions = ref([]);
-const selectedVideoFile = ref(null);
-const selectedVideoName = ref("");
+const route = useRoute()
+const router = useRouter()
+const formRef = ref(null)
+const loading = ref(false)
+const submitting = ref(false)
+const categories = ref([])
+const tagOptions = ref([])
+const knowledgePointOptions = ref([])
+const selectedVideoFile = ref(null)
+const selectedVideoName = ref('')
 
-const courseId = String(route.params.id || "");
+const courseId = String(route.params.courseId || '')
 
 const form = reactive({
   id: courseId,
-  title: "",
-  description: "",
-  coverUrl: "",
+  title: '',
+  description: '',
+  coverUrl: '',
   difficulty: null,
   duration: 60,
   categoryId: null,
   tagIds: [],
   knowledgePointIds: [],
-});
+})
 
 const difficultyOptions = [
-  { value: 1, label: "初级" },
-  { value: 2, label: "中级" },
-  { value: 3, label: "高级" },
-];
+  { value: 1, label: '初级' },
+  { value: 2, label: '中级' },
+  { value: 3, label: '高级' },
+]
 
 const rules = {
-  title: [{ required: true, message: "请输入课程名称", trigger: "blur" }],
-  categoryId: [{ required: true, message: "请选择课程分类", trigger: "change" }],
-  difficulty: [{ required: true, message: "请选择课程难度", trigger: "change" }],
-  duration: [{ required: true, message: "请输入课程时长", trigger: "change" }],
-  description: [{ required: true, message: "请输入课程简介", trigger: "blur" }],
+  title: [{ required: true, message: '请输入课程名称', trigger: 'blur' }],
+  categoryId: [{ required: true, message: '请选择课程分类', trigger: 'change' }],
+  difficulty: [{ required: true, message: '请选择课程难度', trigger: 'change' }],
+  duration: [{ required: true, message: '请输入课程时长', trigger: 'change' }],
+  description: [{ required: true, message: '请输入课程简介', trigger: 'blur' }],
   coverUrl: [
-    { required: true, message: "请输入封面链接", trigger: "blur" },
+    { required: true, message: '请输入封面链接', trigger: 'blur' },
     {
       validator: (_, value, callback) => {
-        if (!value) return callback();
-        const ok = /^https?:\/\/\S+$/i.test(value);
-        callback(ok ? undefined : new Error("请输入合法的 URL"));
+        if (!value) return callback()
+        const ok = /^https?:\/\/\S+$/i.test(value)
+        callback(ok ? undefined : new Error('请输入合法的 URL'))
       },
-      trigger: "blur",
+      trigger: 'blur',
     },
   ],
   tagIds: [
     {
       validator: (_, value, callback) => {
-        if (Array.isArray(value) && value.length > 0) return callback();
-        callback(new Error("请至少选择一个标签"));
+        if (Array.isArray(value) && value.length > 0) return callback()
+        callback(new Error('请至少选择一个标签'))
       },
-      trigger: "change",
+      trigger: 'change',
     },
   ],
   knowledgePointIds: [
     {
       validator: (_, value, callback) => {
-        if (Array.isArray(value) && value.length > 0) return callback();
-        callback(new Error("请至少选择一个知识点"));
+        if (Array.isArray(value) && value.length > 0) return callback()
+        callback(new Error('请至少选择一个知识点'))
       },
-      trigger: "change",
+      trigger: 'change',
     },
   ],
-};
+}
 
 const beforeVideoUpload = (file) => {
-  const okType = ["video/mp4", "video/webm", "video/ogg"].includes(file.type);
-  const okSize = file.size / 1024 / 1024 < 500;
-  if (!okType) notification.warn("仅支持 mp4/webm/ogg 视频格式");
-  if (!okSize) notification.warn("视频大小不能超过 500MB");
-  return okType && okSize;
-};
+  const okType = ['video/mp4', 'video/webm', 'video/ogg'].includes(file.type)
+  const okSize = file.size / 1024 / 1024 < 500
+  if (!okType) notification.warn('仅支持 mp4/webm/ogg 视频格式')
+  if (!okSize) notification.warn('视频大小不能超过 500MB')
+  return okType && okSize
+}
 
 const handleVideoChange = (uploadFile) => {
-  if (!uploadFile?.raw) return;
+  if (!uploadFile?.raw) return
   if (!beforeVideoUpload(uploadFile.raw)) {
-    selectedVideoFile.value = null;
-    selectedVideoName.value = "";
-    return;
+    selectedVideoFile.value = null
+    selectedVideoName.value = ''
+    return
   }
-  selectedVideoFile.value = uploadFile.raw;
-  selectedVideoName.value = uploadFile.name || uploadFile.raw.name || "";
-};
+  selectedVideoFile.value = uploadFile.raw
+  selectedVideoName.value = uploadFile.name || uploadFile.raw.name || ''
+}
 
 const handleVideoRemove = () => {
-  selectedVideoFile.value = null;
-  selectedVideoName.value = "";
-};
+  selectedVideoFile.value = null
+  selectedVideoName.value = ''
+}
 
 const normalizeIds = (list) => {
-  if (!Array.isArray(list)) return [];
-  return list.map((id) => String(id));
-};
+  if (!Array.isArray(list)) return []
+  return list.map((id) => String(id))
+}
 
 const mapTagIdsFromDetail = (detail) => {
-  if (Array.isArray(detail?.tagIds)) return normalizeIds(detail.tagIds);
-  if (Array.isArray(detail?.tags)) return normalizeIds(detail.tags.map((t) => t?.id));
-  if (Array.isArray(detail?.options?.tags)) return normalizeIds(detail.options.tags.map((t) => t?.id));
+  if (Array.isArray(detail?.tagIds)) return normalizeIds(detail.tagIds)
+  if (Array.isArray(detail?.tags)) return normalizeIds(detail.tags.map((t) => t?.id))
+  if (Array.isArray(detail?.options?.tags))
+    return normalizeIds(detail.options.tags.map((t) => t?.id))
   if (Array.isArray(detail?.tagList)) {
-    const nameSet = new Set(detail.tagList);
-    return tagOptions.value
-      .filter((tag) => nameSet.has(tag.name))
-      .map((tag) => String(tag.id));
+    const nameSet = new Set(detail.tagList)
+    return tagOptions.value.filter((tag) => nameSet.has(tag.name)).map((tag) => String(tag.id))
   }
-  return [];
-};
+  return []
+}
 
 const mapKnowledgePointIdsFromDetail = (detail) => {
-  if (Array.isArray(detail?.knowledgePointIds)) return normalizeIds(detail.knowledgePointIds);
-  if (Array.isArray(detail?.knowledgePoints)) return normalizeIds(detail.knowledgePoints.map((kp) => kp?.id));
+  if (Array.isArray(detail?.knowledgePointIds)) return normalizeIds(detail.knowledgePointIds)
+  if (Array.isArray(detail?.knowledgePoints))
+    return normalizeIds(detail.knowledgePoints.map((kp) => kp?.id))
   if (Array.isArray(detail?.options?.knowledgePoints)) {
-    return normalizeIds(detail.options.knowledgePoints.map((kp) => kp?.id));
+    return normalizeIds(detail.options.knowledgePoints.map((kp) => kp?.id))
   }
-  return [];
-};
+  return []
+}
 
 const fillDetail = (detail) => {
-  form.id = String(detail?.id ?? courseId);
-  form.title = detail?.title || "";
-  form.description = detail?.description || "";
-  form.coverUrl = detail?.coverUrl || detail?.cover || "";
-  form.difficulty = Number(detail?.difficulty || 1);
-  form.duration = Number(detail?.duration || 60);
-  form.categoryId = Number(detail?.categoryId || null);
-  form.tagIds = mapTagIdsFromDetail(detail);
-  form.knowledgePointIds = mapKnowledgePointIdsFromDetail(detail);
-};
+  form.id = String(detail?.id ?? courseId)
+  form.title = detail?.title || ''
+  form.description = detail?.description || ''
+  form.coverUrl = detail?.coverUrl || detail?.cover || ''
+  form.difficulty = Number(detail?.difficulty || 1)
+  form.duration = Number(detail?.duration || 60)
+  form.categoryId = Number(detail?.categoryId || null)
+  form.tagIds = mapTagIdsFromDetail(detail)
+  form.knowledgePointIds = mapKnowledgePointIdsFromDetail(detail)
+}
 
 const fetchPageData = async () => {
   if (!courseId) {
-    notification.error("课程ID缺失，无法编辑");
-    return;
+    notification.error('课程ID缺失，无法编辑')
+    return
   }
 
-  loading.value = true;
+  loading.value = true
   try {
     const [categoryRes, optionRes, detailRes] = await Promise.all([
       getCategories(),
       getCourseRegisterOptions(),
       getAdminCourseDetail(courseId),
-    ]);
+    ])
 
-    categories.value = Array.isArray(categoryRes?.data?.data) ? categoryRes.data.data : [];
+    categories.value = Array.isArray(categoryRes?.data?.data) ? categoryRes.data.data : []
 
-    const optionsPayload = optionRes?.data?.data || {};
-    const detail = detailRes?.data?.data || {};
-    const detailOptions = detail?.options || {};
+    const optionsPayload = optionRes?.data?.data || {}
+    const detail = detailRes?.data?.data || {}
+    const detailOptions = detail?.options || {}
 
     // 优先使用 register-options，接口异常时回退到 detail.options
-    tagOptions.value = Array.isArray(optionsPayload.tags) ? optionsPayload.tags : [];
+    tagOptions.value = Array.isArray(optionsPayload.tags) ? optionsPayload.tags : []
     knowledgePointOptions.value = Array.isArray(optionsPayload.knowledgePoints)
       ? optionsPayload.knowledgePoints
-      : [];
+      : []
 
     if (!tagOptions.value.length && Array.isArray(detailOptions.tags)) {
-      tagOptions.value = detailOptions.tags;
+      tagOptions.value = detailOptions.tags
     }
     if (!knowledgePointOptions.value.length && Array.isArray(detailOptions.knowledgePoints)) {
-      knowledgePointOptions.value = detailOptions.knowledgePoints;
+      knowledgePointOptions.value = detailOptions.knowledgePoints
     }
 
-    fillDetail(detail);
+    fillDetail(detail)
   } catch (e) {
-    notification.error("加载课程编辑数据失败", e);
+    notification.error('加载课程编辑数据失败', e)
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 
 const submitForm = async () => {
-  if (!formRef.value || submitting.value) return;
+  if (!formRef.value || submitting.value) return
   try {
-    submitting.value = true;
-    await formRef.value.validate();
+    submitting.value = true
+    await formRef.value.validate()
 
     const payload = {
-      id: form.id,
       title: form.title,
       description: form.description,
       coverUrl: form.coverUrl,
@@ -364,39 +350,39 @@ const submitForm = async () => {
       categoryId: form.categoryId,
       tagIds: form.tagIds,
       knowledgePointIds: form.knowledgePointIds,
-    };
+    }
 
-    const updateRes = await updateCourse(payload);
+    const updateRes = await updateCourse(courseId, payload)
     if (updateRes?.data?.code !== 200) {
-      notification.error(updateRes?.data?.msg || "课程更新失败", updateRes?.data);
-      return;
+      notification.error(updateRes?.data?.msg || '课程更新失败', updateRes?.data)
+      return
     }
 
     if (selectedVideoFile.value) {
-      const uploadRes = await uploadCourseVideo(form.id, selectedVideoFile.value);
+      const uploadRes = await uploadCourseVideo(form.id, selectedVideoFile.value)
       if (uploadRes?.data?.code !== 200) {
-        notification.error(uploadRes?.data?.msg || "视频上传失败", uploadRes?.data);
-        return;
+        notification.error(uploadRes?.data?.msg || '视频上传失败', uploadRes?.data)
+        return
       }
     }
 
-    notification.success(selectedVideoFile.value ? "课程更新并上传视频成功" : "课程更新成功");
-    selectedVideoFile.value = null;
-    selectedVideoName.value = "";
+    notification.success(selectedVideoFile.value ? '课程更新并上传视频成功' : '课程更新成功')
+    selectedVideoFile.value = null
+    selectedVideoName.value = ''
   } catch (e) {
-    notification.error("请先完善课程信息", e);
+    notification.error('请先完善课程信息', e)
   } finally {
-    submitting.value = false;
+    submitting.value = false
   }
-};
+}
 
 const goBack = () => {
-  router.push("/admin/course");
-};
+  router.push('/admin/courses')
+}
 
 onMounted(() => {
-  fetchPageData();
-});
+  fetchPageData()
+})
 </script>
 
 <style scoped>

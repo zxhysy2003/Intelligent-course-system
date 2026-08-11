@@ -1,27 +1,27 @@
-import request from "./request";
+import request from './request'
 
 export function listAgentSessions() {
-  return request.get("/agent/sessions");
+  return request.get('/assistant/sessions')
 }
 
 export function createAgentSession(title) {
-  return request.post("/agent/sessions", { title });
+  return request.post('/assistant/sessions', { title })
 }
 
 export function renameAgentSession(sessionId, title) {
-  return request.patch(`/agent/sessions/${sessionId}`, { title });
+  return request.patch(`/assistant/sessions/${sessionId}`, { title })
 }
 
 export function deleteAgentSession(sessionId) {
-  return request.delete(`/agent/sessions/${sessionId}`);
+  return request.delete(`/assistant/sessions/${sessionId}`)
 }
 
 export function listAgentMessages(sessionId) {
-  return request.get(`/agent/sessions/${sessionId}/messages`);
+  return request.get(`/assistant/sessions/${sessionId}/messages`)
 }
 
 export function sendAgentChat(payload) {
-  return request.post("/agent/chat", payload, {
+  return request.post('/assistant/messages', payload, {
     timeout: 60000,
-  });
+  })
 }

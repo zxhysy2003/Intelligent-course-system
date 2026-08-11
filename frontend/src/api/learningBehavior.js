@@ -1,5 +1,5 @@
-import request from "./request";
+import request from './request'
 
 export function recordLearningBehavior(data) {
-  return request.post("/behavior/record", null, { params: data });
+  return request.post('/learning-behaviors', data)
 }

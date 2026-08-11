@@ -1,43 +1,39 @@
-import request from "./request";
+import request from './request'
 
 export function login(data) {
-    return request.post("/user/login", data);
+  return request.post('/auth/login', data)
 }
 
 export function getProfile() {
-    return request.get("/user/profile");
+  return request.get('/users/me')
 }
 
 export function registerUser(data) {
-    return request.post("/user/register", data);
+  return request.post('/auth/register', data)
 }
 
 export function getAdminUsers(params) {
-    return request.post("/admin/user/list", params);
+  return request.post('/admin/users/search', params)
 }
 
 export function updateAdminUserRole(userId, role) {
-    return request.put(`/admin/user/role/${userId}`, null, {
-        params: { role }
-    });
+  return request.patch(`/admin/users/${userId}/role`, { role })
 }
 
 export function updateAdminUserStatus(userId, status) {
-    return request.put(`/admin/user/status/${userId}`, null, {
-        params: { status }
-    });
+  return request.patch(`/admin/users/${userId}/status`, { status })
 }
 
 export function deleteAdminUsers(userIds) {
-    return request.delete("/admin/user/delete", {
-        data: { userIds }
-    });
+  return request.delete('/admin/users', {
+    data: { userIds },
+  })
 }
 
 export function getAdminUserDetail(userId) {
-    return request.get(`/admin/user/detail/${userId}`);
+  return request.get(`/admin/users/${userId}`)
 }
 
-export function updateAdminUser(data) {
-    return request.put("/admin/user/update", data);
+export function updateAdminUser(userId, data) {
+  return request.put(`/admin/users/${userId}`, data)
 }

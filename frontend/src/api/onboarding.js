@@ -1,13 +1,13 @@
-import request from "./request";
+import request from './request'
 
 export function getOnboardingOptions() {
-    return request.get("/onboarding/options");
+  return request.get('/onboarding/options')
 }
 
 export function getOnboardingStatus() {
-    return request.get("/onboarding/status");
+  return request.get('/onboarding/status')
 }
 
 export function submitOnboarding(data) {
-    return request.post("/onboarding/submit", data);
+  return request.put('/onboarding/profile', data)
 }

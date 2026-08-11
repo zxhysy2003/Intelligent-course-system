@@ -115,6 +115,11 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
     }
 
+    @Override
+    public PageResult<CourseVO> pageForAdmin(CourseQueryDTO dto) {
+        return pageForUser(dto);
+    }
+
     private void enrichCoursePageRecords(List<CourseTempDTO> courseTempList) {
         if (courseTempList == null || courseTempList.isEmpty()) {
             return;

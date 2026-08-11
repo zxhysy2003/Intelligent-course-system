@@ -4,35 +4,37 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestParam;
 
+import com.sy.course_system.common.ApiPaths;
 import com.sy.course_system.common.PageResult;
 import com.sy.course_system.common.Result;
 import com.sy.course_system.dto.UserDeleteDTO;
 import com.sy.course_system.dto.UserQueryDTO;
 import com.sy.course_system.dto.UserUpdateDTO;
-import com.sy.course_system.enums.UserType;
+import com.sy.course_system.dto.UserRoleUpdateDTO;
+import com.sy.course_system.dto.UserStatusUpdateDTO;
 import com.sy.course_system.service.UserService;
 import com.sy.course_system.vo.UserDetailVO;
 import com.sy.course_system.vo.UserVO;
 
 @RestController
-@RequestMapping("/admin/user")
+@RequestMapping(ApiPaths.ADMIN_USERS)
 public class UserAdminController {
     @Autowired
     private UserService userService;
 
-    @PostMapping("/list")
+    @PostMapping("/search")
     public Result<PageResult<UserVO>> listUsers(@RequestBody UserQueryDTO query) {
         return Result.success(userService.pageForAdmin(query));
     }
 
-    @GetMapping("/detail/{userId}")
+    @GetMapping("/{userId}")
     public Result<UserDetailVO> detail(@PathVariable Long userId) {
         UserDetailVO vo = userService.getUserDetailForAdmin(userId);
         if (vo == null) {
@@ -41,10 +43,10 @@ public class UserAdminController {
         return Result.success(vo);
     }
 
-    @PutMapping("/role/{userId}")
-    public Result<String> updateRole(@PathVariable Long userId, @RequestParam UserType role) {
+    @PatchMapping("/{userId}/role")
+    public Result<String> updateRole(@PathVariable Long userId, @RequestBody UserRoleUpdateDTO request) {
         try {
-            boolean ok = userService.updateUserRole(userId, role);
+            boolean ok = userService.updateUserRole(userId, request == null ? null : request.getRole());
             if (!ok) {
                 return Result.error(404, "用户不存在");
             }
@@ -54,10 +56,10 @@ public class UserAdminController {
         }
     }
 
-    @PutMapping("/status/{userId}")
-    public Result<String> updateStatus(@PathVariable Long userId, @RequestParam Integer status) {
+    @PatchMapping("/{userId}/status")
+    public Result<String> updateStatus(@PathVariable Long userId, @RequestBody UserStatusUpdateDTO request) {
         try {
-            boolean ok = userService.updateUserStatus(userId, status);
+            boolean ok = userService.updateUserStatus(userId, request == null ? null : request.getStatus());
             if (!ok) {
                 return Result.error(404, "用户不存在");
             }
@@ -67,9 +69,10 @@ public class UserAdminController {
         }
     }
 
-    @PutMapping("/update")
-    public Result<String> update(@RequestBody UserUpdateDTO updateDTO) {
+    @PutMapping("/{userId}")
+    public Result<String> update(@PathVariable Long userId, @RequestBody UserUpdateDTO updateDTO) {
         try {
+            updateDTO.setId(userId);
             boolean ok = userService.updateUser(updateDTO);
             if (!ok) {
                 return Result.error(404, "用户不存在");
@@ -80,7 +83,7 @@ public class UserAdminController {
         }
     }
 
-    @DeleteMapping("/delete")
+    @DeleteMapping
     public Result<String> deleteUsers(@RequestBody UserDeleteDTO dto) {
         Integer deleted = userService.removeUsers(dto == null ? null : dto.getUserIds());
         if (deleted == null || deleted == 0) {

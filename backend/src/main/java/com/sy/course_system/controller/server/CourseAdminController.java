@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -13,10 +14,14 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.sy.course_system.common.ApiPaths;
+import com.sy.course_system.common.PageResult;
 import com.sy.course_system.common.Result;
 import com.sy.course_system.dto.course.CourseDeleteDTO;
+import com.sy.course_system.dto.course.CourseQueryDTO;
 import com.sy.course_system.dto.course.CourseRegisterOptionsDTO;
 import com.sy.course_system.dto.course.CourseRegisterDTO;
+import com.sy.course_system.dto.course.CourseStatusUpdateDTO;
 import com.sy.course_system.dto.course.CourseUpdateDTO;
 import com.sy.course_system.enums.CourseStatus;
 import com.sy.course_system.service.CourseService;
@@ -24,9 +29,10 @@ import com.sy.course_system.service.VideoService;
 import com.sy.course_system.vo.CourseDetailVO;
 import com.sy.course_system.vo.CourseVideoUploadVO;
 import com.sy.course_system.vo.CourseUpdateVO;
+import com.sy.course_system.vo.CourseVO;
 
 @RestController
-@RequestMapping("admin/course")
+@RequestMapping(ApiPaths.ADMIN_COURSES)
 public class CourseAdminController {
     
     @Autowired
@@ -41,7 +47,7 @@ public class CourseAdminController {
      * 课程注册下拉选项
      * 返回标签和知识点（含维度）供前端选择
      */
-    @GetMapping("/register-options")
+    @GetMapping("/form-options")
     public Result<CourseRegisterOptionsDTO> registerOptions() {
         return Result.success(courseService.getRegisterOptions());
     }
@@ -51,7 +57,7 @@ public class CourseAdminController {
      * @param registerDTO 注册信息，包含课程的相关信息
      * @return 返回注册结果，成功返回提示信息，失败返回对应错误信息
      */
-    @PostMapping("/register")
+    @PostMapping
     public Result<Long> register(@RequestBody CourseRegisterDTO registerDTO) {
         try {
             Long res = courseService.register(registerDTO);
@@ -66,7 +72,7 @@ public class CourseAdminController {
         }
     }
 
-    @DeleteMapping("/delete")
+    @DeleteMapping
     public Result<String> delete(@RequestBody CourseDeleteDTO deleteDTO) {
         Integer deleted = courseService.removeCourses(deleteDTO.getCourseIds());
         if (deleted != null && deleted > 0) {
@@ -81,9 +87,10 @@ public class CourseAdminController {
     /**
      * 课程更新
      */
-    @PutMapping("/update")
-    public Result<String> update(@RequestBody CourseUpdateDTO updateDTO) {
+    @PutMapping("/{courseId}")
+    public Result<String> update(@PathVariable Long courseId, @RequestBody CourseUpdateDTO updateDTO) {
         try {
+            updateDTO.setId(courseId);
             boolean updated = courseService.update(updateDTO);
             if (!updated) {
                 return Result.error(404, "课程不存在");
@@ -125,7 +132,7 @@ public class CourseAdminController {
         }
     }
 
-    @GetMapping("/detail/{courseId}")
+    @GetMapping("/{courseId}")
     public Result<CourseUpdateVO> getCourseDetail(@PathVariable Long courseId) {
         CourseUpdateVO courseUpdateVO = courseService.getCourseDetailForAdmin(courseId);
         if (courseUpdateVO == null) {
@@ -140,9 +147,15 @@ public class CourseAdminController {
     * @param status 目标状态（0=草稿，1=上线，2=下架）
     * @return 操作结果，成功返回提示信息，失败返回对应错误信息
     */
-    @PutMapping("/status/{courseId}")
-    public Result<String> updateCourseStatus(@PathVariable Long courseId, @RequestParam Integer status) {
+    @PatchMapping("/{courseId}/status")
+    public Result<String> updateCourseStatus(@PathVariable Long courseId,
+            @RequestBody CourseStatusUpdateDTO request) {
         try {
+            Integer status = request == null ? null : request.getStatus();
+            if (status == null) {
+                return Result.error(400, "status 不能为空");
+            }
+            CourseStatus.getCourseStatus(status);
             boolean updated = courseService.updateCourseStatus(courseId, status);
             if (!updated) {
                 return Result.error(404, "课程不存在");
@@ -153,6 +166,11 @@ public class CourseAdminController {
         } catch (RuntimeException ex) {
             return Result.error(500, "操作失败");
         }
+    }
+
+    @PostMapping("/search")
+    public Result<PageResult<CourseVO>> search(@RequestBody CourseQueryDTO queryDTO) {
+        return Result.success(courseService.pageForAdmin(queryDTO));
     }
 
 }

@@ -148,7 +148,7 @@ log "recommend-service: http://${RECOMMEND_HOST}:${RECOMMEND_PORT}"
 log "spring profile:    ${SPRING_PROFILES_ACTIVE}"
 
 start_service "backend" "$ROOT_DIR/backend" ./mvnw spring-boot:run
-wait_for_http "backend" "http://${BACKEND_HOST}:${BACKEND_PORT}/user/login"
+wait_for_http "backend" "http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1/auth/login"
 start_service "recommend-service" "$ROOT_DIR/recommend-service" "${recommend_cmd[@]}"
 start_service "frontend" "$ROOT_DIR/frontend" npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT"
 

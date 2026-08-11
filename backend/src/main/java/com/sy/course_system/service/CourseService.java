@@ -33,6 +33,8 @@ public interface CourseService {
     // ===== 前台课程池 =====
     PageResult<CourseVO> pageForUser(CourseQueryDTO queryDTO);
 
+    PageResult<CourseVO> pageForAdmin(CourseQueryDTO queryDTO);
+
     // ===== 获取课程视频地址 =====
     String getCourseVideoPath(Long courseId);
 

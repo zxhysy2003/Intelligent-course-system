@@ -4,6 +4,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.util.WebUtils;
 
+import com.sy.course_system.common.ApiPaths;
 import com.sy.course_system.common.UserContext;
 import com.sy.course_system.common.UserInfo;
 import com.sy.course_system.common.util.JwtUtil;
@@ -25,7 +26,7 @@ public class JwtInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
             throws Exception {
-        // 在这里实现JWT验证逻辑
+        UserContext.clear();
 
         // 如果是跨域预检请求，直接放行
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
@@ -68,6 +69,13 @@ public class JwtInterceptor implements HandlerInterceptor {
             
             UserInfo userInfo = new UserInfo(userId, username, role);
             UserContext.set(userInfo);
+
+            if (isAdminRequest(request) && !"ADMIN".equalsIgnoreCase(role)) {
+                UserContext.clear();
+                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                response.getWriter().write("无管理员权限");
+                return false;
+            }
             
         } catch (ExpiredJwtException e) {
             response.setStatus(401);
@@ -80,6 +88,11 @@ public class JwtInterceptor implements HandlerInterceptor {
         }
 
         return true; // 放行
+    }
+
+    private boolean isAdminRequest(HttpServletRequest request) {
+        String requestUri = request.getRequestURI();
+        return requestUri.equals(ApiPaths.ADMIN) || requestUri.startsWith(ApiPaths.ADMIN + "/");
     }
 
     @Override

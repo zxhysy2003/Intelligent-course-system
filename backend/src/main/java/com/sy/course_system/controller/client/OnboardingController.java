@@ -2,12 +2,13 @@ package com.sy.course_system.controller.client;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sy.course_system.common.Result;
+import com.sy.course_system.common.ApiPaths;
 import com.sy.course_system.common.UserContext;
 import com.sy.course_system.dto.onboarding.OnboardingSubmitDTO;
 import com.sy.course_system.service.OnboardingService;
@@ -15,7 +16,7 @@ import com.sy.course_system.vo.OnboardingOptionsVO;
 import com.sy.course_system.vo.OnboardingStatusVO;
 
 @RestController
-@RequestMapping("/onboarding")
+@RequestMapping(ApiPaths.ONBOARDING)
 public class OnboardingController {
 
     @Autowired
@@ -26,7 +27,7 @@ public class OnboardingController {
         return Result.success(onboardingService.getOptions());
     }
 
-    @PostMapping("/submit")
+    @PutMapping("/profile")
     public Result<String> submit(@RequestBody OnboardingSubmitDTO submitDTO) {
         try {
             onboardingService.submit(UserContext.getUserId(), submitDTO);
