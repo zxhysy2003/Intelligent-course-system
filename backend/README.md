@@ -28,6 +28,7 @@
 - Java 17
 - Spring Boot 3.5.14
 - Spring MVC
+- Spring Security
 - Spring Boot Actuator
 - MyBatis-Plus 3.5.5
 - MySQL 8
@@ -90,9 +91,16 @@ backend
 完整系统联调和依赖启动步骤见 [`../docs/OPERATION_MANUAL.md`](../docs/OPERATION_MANUAL.md)。只启动后端时，从仓库根目录执行：
 
 ```bash
+set -a
+source .env.local
+set +a
 cd backend
-SPRING_PROFILES_ACTIVE=dev RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 ./mvnw spring-boot:run
+SPRING_PROFILES_ACTIVE=dev \
+  RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 \
+  ./mvnw spring-boot:run
 ```
+
+`.env.local` 位于仓库根目录且已被 Git 忽略，其中的 `JWT_SECRET_BASE64` 是必填的 JWT 签名密钥，解码后必须至少为 32 字节。首次使用可执行 `openssl rand -base64 32` 生成并保存；后续启动应复用该值。部署环境也必须保存一个私密且稳定的值，并保证所有后端实例一致。更换该值会使已有 Token 立即失效。
 
 `dev` profile 会开启 MyBatis SQL 调试日志。健康检查：
 
@@ -133,6 +141,9 @@ MySQL 由 Flyway 管理，迁移文件位于 `src/main/resources/db/migration`�
 运行打包产物：
 
 ```bash
+set -a
+source ../.env.local
+set +a
 java -jar target/course-system-0.0.1-SNAPSHOT.jar
 ```
 
@@ -145,11 +156,12 @@ java -jar target/course-system-0.0.1-SNAPSHOT.jar
 关键配置均通过环境变量覆盖，完整清单见 [`../docs/OPERATION_MANUAL.md`](../docs/OPERATION_MANUAL.md)。开发时最常改的是：
 
 - `DB_*`、`REDIS_*`、`NEO4J_*`：基础依赖连接。
+- `JWT_SECRET_BASE64`：必填的 Base64 JWT 签名密钥，可用 `openssl rand -base64 32` 生成。
 - `RECOMMEND_SERVICE_URL`：FastAPI 推荐服务地址。
 - `VIDEO_DIR`、`VIDEO_BASE_URL`、`FFPROBE_PATH`：视频上传与播放。
 - `AGENT_LLM_*`：学习助手模型接入。
 
-学习助手接口统一在 `/api/v1/assistant/**`，由 JWT 拦截器保护。Agent 只读分析学习数据，不执行选课、收藏、删除或进度更新。`POST /api/v1/assistant/messages` 需要传入 `clientMessageId`，用于发送失败重试时防重复落库和重复调用模型；`AGENT_INCOMPLETE_RECOVERY_AFTER_MS` 控制半成品发送的恢复窗口，默认 90 秒。
+学习助手接口统一在 `/api/v1/assistant/**`，由 Spring Security JWT 过滤链保护。Agent 只读分析学习数据，不执行选课、收藏、删除或进度更新。`POST /api/v1/assistant/messages` 需要传入 `clientMessageId`，用于发送失败重试时防重复落库和重复调用模型；`AGENT_INCOMPLETE_RECOVERY_AFTER_MS` 控制半成品发送的恢复窗口，默认 90 秒。
 
 ## 接口分组
 
@@ -202,7 +214,7 @@ Authorization: Bearer <your_token>
 
 ### 静态资源
 
-- `GET /videos/**`：访问课程视频文件
+- `GET /videos/**`：访问课程视频文件，支持 Bearer Token 或仅限该路径的视频认证 Cookie
 
 ## 联调说明
 

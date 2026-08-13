@@ -172,7 +172,7 @@ Axios 实例定义在 [`src/api/request.js`](src/api/request.js)，默认配置�
 5. 路由守卫根据登录态和角色控制页面访问
 6. Axios 请求自动携带 `Authorization` 请求头
 
-视频播放额外使用 [`src/utils/authCookie.js`](src/utils/authCookie.js) 将 token 临时写入 `auth_token` Cookie，便于浏览器原生 `<video>` 请求 `/videos/**` 时携带鉴权信息。
+视频播放额外使用 [`src/utils/authCookie.js`](src/utils/authCookie.js) 将 token 临时写入 `auth_token` Cookie，便于浏览器原生 `<video>` 请求 `/videos/**` 时携带鉴权信息。该 Cookie 限定 `Path=/videos` 和 `SameSite=Strict`，HTTPS 下同时使用 `Secure`，普通 API 仍只接受 Authorization 请求头。
 
 ## 新用户引导
 

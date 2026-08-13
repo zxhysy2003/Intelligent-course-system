@@ -31,11 +31,20 @@ backend
 
 ## 启动
 
-在仓库根目录执行：
+JWT 签名密钥是必填配置。首次启动先在仓库根目录创建本地环境文件：
+
+```bash
+cp deploy/local.env.example .env
+openssl rand -base64 32
+```
+
+把第二条命令的输出填入 `.env` 的 `JWT_SECRET_BASE64=` 后再启动：
 
 ```bash
 docker compose -f docker-compose.local.yml up --build
 ```
+
+不要提交 `.env`。同一套环境后续应继续使用相同密钥；修改密钥会让已有登录 Token 全部失效。
 
 首次构建需要下载基础镜像、Maven 依赖、npm 依赖和 Conda 依赖，耗时会比较久。
 

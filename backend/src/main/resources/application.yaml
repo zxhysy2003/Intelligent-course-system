@@ -5,6 +5,8 @@ app:
   name: course-system
   cors:
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://127.0.0.1:5173,http://192.168.*:5173}
+  jwt:
+    secret-base64: ${JWT_SECRET_BASE64}
   upload:
     video-dir: ${VIDEO_DIR:/Users/shiyang/Desktop/graduate_design/course_videos}
   video:

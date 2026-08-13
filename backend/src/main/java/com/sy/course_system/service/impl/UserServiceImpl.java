@@ -35,13 +35,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     private final UserMapperStruct userMapperStruct;
     private final UserNodeRepository userNodeRepository;
     private final UserCourseRelationMapper userCourseRelationMapper;
+    private final JwtUtil jwtUtil;
 
     public UserServiceImpl(UserMapperStruct userMapperStruct,
             UserNodeRepository userNodeRepository,
-            UserCourseRelationMapper userCourseRelationMapper) {
+            UserCourseRelationMapper userCourseRelationMapper,
+            JwtUtil jwtUtil) {
         this.userMapperStruct = userMapperStruct;
         this.userNodeRepository = userNodeRepository;
         this.userCourseRelationMapper = userCourseRelationMapper;
+        this.jwtUtil = jwtUtil;
     }
 
     @Override
@@ -90,13 +93,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             return null; // 密码错误
         }
         
-        // 生成简单的token（实际应用中应使用更安全的方式）
+        // 签发包含当前用户身份与角色的 JWT
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", user.getId());
         claims.put("username", user.getUsername());
         claims.put("role", user.getRole());
 
-        return JwtUtil.generateToken(claims);
+        return jwtUtil.generateToken(claims);
     }
 
     @Override

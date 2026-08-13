@@ -69,6 +69,18 @@ backend 同时依赖 MySQL、Redis、Neo4j 和本地视频目录；recommend-ser
 
 完成依赖安装并启动基础服务后，推荐用一键脚本拉起前端、后端和推荐服务：
 
+首次运行先生成一个本机固定的 JWT 密钥，并写入已被 Git 忽略的 `.env.local`：
+
+```bash
+openssl rand -base64 32
+```
+
+```dotenv
+JWT_SECRET_BASE64=把上一步生成的值粘贴到这里
+```
+
+开发脚本会自动加载 `.env.local`，后续重启继续使用同一密钥：
+
 ```bash
 ./scripts/dev.sh
 ```
@@ -96,6 +108,13 @@ FRONTEND_PORT=5174 BACKEND_PORT=8081 RECOMMEND_PORT=8001 ./scripts/dev.sh
 完整手动启动、Flyway 接管旧库、数据库重建和排查步骤见 [docs/OPERATION_MANUAL.md](./docs/OPERATION_MANUAL.md)。
 
 如果只是想学习部署流程，也可以使用本机 Docker Compose 一次启动前端 Nginx、后端、推荐服务和基础依赖：
+
+```bash
+cp deploy/local.env.example .env
+openssl rand -base64 32
+```
+
+把生成值填入 `.env` 的 `JWT_SECRET_BASE64=`，再执行：
 
 ```bash
 docker compose -f docker-compose.local.yml up -d --build

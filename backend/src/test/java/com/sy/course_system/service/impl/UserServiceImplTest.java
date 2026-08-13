@@ -23,6 +23,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.sy.course_system.converter.UserMapperStruct;
 import com.sy.course_system.converter.UserMapperStructImpl;
+import com.sy.course_system.common.util.JwtUtil;
+import com.sy.course_system.dto.LoginDTO;
 import com.sy.course_system.dto.UserRegisterDTO;
 import com.sy.course_system.entity.User;
 import com.sy.course_system.mapper.UserCourseRelationMapper;
@@ -40,6 +42,8 @@ class UserServiceImplTest {
     private UserNodeRepository userNodeRepository;
     @Mock
     private UserCourseRelationMapper userCourseRelationMapper;
+    @Mock
+    private JwtUtil jwtUtil;
     @Spy
     private UserMapperStruct userMapperStruct = new UserMapperStructImpl();
 
@@ -134,6 +138,22 @@ class UserServiceImplTest {
 
         assertEquals(-1, result);
         verify(userService, never()).save(any(User.class));
+    }
+
+    @Test
+    void loginShouldIssueTokenWithConfiguredJwtUtil() {
+        User storedUser = user(4L, "student", null, null, null, "STUDENT", 1);
+        storedUser.setPassword("123456");
+        LoginDTO loginDTO = new LoginDTO();
+        loginDTO.setUsername("student");
+        loginDTO.setPassword("123456");
+        doReturn(storedUser).when(userService).getOne(any());
+        doReturn("signed-token").when(jwtUtil).generateToken(any());
+
+        String token = userService.login(loginDTO);
+
+        assertEquals("signed-token", token);
+        verify(jwtUtil).generateToken(any());
     }
 
     private User user(Long id, String username, String nickname, String email, String phone, String role,

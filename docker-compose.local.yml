@@ -140,6 +140,7 @@ services:
       AGENT_LLM_PROVIDER: ${AGENT_LLM_PROVIDER:-mock}
       AGENT_LLM_API_KEY: ${AGENT_LLM_API_KEY:-}
       CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS:-http://localhost:8088,http://127.0.0.1:8088}
+      JWT_SECRET_BASE64: "${JWT_SECRET_BASE64:?Set JWT_SECRET_BASE64 in .env before starting the backend}"
       JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--Duser.timezone=Asia/Shanghai}
       JAVA_OPTS: ${JAVA_OPTS:-}
     volumes:

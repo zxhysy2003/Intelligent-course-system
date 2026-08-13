@@ -171,6 +171,9 @@ backend/src/main/resources/db/migration
 空数据库场景下，启动后端即可自动执行 `V1__baseline_schema.sql` 以及后续迁移：
 
 ```bash
+set -a
+source .env.local
+set +a
 cd backend
 SPRING_PROFILES_ACTIVE=dev ./mvnw spring-boot:run
 ```
@@ -182,6 +185,9 @@ SPRING_PROFILES_ACTIVE=dev ./mvnw spring-boot:run
 如果你的 `course_db` 已经在 Flyway 接入前存在，并且表结构就是当前项目基准状态，第一次启动后端时需要显式 baseline：
 
 ```bash
+set -a
+source .env.local
+set +a
 cd backend
 FLYWAY_BASELINE_ON_MIGRATE=true SPRING_PROFILES_ACTIVE=dev ./mvnw spring-boot:run
 ```
@@ -209,6 +215,14 @@ V202605201430__add_course_source.sql
 ### 6.1 后端环境变量
 
 后端主配置文件位于 `backend/src/main/resources/application.yaml`。
+
+本机开发首次运行时，在仓库根目录创建已被 Git 忽略的 `.env.local`。先执行 `openssl rand -base64 32`，再把输出保存为：
+
+```dotenv
+JWT_SECRET_BASE64=生成的Base64值
+```
+
+建议执行 `chmod 600 .env.local`。`scripts/dev.sh` 和 `scripts/dev.bash` 会自动加载该文件；手动启动后端前使用 `set -a; source .env.local; set +a` 加载。不要在每次启动时重新生成密钥，否则已有 Token 会立即失效。
 
 | 变量名 | 说明 | 默认值 |
 | --- | --- | --- |
@@ -284,6 +298,7 @@ V202605201430__add_course_source.sql
 | `VIDEO_DIR` | 视频文件存储目录 | 本机开发绝对路径 |
 | `VIDEO_BASE_URL` | 视频访问基础地址 | `http://localhost:8080` |
 | `FFPROBE_PATH` | ffprobe 可执行文件路径 | `/opt/homebrew/bin/ffprobe` |
+| `JWT_SECRET_BASE64` | 必填的 Base64 JWT 签名密钥，解码后至少 32 字节 | 无默认值 |
 | `AGENT_ENABLED` | 学习助手开关 | `true` |
 | `AGENT_LLM_PROVIDER` | 学习助手模型提供方；`mock` 或空密钥时走本地 mock | `openai-compatible` |
 | `AGENT_LLM_BASE_URL` | OpenAI 兼容接口基础地址 | `https://api.openai.com/v1` |
@@ -361,6 +376,9 @@ POST ${RECOMMEND_SERVICE_URL}/recommend
 进入后端目录：
 
 ```bash
+set -a
+source .env.local
+set +a
 cd backend
 ```
 
@@ -373,7 +391,8 @@ cd backend
 启动后端服务：
 
 ```bash
-SPRING_PROFILES_ACTIVE=dev RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 ./mvnw spring-boot:run
+SPRING_PROFILES_ACTIVE=dev RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 \
+./mvnw spring-boot:run
 ```
 
 `dev` profile 会开启 MyBatis SQL 调试日志；默认配置不打印 SQL，适合生产或演示环境。后端启动阶段会先执行 Flyway 迁移，再启动业务服务。
@@ -710,6 +729,8 @@ curl "http://127.0.0.1:8080/api/v1/learning-analytics/knowledge-graph?courseId=1
 
 系统支持后台上传课程视频，并通过 `/videos/**` 暴露静态访问路径。
 
+视频读取需要 Bearer Token，或由课程详情页写入的 `Path=/videos` 临时认证 Cookie；普通 JSON API 不接受该 Cookie。
+
 使用视频功能前请确认：
 
 - `VIDEO_DIR` 指向真实存在或可创建的目录
@@ -793,6 +814,9 @@ curl "http://127.0.0.1:8080/api/v1/learning-analytics/knowledge-graph?courseId=1
 ### 14.1 后端
 
 ```bash
+set -a
+source .env.local
+set +a
 cd backend
 ./mvnw -q -DskipTests compile
 ./mvnw test
@@ -823,6 +847,7 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 - 不要使用默认数据库、Redis、Neo4j 密码
 - 使用独立的生产环境配置管理敏感信息
+- 为 `JWT_SECRET_BASE64` 生成并持久保存生产专用密钥；同一环境的所有后端实例使用相同值，应用重启时不得重新生成
 - 生产库首次接入 Flyway 前先备份数据库，并确认是否需要一次性 baseline
 - 将 `VIDEO_DIR` 指向持久化存储目录
 - 为后端、前端和推荐服务配置统一的反向代理

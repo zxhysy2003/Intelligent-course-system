@@ -38,6 +38,18 @@ log() {
   print -r -- "[dev] $*"
 }
 
+if [[ -z "${JWT_SECRET_BASE64:-}" && -f "$ROOT_DIR/.env.local" ]]; then
+  set -a
+  source "$ROOT_DIR/.env.local"
+  set +a
+  log "loaded local environment from .env.local"
+fi
+
+if [[ -z "${JWT_SECRET_BASE64:-}" ]]; then
+  print -r -- "[dev] JWT_SECRET_BASE64 is unset; add it to .env.local or export it before starting." >&2
+  exit 1
+fi
+
 cleanup() {
   local exit_status=${1:-0}
   trap - EXIT INT TERM
