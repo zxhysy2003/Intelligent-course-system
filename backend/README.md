@@ -100,7 +100,10 @@ SPRING_PROFILES_ACTIVE=dev \
   ./mvnw spring-boot:run
 ```
 
-`.env.local` 位于仓库根目录且已被 Git 忽略，其中的 `JWT_SECRET_BASE64` 是必填的 JWT 签名密钥，解码后必须至少为 32 字节。首次使用可执行 `openssl rand -base64 32` 生成并保存；后续启动应复用该值。部署环境也必须保存一个私密且稳定的值，并保证所有后端实例一致。更换该值会使已有 Token 立即失效。
+`.env.local` 位于仓库根目录且已被 Git 忽略。`JWT_SECRET_BASE64` 和
+`PLAYBACK_TOKEN_SECRET_BASE64` 都是必填的独立签名密钥，解码后必须至少为 32 字节，且不能相同。
+分别执行两次 `openssl rand -base64 32` 生成并保存；同一环境的所有后端实例必须使用相同的一组值。
+轮换登录密钥会使登录 Token 失效，轮换播放密钥会使尚未到期的播放 URL 失效。
 
 `dev` profile 会开启 MyBatis SQL 调试日志。健康检查：
 
@@ -157,8 +160,9 @@ java -jar target/course-system-0.0.1-SNAPSHOT.jar
 
 - `DB_*`、`REDIS_*`、`NEO4J_*`：基础依赖连接。
 - `JWT_SECRET_BASE64`：必填的 Base64 JWT 签名密钥，可用 `openssl rand -base64 32` 生成。
+- `PLAYBACK_TOKEN_SECRET_BASE64`：必填且必须与登录密钥不同，用于签发视频播放 URL。
 - `RECOMMEND_SERVICE_URL`：FastAPI 推荐服务地址。
-- `VIDEO_DIR`、`VIDEO_BASE_URL`、`FFPROBE_PATH`：视频上传与播放。
+- `VIDEO_DIR`、`FFPROBE_PATH`：视频上传、静态文件定位与时长解析。
 - `AGENT_LLM_*`：学习助手模型接入。
 
 学习助手接口统一在 `/api/v1/assistant/**`，由 Spring Security JWT 过滤链保护。Agent 只读分析学习数据，不执行选课、收藏、删除或进度更新。`POST /api/v1/assistant/messages` 需要传入 `clientMessageId`，用于发送失败重试时防重复落库和重复调用模型；`AGENT_INCOMPLETE_RECOVERY_AFTER_MS` 控制半成品发送的恢复窗口，默认 90 秒。
@@ -179,7 +183,7 @@ Authorization: Bearer <your_token>
 - `GET /api/v1/courses/{courseId}`：课程详情
 - `GET /api/v1/knowledge-points/{knowledgePointId}/courses`：知识点关联课程
 - `GET /api/v1/courses/{courseId}/knowledge-points`：课程知识点
-- `GET /api/v1/courses/{courseId}/video`：课程视频地址
+- `POST /api/v1/courses/{courseId}/playback`：签发当前课程的限时播放地址（响应禁止缓存）
 - `POST /api/v1/courses/{courseId}/enrollment`：选课
 - `GET /api/v1/courses/{courseId}/enrollment`：当前用户选课关系
 - `PATCH /api/v1/courses/{courseId}/enrollment/progress`：更新学习进度
@@ -214,7 +218,7 @@ Authorization: Bearer <your_token>
 
 ### 静态资源
 
-- `GET /videos/**`：访问课程视频文件，支持 Bearer Token 或仅限该路径的视频认证 Cookie
+- `GET|HEAD /videos/**?token=...`：使用路径绑定的播放凭证读取视频，支持 Range 请求；登录 JWT 不可直接访问
 
 ## 联调说明
 
@@ -244,7 +248,7 @@ Docker Compose 中 Redis 使用 `redis123` 作为密码。若使用本机 Redis�
 
 ### 视频无法上传或播放
 
-确认 `VIDEO_DIR` 存在且后端进程有读写权限，`FFPROBE_PATH` 指向可执行文件，`VIDEO_BASE_URL` 与后端实际访问地址一致。
+确认 `VIDEO_DIR` 存在且后端进程有读写权限，`FFPROBE_PATH` 指向可执行文件，并检查课程详情页能否成功调用播放凭证接口。凭证过期或网络中断时，前端会自动续签一次。
 
 ## 更多文档
 

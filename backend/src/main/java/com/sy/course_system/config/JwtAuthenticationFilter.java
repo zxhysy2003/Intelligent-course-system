@@ -17,7 +17,6 @@ import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
-import org.springframework.web.util.WebUtils;
 
 import com.sy.course_system.common.ApiPaths;
 import com.sy.course_system.common.UserContext;
@@ -30,14 +29,12 @@ import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.MalformedJwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
-    private static final String AUTH_COOKIE_NAME = "auth_token";
     private static final String BEARER_PREFIX = "Bearer ";
     private static final RequestMatcher PUBLIC_REQUESTS = new OrRequestMatcher(
             PathPatternRequestMatcher.withDefaults().matcher(ApiPaths.AUTH + "/login"),
@@ -100,16 +97,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return null;
         }
 
+        // 视频资源只接受独立的短期播放凭证，登录 JWT 不能直接访问 /videos/**。
+        if (VIDEO_READ_REQUESTS.matches(request)) {
+            return null;
+        }
+
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
         if (authorization != null && authorization.startsWith(BEARER_PREFIX)) {
             return authorization.substring(BEARER_PREFIX.length());
         }
-
-        if (!VIDEO_READ_REQUESTS.matches(request)) {
-            return null;
-        }
-        Cookie cookie = WebUtils.getCookie(request, AUTH_COOKIE_NAME);
-        return cookie != null ? cookie.getValue() : null;
+        return null;
     }
 
     private UserInfo parseUserInfo(String token) {

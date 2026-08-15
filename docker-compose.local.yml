@@ -135,12 +135,12 @@ services:
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-neo4j123}
       RECOMMEND_SERVICE_URL: http://recommend-service:8000
       VIDEO_DIR: /app/videos
-      VIDEO_BASE_URL: ${APP_BASE_URL:-http://localhost:8088}
       FFPROBE_PATH: /usr/bin/ffprobe
       AGENT_LLM_PROVIDER: ${AGENT_LLM_PROVIDER:-mock}
       AGENT_LLM_API_KEY: ${AGENT_LLM_API_KEY:-}
       CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS:-http://localhost:8088,http://127.0.0.1:8088}
       JWT_SECRET_BASE64: "${JWT_SECRET_BASE64:?Set JWT_SECRET_BASE64 in .env before starting the backend}"
+      PLAYBACK_TOKEN_SECRET_BASE64: "${PLAYBACK_TOKEN_SECRET_BASE64:?Set a separate PLAYBACK_TOKEN_SECRET_BASE64 in .env before starting the backend}"
       JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--Duser.timezone=Asia/Shanghai}
       JAVA_OPTS: ${JAVA_OPTS:-}
     volumes:

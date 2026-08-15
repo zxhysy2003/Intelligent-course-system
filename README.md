@@ -69,14 +69,16 @@ backend 同时依赖 MySQL、Redis、Neo4j 和本地视频目录；recommend-ser
 
 完成依赖安装并启动基础服务后，推荐用一键脚本拉起前端、后端和推荐服务：
 
-首次运行先生成一个本机固定的 JWT 密钥，并写入已被 Git 忽略的 `.env.local`：
+首次运行先生成两个不同的本机固定密钥，并写入已被 Git 忽略的 `.env.local`：
 
 ```bash
+openssl rand -base64 32
 openssl rand -base64 32
 ```
 
 ```dotenv
 JWT_SECRET_BASE64=把上一步生成的值粘贴到这里
+PLAYBACK_TOKEN_SECRET_BASE64=把第二个生成值粘贴到这里
 ```
 
 开发脚本会自动加载 `.env.local`，后续重启继续使用同一密钥：
@@ -112,9 +114,11 @@ FRONTEND_PORT=5174 BACKEND_PORT=8081 RECOMMEND_PORT=8001 ./scripts/dev.sh
 ```bash
 cp deploy/local.env.example .env
 openssl rand -base64 32
+openssl rand -base64 32
 ```
 
-把生成值填入 `.env` 的 `JWT_SECRET_BASE64=`，再执行：
+把两个不同的生成值分别填入 `.env` 的 `JWT_SECRET_BASE64=` 和
+`PLAYBACK_TOKEN_SECRET_BASE64=`，再执行：
 
 ```bash
 docker compose -f docker-compose.local.yml up -d --build
@@ -126,6 +130,7 @@ docker compose -f docker-compose.local.yml up -d --build
 
 - 总操作手册：[docs/OPERATION_MANUAL.md](./docs/OPERATION_MANUAL.md)
 - 本机 Docker 部署：[docs/DOCKER_LOCAL_DEPLOY.md](./docs/DOCKER_LOCAL_DEPLOY.md)
+- Spring Security 鉴权学习报告：[docs/spring-security-authentication.md](./docs/spring-security-authentication.md)
 - 后端说明：[backend/README.md](./backend/README.md)
 - 前端说明：[frontend/README.md](./frontend/README.md)
 - 推荐服务说明：[recommend-service/README.md](./recommend-service/README.md)

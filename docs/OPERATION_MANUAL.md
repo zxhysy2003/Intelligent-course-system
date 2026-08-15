@@ -216,13 +216,15 @@ V202605201430__add_course_source.sql
 
 后端主配置文件位于 `backend/src/main/resources/application.yaml`。
 
-本机开发首次运行时，在仓库根目录创建已被 Git 忽略的 `.env.local`。先执行 `openssl rand -base64 32`，再把输出保存为：
+本机开发首次运行时，在仓库根目录创建已被 Git 忽略的 `.env.local`。分别执行两次
+`openssl rand -base64 32`，再把两个不同的输出保存为：
 
 ```dotenv
 JWT_SECRET_BASE64=生成的Base64值
+PLAYBACK_TOKEN_SECRET_BASE64=另一个生成的Base64值
 ```
 
-建议执行 `chmod 600 .env.local`。`scripts/dev.sh` 和 `scripts/dev.bash` 会自动加载该文件；手动启动后端前使用 `set -a; source .env.local; set +a` 加载。不要在每次启动时重新生成密钥，否则已有 Token 会立即失效。
+建议执行 `chmod 600 .env.local`。`scripts/dev.sh` 和 `scripts/dev.bash` 会自动加载该文件；手动启动后端前使用 `set -a; source .env.local; set +a` 加载。不要在每次启动时重新生成密钥；两类密钥不能相同。
 
 | 变量名 | 说明 | 默认值 |
 | --- | --- | --- |
@@ -296,9 +298,9 @@ JWT_SECRET_BASE64=生成的Base64值
 | `RECOMMEND_NEW_COURSE_QUALITY_DURATION_FULL_SCORE_SECONDS` | 新课质量时长满分秒数 | `1800.0` |
 | `RECOMMEND_NEW_COURSE_QUALITY_KP_WEIGHT` | 新课质量知识点权重 | `0.5` |
 | `VIDEO_DIR` | 视频文件存储目录 | 本机开发绝对路径 |
-| `VIDEO_BASE_URL` | 视频访问基础地址 | `http://localhost:8080` |
 | `FFPROBE_PATH` | ffprobe 可执行文件路径 | `/opt/homebrew/bin/ffprobe` |
 | `JWT_SECRET_BASE64` | 必填的 Base64 JWT 签名密钥，解码后至少 32 字节 | 无默认值 |
+| `PLAYBACK_TOKEN_SECRET_BASE64` | 必填的独立播放凭证签名密钥，解码后至少 32 字节 | 无默认值 |
 | `AGENT_ENABLED` | 学习助手开关 | `true` |
 | `AGENT_LLM_PROVIDER` | 学习助手模型提供方；`mock` 或空密钥时走本地 mock | `openai-compatible` |
 | `AGENT_LLM_BASE_URL` | OpenAI 兼容接口基础地址 | `https://api.openai.com/v1` |
@@ -333,7 +335,6 @@ export NEO4J_PASSWORD=neo4j123
 
 export RECOMMEND_SERVICE_URL=http://127.0.0.1:8000
 export VIDEO_DIR=/data/course_videos
-export VIDEO_BASE_URL=http://127.0.0.1:8080
 export FFPROBE_PATH=/usr/bin/ffprobe
 export AGENT_LLM_PROVIDER=mock
 ```
@@ -406,7 +407,6 @@ NEO4J_URI=bolt://127.0.0.1:7687 \
 SPRING_PROFILES_ACTIVE=dev \
 RECOMMEND_SERVICE_URL=http://127.0.0.1:8000 \
 VIDEO_DIR=/data/course_videos \
-VIDEO_BASE_URL=http://127.0.0.1:8080 \
 ./mvnw spring-boot:run
 ```
 
@@ -727,9 +727,9 @@ curl "http://127.0.0.1:8080/api/v1/learning-analytics/knowledge-graph?courseId=1
 
 ## 12. 视频功能说明
 
-系统支持后台上传课程视频，并通过 `/videos/**` 暴露静态访问路径。
+系统支持后台上传课程视频，并通过受保护的 `/videos/**` 静态路径读取文件。
 
-视频读取需要 Bearer Token，或由课程详情页写入的 `Path=/videos` 临时认证 Cookie；普通 JSON API 不接受该 Cookie。
+课程详情页先携带登录 JWT 调用 `POST /api/v1/courses/{courseId}/playback`，后端返回只绑定该视频路径的限时签名 URL。原生 `<video>` 直接使用该 URL，Range 子请求继续携带查询参数，不需要认证 Cookie。播放凭证默认至少有效 2 小时；视频更长时，有效期为视频时长加 30 分钟。首次加载失败时前端自动续签一次。
 
 使用视频功能前请确认：
 
@@ -737,7 +737,7 @@ curl "http://127.0.0.1:8080/api/v1/learning-analytics/knowledge-graph?courseId=1
 - 当前运行后端服务的系统用户对该目录拥有读写权限
 - 本机已安装 `ffprobe`
 - `FFPROBE_PATH` 指向正确的 ffprobe 可执行文件
-- `VIDEO_BASE_URL` 与实际后端访问地址一致
+- `PLAYBACK_TOKEN_SECRET_BASE64` 已配置，且不同于登录 JWT 密钥
 
 上传成功后，后端会读取视频时长并回写到数据库。
 
@@ -798,7 +798,8 @@ curl "http://127.0.0.1:8080/api/v1/learning-analytics/knowledge-graph?courseId=1
 - 视频文件是否真实存在于对应目录
 - 后端是否能访问 `/videos/**`
 - 上传目录权限是否正确
-- `VIDEO_BASE_URL` 是否与实际访问地址一致
+- `POST /api/v1/courses/{courseId}/playback` 是否成功返回带 `token` 的 URL
+- `/videos/**` 请求是返回 401（凭证问题）还是 404（文件路径问题）
 
 ### 13.7 Conda 创建推荐服务环境失败
 
@@ -848,6 +849,7 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8000
 - 不要使用默认数据库、Redis、Neo4j 密码
 - 使用独立的生产环境配置管理敏感信息
 - 为 `JWT_SECRET_BASE64` 生成并持久保存生产专用密钥；同一环境的所有后端实例使用相同值，应用重启时不得重新生成
+- 为 `PLAYBACK_TOKEN_SECRET_BASE64` 生成另一个生产专用密钥；不得与登录密钥复用，并确保所有后端实例一致
 - 生产库首次接入 Flyway 前先备份数据库，并确认是否需要一次性 baseline
 - 将 `VIDEO_DIR` 指向持久化存储目录
 - 为后端、前端和推荐服务配置统一的反向代理

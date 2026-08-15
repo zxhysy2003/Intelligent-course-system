@@ -66,7 +66,7 @@ frontend
 │   ├── services            # 通知等副作用服务
 │   ├── store               # Pinia 状态管理
 │   ├── test                # Vitest 全局测试设置
-│   ├── utils               # Cookie、图表等工具
+│   ├── utils               # 图表等通用工具
 │   └── views
 │       ├── admin           # 管理端页面
 │       └── user            # 学生端页面
@@ -172,7 +172,9 @@ Axios 实例定义在 [`src/api/request.js`](src/api/request.js)，默认配置�
 5. 路由守卫根据登录态和角色控制页面访问
 6. Axios 请求自动携带 `Authorization` 请求头
 
-视频播放额外使用 [`src/utils/authCookie.js`](src/utils/authCookie.js) 将 token 临时写入 `auth_token` Cookie，便于浏览器原生 `<video>` 请求 `/videos/**` 时携带鉴权信息。该 Cookie 限定 `Path=/videos` 和 `SameSite=Strict`，HTTPS 下同时使用 `Secure`，普通 API 仍只接受 Authorization 请求头。
+视频播放不复用登录 JWT，也不写认证 Cookie。课程详情页先通过 Axios 调用
+`POST /api/v1/courses/:courseId/playback`，再把返回的路径绑定限时 URL 交给原生 `<video>`。
+播放器首次加载失败会自动续签一次并恢复当前位置；第二次失败才显示错误。
 
 ## 新用户引导
 
@@ -283,7 +285,7 @@ Pinia store 会从 `localStorage.token` 初始化用户信息。如果 token 已
 
 ### 视频无法播放
 
-检查后端 `/videos/**` 是否可访问、`VIDEO_DIR` 是否配置正确，以及浏览器请求中是否带上 `auth_token` Cookie。视频播放页会在设置视频地址前先写入临时 Cookie。
+检查播放凭证接口是否返回 200、返回的 `playbackUrl` 是否包含 `token` 参数，以及 `VIDEO_DIR` 是否配置正确。播放器首次失败会自动续签；若仍失败，请分别查看凭证接口和 `/videos/**` 请求的状态码。
 
 ### 推荐页面无数据
 

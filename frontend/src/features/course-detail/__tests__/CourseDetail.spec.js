@@ -8,15 +8,13 @@ import { ENROLLMENT_STATUS } from '../enrollmentStatus'
 
 const mocks = vi.hoisted(() => ({
   push: vi.fn(),
-  getCourseVideo: vi.fn(),
+  createCoursePlayback: vi.fn(),
   getCourseRelation: vi.fn(),
   getCourseById: vi.fn(),
   getKnowledgePoints: vi.fn(),
   attendCourse: vi.fn(),
   updateProgress: vi.fn(),
   recordBehavior: vi.fn(),
-  setCookie: vi.fn(),
-  clearCookie: vi.fn(),
   notification: {
     success: vi.fn(),
     error: vi.fn(),
@@ -29,19 +27,10 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({ push: mocks.push }),
 }))
 
-vi.mock('../../../store/user', () => ({
-  useUserStore: () => ({ token: 'test-token' }),
-}))
-
-vi.mock('../../../utils/authCookie', () => ({
-  setAuthTokenToCookie: mocks.setCookie,
-  clearAuthTokenCookie: mocks.clearCookie,
-}))
-
 vi.mock('@/services/notification', () => ({ notification: mocks.notification }))
 
 vi.mock('../../../api/course', () => ({
-  getCourseVideo: mocks.getCourseVideo,
+  createCoursePlayback: mocks.createCoursePlayback,
   getUserCourseRelation: mocks.getCourseRelation,
   getCourseById: mocks.getCourseById,
   getCourseKnowledgePoints: mocks.getKnowledgePoints,
@@ -87,7 +76,9 @@ const mountPage = async () => {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mocks.getCourseVideo.mockImplementation(() => success('/videos/course-7.mp4'))
+  mocks.createCoursePlayback.mockImplementation(() =>
+    success({ playbackUrl: '/videos/course-7.mp4?token=signed', expiresAt: '2026-08-14T12:00:00Z' }),
+  )
   mocks.getCourseRelation.mockImplementation(() =>
     success({
       isFavorite: false,
@@ -116,9 +107,9 @@ describe('CourseDetail', () => {
     const actions = wrapper.findComponent(CourseActions)
     const knowledgePoints = wrapper.findComponent(KnowledgePointList)
 
-    expect(mocks.setCookie).toHaveBeenCalledWith('test-token', 10)
     expect(player.props()).toMatchObject({
-      videoUrl: '/videos/course-7.mp4',
+      videoUrl: '/videos/course-7.mp4?token=signed',
+      mediaId: '7',
       startTime: 18,
     })
     expect(actions.props()).toMatchObject({
@@ -132,7 +123,7 @@ describe('CourseDetail', () => {
   })
 
   it('没有视频时卸载不保存默认进度', async () => {
-    mocks.getCourseVideo.mockImplementation(() => success(''))
+    mocks.createCoursePlayback.mockImplementation(() => success(null))
     const wrapper = await mountPage()
 
     expect(wrapper.text()).toContain('暂无视频资源')
@@ -142,12 +133,11 @@ describe('CourseDetail', () => {
     wrapper.unmount()
     await flushPromises()
     expect(mocks.updateProgress).not.toHaveBeenCalled()
-    expect(mocks.clearCookie).toHaveBeenCalledTimes(1)
   })
 
   it('视频接口失败时显示空状态并记录错误', async () => {
     const error = new Error('视频接口不可用')
-    mocks.getCourseVideo.mockRejectedValueOnce(error)
+    mocks.createCoursePlayback.mockRejectedValueOnce(error)
     const wrapper = await mountPage()
 
     expect(wrapper.text()).toContain('暂无视频资源')
@@ -235,21 +225,20 @@ describe('CourseDetail', () => {
       courseId: 7,
       progressSeconds: 31,
     })
-    expect(mocks.clearCookie).toHaveBeenCalledTimes(1)
   })
 
   it('卸载后忽略迟到的视频响应', async () => {
     const videoRequest = deferred()
-    mocks.getCourseVideo.mockReturnValueOnce(videoRequest.promise)
+    mocks.createCoursePlayback.mockReturnValueOnce(videoRequest.promise)
     const wrapper = createPage()
     await flushPromises()
 
     wrapper.unmount()
-    videoRequest.resolve({ data: { code: 200, data: '/videos/late.mp4' } })
+    videoRequest.resolve({
+      data: { code: 200, data: { playbackUrl: '/videos/late.mp4?token=late' } },
+    })
     await flushPromises()
 
-    expect(mocks.clearCookie).toHaveBeenCalledTimes(1)
-    expect(mocks.setCookie).not.toHaveBeenCalled()
     expect(mocks.getCourseRelation).not.toHaveBeenCalled()
     expect(mocks.updateProgress).not.toHaveBeenCalled()
     expect(mocks.notification.error).not.toHaveBeenCalled()
@@ -261,7 +250,6 @@ describe('CourseDetail', () => {
     const wrapper = createPage()
     await flushPromises()
 
-    expect(mocks.setCookie).toHaveBeenCalledTimes(1)
     wrapper.unmount()
     relationRequest.resolve({
       data: { code: 200, data: { isFavorite: true, progressSeconds: 20 } },
@@ -299,5 +287,41 @@ describe('CourseDetail', () => {
       path: '/knowledge-graph',
       query: { courseId: '7' },
     })
+  })
+
+  it('视频首次失败时自动续签并从原位置恢复，第二次失败才提示', async () => {
+    mocks.createCoursePlayback
+      .mockImplementationOnce(() =>
+        success({ playbackUrl: '/videos/course-7.mp4?token=first' }),
+      )
+      .mockImplementationOnce(() =>
+        success({ playbackUrl: '/videos/course-7.mp4?token=second' }),
+      )
+    const wrapper = await mountPage()
+    const player = wrapper.findComponent(CourseMediaPlayer)
+
+    player.vm.$emit('error', {
+      error: new Error('expired'),
+      currentTime: 42,
+      watchedSeconds: 9,
+      wasPlaying: true,
+    })
+    await flushPromises()
+
+    expect(mocks.createCoursePlayback).toHaveBeenCalledTimes(2)
+    expect(player.props()).toMatchObject({
+      videoUrl: '/videos/course-7.mp4?token=second',
+      startTime: 42,
+      resumeOnLoad: true,
+    })
+    expect(mocks.notification.error).not.toHaveBeenCalled()
+
+    player.vm.$emit('error', { error: new Error('still unavailable') })
+    await flushPromises()
+    expect(mocks.createCoursePlayback).toHaveBeenCalledTimes(2)
+    expect(mocks.notification.error).toHaveBeenCalledWith(
+      '视频加载失败，请检查网络或权限',
+      expect.any(Error),
+    )
   })
 })

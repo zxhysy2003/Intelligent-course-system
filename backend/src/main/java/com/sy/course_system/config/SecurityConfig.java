@@ -15,6 +15,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 import com.sy.course_system.common.ApiPaths;
+import com.sy.course_system.service.PlaybackTokenService;
 
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
@@ -23,9 +24,12 @@ import jakarta.servlet.http.HttpServletResponse;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final PlaybackTokenAuthenticationFilter playbackTokenAuthenticationFilter;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
+            PlaybackTokenAuthenticationFilter playbackTokenAuthenticationFilter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.playbackTokenAuthenticationFilter = playbackTokenAuthenticationFilter;
     }
 
     /**
@@ -35,6 +39,14 @@ public class SecurityConfig {
     public FilterRegistrationBean<JwtAuthenticationFilter> jwtAuthenticationFilterRegistration() {
         FilterRegistrationBean<JwtAuthenticationFilter> registration =
                 new FilterRegistrationBean<>(jwtAuthenticationFilter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    @Bean
+    public FilterRegistrationBean<PlaybackTokenAuthenticationFilter> playbackTokenAuthenticationFilterRegistration() {
+        FilterRegistrationBean<PlaybackTokenAuthenticationFilter> registration =
+                new FilterRegistrationBean<>(playbackTokenAuthenticationFilter);
         registration.setEnabled(false);
         return registration;
     }
@@ -61,10 +73,13 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers(ApiPaths.ADMIN, ApiPaths.ADMIN + "/**").hasRole("ADMIN")
                         .requestMatchers(ApiPaths.API_V1, ApiPaths.API_V1 + "/**").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/videos/**").authenticated()
-                        .requestMatchers(HttpMethod.HEAD, "/videos/**").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/videos/**")
+                        .hasAuthority(PlaybackTokenService.PLAYBACK_AUTHORITY)
+                        .requestMatchers(HttpMethod.HEAD, "/videos/**")
+                        .hasAuthority(PlaybackTokenService.PLAYBACK_AUTHORITY)
                         .anyRequest().denyAll())
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(playbackTokenAuthenticationFilter, JwtAuthenticationFilter.class);
 
         return http.build();
     }

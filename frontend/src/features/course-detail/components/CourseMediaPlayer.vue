@@ -28,6 +28,14 @@ const props = defineProps({
     type: Number,
     default: 0,
   },
+  mediaId: {
+    type: [String, Number],
+    required: true,
+  },
+  resumeOnLoad: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const emit = defineEmits(['ready', 'progress', 'error'])
@@ -40,6 +48,7 @@ const metadataLoaded = ref(false)
 const hasPlaybackStarted = ref(false)
 const startTimeApplied = ref(false)
 const readyEmitted = ref(false)
+const pendingResumeTime = ref(null)
 
 const emitProgress = () => {
   emit('progress', {
@@ -56,7 +65,20 @@ const resetPlaybackState = () => {
   hasPlaybackStarted.value = false
   startTimeApplied.value = false
   readyEmitted.value = false
+  pendingResumeTime.value = null
   emit('progress', { currentTime: 0, watchedSeconds: 0 })
+}
+
+const prepareSourceRefresh = () => {
+  const video = videoRef.value
+  pendingResumeTime.value = video?.currentTime || props.startTime || 0
+  video?.pause()
+  lastRecordTime.value = pendingResumeTime.value
+  isPlaying.value = false
+  metadataLoaded.value = false
+  hasPlaybackStarted.value = false
+  startTimeApplied.value = false
+  readyEmitted.value = false
 }
 
 const applyStartTime = () => {
@@ -66,29 +88,36 @@ const applyStartTime = () => {
     && metadataLoaded.value
     && !hasPlaybackStarted.value
     && !startTimeApplied.value
-    && props.startTime > 0
+    && (pendingResumeTime.value > 0 || props.startTime > 0)
   ) {
-    video.currentTime = props.startTime
-    lastRecordTime.value = props.startTime
+    const targetTime = pendingResumeTime.value > 0 ? pendingResumeTime.value : props.startTime
+    video.currentTime = targetTime
+    lastRecordTime.value = targetTime
     startTimeApplied.value = true
+    pendingResumeTime.value = null
     emitProgress()
   }
 }
 
 watch(
   () => props.videoUrl,
-  () => {
-    if (videoRef.value) {
-      videoRef.value.pause()
-    }
-    resetPlaybackState()
+  (nextUrl, previousUrl) => {
+    if (!previousUrl || nextUrl === previousUrl) return
+    prepareSourceRefresh()
   },
 )
 
+watch(() => props.mediaId, resetPlaybackState)
 watch(() => props.startTime, applyStartTime)
 
 const handleVideoError = (event) => {
-  emit('error', event)
+  emitProgress()
+  emit('error', {
+    error: event,
+    currentTime: videoRef.value?.currentTime || 0,
+    watchedSeconds: watchedSeconds.value,
+    wasPlaying: isPlaying.value,
+  })
 }
 
 const handleVideoPlay = () => {
@@ -126,6 +155,11 @@ const handleLoadedMetadata = () => {
   if (!readyEmitted.value) {
     readyEmitted.value = true
     emit('ready')
+  }
+  if (props.resumeOnLoad) {
+    Promise.resolve(videoRef.value?.play()).catch(() => {
+      // 浏览器可能阻止自动恢复，保留当前位置并由用户通过原生控件继续播放。
+    })
   }
 }
 

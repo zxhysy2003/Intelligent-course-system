@@ -42,6 +42,9 @@ import com.sy.course_system.service.LearningBehaviorService;
 import com.sy.course_system.service.UserCourseService;
 import com.sy.course_system.service.UserService;
 import com.sy.course_system.service.VideoService;
+import com.sy.course_system.service.VideoPlaybackService;
+import com.sy.course_system.vo.CoursePlaybackVO;
+import java.time.Instant;
 
 @ExtendWith(MockitoExtension.class)
 class ApiV1ControllerContractTest {
@@ -57,22 +60,23 @@ class ApiV1ControllerContractTest {
     private UserService userService;
     @Mock
     private VideoService videoService;
+    @Mock
+    private VideoPlaybackService videoPlaybackService;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        CourseController courseController = new CourseController();
-        ReflectionTestUtils.setField(courseController, "courseService", courseService);
-        ReflectionTestUtils.setField(courseController, "categoryMapper", categoryMapper);
-        ReflectionTestUtils.setField(courseController, "userCourseService", userCourseService);
+        CourseController courseController = new CourseController(
+                courseService,
+                categoryMapper,
+                userCourseService,
+                videoPlaybackService);
 
         LearningBehaviorRecordController behaviorController = new LearningBehaviorRecordController();
         ReflectionTestUtils.setField(behaviorController, "learningBehaviorService", learningBehaviorService);
 
-        CourseAdminController courseAdminController = new CourseAdminController();
-        ReflectionTestUtils.setField(courseAdminController, "courseService", courseService);
-        ReflectionTestUtils.setField(courseAdminController, "videoService", videoService);
+        CourseAdminController courseAdminController = new CourseAdminController(courseService, videoService);
 
         UserAdminController userAdminController = new UserAdminController();
         ReflectionTestUtils.setField(userAdminController, "userService", userService);
@@ -122,6 +126,22 @@ class ApiV1ControllerContractTest {
         verify(userCourseService).updateUserCourseRelation(relation.capture());
         org.junit.jupiter.api.Assertions.assertEquals(7L, relation.getValue().getCourseId());
         org.junit.jupiter.api.Assertions.assertEquals(36, relation.getValue().getProgressSeconds());
+    }
+
+    @Test
+    void playbackEndpointReturnsOnlySignedPlaybackMetadataAndDisablesCaching() throws Exception {
+        when(videoPlaybackService.issue(10L, 7L)).thenReturn(new CoursePlaybackVO(
+                "/videos/7/sample.mp4?token=signed",
+                Instant.parse("2026-08-14T12:00:00Z")));
+
+        mockMvc.perform(post("/api/v1/courses/7/playback"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.data.playbackUrl").value("/videos/7/sample.mp4?token=signed"))
+                .andExpect(jsonPath("$.data.expiresAt").value("2026-08-14T12:00:00Z"));
+
+        verify(videoPlaybackService).issue(10L, 7L);
     }
 
     @Test
@@ -212,6 +232,9 @@ class ApiV1ControllerContractTest {
                 .andExpect(status().isNotFound());
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                 .get("/admin/course/detail/7"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .get("/api/v1/courses/7/video"))
                 .andExpect(status().isNotFound());
     }
 }

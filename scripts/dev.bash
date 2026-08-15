@@ -25,7 +25,6 @@ export NEO4J_URI="${NEO4J_URI:-bolt://127.0.0.1:7687}"
 export NEO4J_USERNAME="${NEO4J_USERNAME:-neo4j}"
 export NEO4J_PASSWORD="${NEO4J_PASSWORD:-neo4j123}"
 export VIDEO_DIR="${VIDEO_DIR:-${ROOT_PARENT}/course_videos}"
-export VIDEO_BASE_URL="${VIDEO_BASE_URL:-http://${BACKEND_HOST}:${BACKEND_PORT}}"
 export RECOMMEND_SERVICE_URL="${RECOMMEND_SERVICE_URL:-http://${RECOMMEND_HOST}:${RECOMMEND_PORT}}"
 export VITE_BACKEND_TARGET="${VITE_BACKEND_TARGET:-http://${BACKEND_HOST}:${BACKEND_PORT}}"
 export CORS_ALLOWED_ORIGIN_PATTERNS="${CORS_ALLOWED_ORIGIN_PATTERNS:-http://localhost:${FRONTEND_PORT},http://127.0.0.1:${FRONTEND_PORT},http://192.168.*:${FRONTEND_PORT}}"
@@ -40,15 +39,27 @@ log() {
   printf '[dev] %s\n' "$*"
 }
 
-if [[ -z "${JWT_SECRET_BASE64:-}" && -f "$ROOT_DIR/.env.local" ]]; then
+EXPORTED_JWT_SECRET_BASE64="${JWT_SECRET_BASE64:-}"
+EXPORTED_PLAYBACK_TOKEN_SECRET_BASE64="${PLAYBACK_TOKEN_SECRET_BASE64:-}"
+if [[ (-z "$EXPORTED_JWT_SECRET_BASE64" || -z "$EXPORTED_PLAYBACK_TOKEN_SECRET_BASE64") \
+      && -f "$ROOT_DIR/.env.local" ]]; then
   set -a
   source "$ROOT_DIR/.env.local"
   set +a
   log "loaded local environment from .env.local"
 fi
+[[ -n "$EXPORTED_JWT_SECRET_BASE64" ]] && export JWT_SECRET_BASE64="$EXPORTED_JWT_SECRET_BASE64"
+[[ -n "$EXPORTED_PLAYBACK_TOKEN_SECRET_BASE64" ]] \
+  && export PLAYBACK_TOKEN_SECRET_BASE64="$EXPORTED_PLAYBACK_TOKEN_SECRET_BASE64"
+unset EXPORTED_JWT_SECRET_BASE64 EXPORTED_PLAYBACK_TOKEN_SECRET_BASE64
 
 if [[ -z "${JWT_SECRET_BASE64:-}" ]]; then
   printf '%s\n' "[dev] JWT_SECRET_BASE64 is unset; add it to .env.local or export it before starting." >&2
+  exit 1
+fi
+
+if [[ -z "${PLAYBACK_TOKEN_SECRET_BASE64:-}" ]]; then
+  printf '%s\n' "[dev] PLAYBACK_TOKEN_SECRET_BASE64 is unset; add a different key to .env.local or export it before starting." >&2
   exit 1
 fi
 

@@ -12,6 +12,7 @@ vi.mock('../request', () => ({ default: request }))
 
 import {
   deleteCourses,
+  createCoursePlayback,
   enrollCourse,
   getAdminCourses,
   getCourseKnowledgePoints,
@@ -40,12 +41,14 @@ describe('API v1 contracts', () => {
 
   it('uses resource paths and write methods for learner courses', () => {
     getCourses({ page: 1 })
+    createCoursePlayback(7)
     enrollCourse(7)
     getCoursesByKnowledgePoint(9)
     getCourseKnowledgePoints(7)
     updateCourseVideoProgressSeconds({ courseId: 7, progressSeconds: 36 })
 
     expect(request.post).toHaveBeenCalledWith('/courses/search', { page: 1 })
+    expect(request.post).toHaveBeenCalledWith('/courses/7/playback')
     expect(request.post).toHaveBeenCalledWith('/courses/7/enrollment')
     expect(request.get).toHaveBeenCalledWith('/knowledge-points/9/courses')
     expect(request.get).toHaveBeenCalledWith('/courses/7/knowledge-points')

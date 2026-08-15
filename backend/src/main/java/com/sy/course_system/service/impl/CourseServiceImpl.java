@@ -333,11 +333,6 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         return result;
     }
 
-    @Override
-    public String getCourseVideoPath(Long courseId) {
-        return videoService.getVideoPath(courseId);
-    }
-
     // 根据课程id获取课程详情（用户端）
     @Override
     public CourseDetailVO getCourseByIdForUser(Long courseId) {

@@ -7,7 +7,7 @@ import com.sy.course_system.vo.CourseDetailVO;
 public interface VideoService {
     Integer getVideoDurationInSeconds(Long courseId);
 
-    String getVideoPath(Long courseId);
+    VideoPlaybackSource getPlaybackSource(Long courseId);
 
     String uploadAndBindCourseVideo(MultipartFile file, CourseDetailVO courseDetailVO);
 }

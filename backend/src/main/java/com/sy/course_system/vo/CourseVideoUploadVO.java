@@ -9,7 +9,6 @@ package com.sy.course_system.vo;
 public class CourseVideoUploadVO {
     private Long courseId;
     private String videoPath;
-    private String videoUrl;
     private Integer durationSeconds;
 
     public Long getCourseId() {
@@ -26,14 +25,6 @@ public class CourseVideoUploadVO {
 
     public void setVideoPath(String videoPath) {
         this.videoPath = videoPath;
-    }
-
-    public String getVideoUrl() {
-        return videoUrl;
-    }
-
-    public void setVideoUrl(String videoUrl) {
-        this.videoUrl = videoUrl;
     }
 
     public Integer getDurationSeconds() {

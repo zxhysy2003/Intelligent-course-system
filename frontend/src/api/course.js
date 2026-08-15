@@ -16,8 +16,8 @@ export function enrollCourse(courseId) {
   return request.post(`/courses/${courseId}/enrollment`)
 }
 
-export function getCourseVideo(courseId) {
-  return request.get(`/courses/${courseId}/video`)
+export function createCoursePlayback(courseId) {
+  return request.post(`/courses/${courseId}/playback`)
 }
 
 export function getUserCourseRelation(courseId) {

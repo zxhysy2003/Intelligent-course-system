@@ -7,7 +7,9 @@
     <el-card shadow="hover" class="player-card">
       <CourseMediaPlayer
         :video-url="videoUrl"
-        :start-time="userCourseRelation.progressSeconds"
+        :media-id="courseId"
+        :start-time="playbackStartTime"
+        :resume-on-load="resumeOnLoad"
         @ready="handlePlayerReady"
         @progress="handlePlaybackProgress"
         @error="handleVideoError"
@@ -44,13 +46,11 @@ import CourseActions from '@/features/course-detail/components/CourseActions.vue
 import CourseMediaPlayer from '@/features/course-detail/components/CourseMediaPlayer.vue'
 import KnowledgePointList from '@/features/course-detail/components/KnowledgePointList.vue'
 import { ENROLLMENT_STATUS } from '@/features/course-detail/enrollmentStatus'
-import { useUserStore } from '@/store/user'
-import { setAuthTokenToCookie, clearAuthTokenCookie } from '@/utils/authCookie'
 import { notification } from '@/services/notification'
 import { recordLearningBehavior } from '@/api/learningBehavior'
 import {
   getCourseById,
-  getCourseVideo,
+  createCoursePlayback,
   getCourseKnowledgePoints,
   getUserCourseRelation,
   updateCourseVideoProgressSeconds,
@@ -59,7 +59,6 @@ import {
 
 const route = useRoute()
 const router = useRouter()
-const userStore = useUserStore()
 const courseId = route.params.courseId
 
 let disposed = false
@@ -73,6 +72,10 @@ const enrollLoading = ref(false)
 const favoriteLoading = ref(false)
 const viewRecorded = ref(false)
 const playerReady = ref(false)
+const playbackStartTime = ref(0)
+const resumeOnLoad = ref(false)
+const playbackRecoveryAttempted = ref(false)
+const playbackRecoveryInFlight = ref(false)
 
 const userCourseRelation = reactive({
   isFavorite: false,
@@ -161,7 +164,7 @@ const loadCourseDetail = async () => {
 
   let response
   try {
-    response = await getCourseVideo(courseId)
+    response = await createCoursePlayback(courseId)
   } catch (error) {
     if (disposed) return
     notification.error('获取课程视频异常，请稍后重试', error)
@@ -176,22 +179,19 @@ const loadCourseDetail = async () => {
     return
   }
 
-  const nextVideoUrl = String(response.data.data || '')
+  const nextVideoUrl = String(response.data.data?.playbackUrl || '')
   if (!nextVideoUrl) {
     videoUrl.value = ''
     loading.value = false
     return
   }
 
-  if (userStore.token) {
-    // 先写入 Cookie 再渲染 video，避免首个资源请求缺少鉴权信息。
-    setAuthTokenToCookie(userStore.token, 10)
-  }
   playerReady.value = false
   videoUrl.value = nextVideoUrl
 
   await loadCourseRelation()
   if (disposed) return
+  playbackStartTime.value = userCourseRelation.progressSeconds
 
   // 关系状态确定后再挂载播放器，确保首次渲染即可获得稳定的断点位置。
   loading.value = false
@@ -227,6 +227,7 @@ const sendViewRecord = async () => {
 const handlePlayerReady = () => {
   if (!disposed) {
     playerReady.value = true
+    resumeOnLoad.value = false
   }
 }
 
@@ -239,9 +240,37 @@ const handlePlaybackProgress = (snapshot) => {
   }
 }
 
-const handleVideoError = (error) => {
-  if (!disposed) {
-    notification.error('视频加载失败，请检查网络或权限', error)
+const handleVideoError = async (payload) => {
+  if (disposed || playbackRecoveryInFlight.value) return
+  if (playbackRecoveryAttempted.value) {
+    notification.error('视频加载失败，请检查网络或权限', payload?.error || payload)
+    return
+  }
+
+  playbackRecoveryAttempted.value = true
+  playbackRecoveryInFlight.value = true
+  playbackStartTime.value = Number(payload?.currentTime) || playbackSnapshot.currentTime
+  resumeOnLoad.value = Boolean(payload?.wasPlaying)
+
+  try {
+    const response = await createCoursePlayback(courseId)
+    if (disposed) return
+    if (response.data.code !== 200 || !response.data.data?.playbackUrl) {
+      resumeOnLoad.value = false
+      notification.error('视频播放凭证续签失败，请刷新页面重试', response.data.msg)
+      return
+    }
+
+    videoUrl.value = String(response.data.data.playbackUrl)
+  } catch (error) {
+    if (!disposed) {
+      resumeOnLoad.value = false
+      notification.error('视频播放凭证续签失败，请刷新页面重试', error)
+    }
+  } finally {
+    if (!disposed) {
+      playbackRecoveryInFlight.value = false
+    }
   }
 }
 
@@ -351,7 +380,6 @@ onMounted(loadCourseDetail)
 
 onBeforeUnmount(() => {
   disposed = true
-  clearAuthTokenCookie()
 })
 
 // 父组件的 unmounted 在子组件 beforeUnmount 之后执行，可接收到播放器的最终快照。

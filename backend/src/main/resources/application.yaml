@@ -7,10 +7,13 @@ app:
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://127.0.0.1:5173,http://192.168.*:5173}
   jwt:
     secret-base64: ${JWT_SECRET_BASE64}
+  playback-token:
+    secret-base64: ${PLAYBACK_TOKEN_SECRET_BASE64}
+    minimum-ttl: PT2H
+    duration-grace: PT30M
   upload:
     video-dir: ${VIDEO_DIR:/Users/shiyang/Desktop/graduate_design/course_videos}
   video:
-    base-url: ${VIDEO_BASE_URL:http://localhost:8080}
     ffprobe-path: ${FFPROBE_PATH:/opt/homebrew/bin/ffprobe}
 
 spring:

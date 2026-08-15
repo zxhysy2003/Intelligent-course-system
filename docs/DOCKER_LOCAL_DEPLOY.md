@@ -36,15 +36,18 @@ JWT 签名密钥是必填配置。首次启动先在仓库根目录创建本地�
 ```bash
 cp deploy/local.env.example .env
 openssl rand -base64 32
+openssl rand -base64 32
 ```
 
-把第二条命令的输出填入 `.env` 的 `JWT_SECRET_BASE64=` 后再启动：
+把两个不同的生成值填入 `.env` 的 `JWT_SECRET_BASE64=` 和
+`PLAYBACK_TOKEN_SECRET_BASE64=` 后再启动：
 
 ```bash
 docker compose -f docker-compose.local.yml up --build
 ```
 
-不要提交 `.env`。同一套环境后续应继续使用相同密钥；修改密钥会让已有登录 Token 全部失效。
+不要提交 `.env`。同一套环境后续应继续使用相同的一组密钥；两类密钥不得复用。
+修改登录密钥会使登录 Token 失效，修改播放密钥会使尚未到期的签名播放 URL 失效。
 
 首次构建需要下载基础镜像、Maven 依赖、npm 依赖和 Conda 依赖，耗时会比较久。
 
@@ -105,7 +108,6 @@ cp deploy/local.env.example .env
 
 ```text
 FRONTEND_PORT=18088
-APP_BASE_URL=http://localhost:18088
 CORS_ALLOWED_ORIGIN_PATTERNS=http://localhost:18088,http://127.0.0.1:18088
 ```
 

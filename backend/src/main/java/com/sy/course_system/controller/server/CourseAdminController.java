@@ -1,7 +1,5 @@
 package com.sy.course_system.controller.server;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -34,14 +32,14 @@ import com.sy.course_system.vo.CourseVO;
 @RestController
 @RequestMapping(ApiPaths.ADMIN_COURSES)
 public class CourseAdminController {
-    
-    @Autowired
-    private CourseService courseService;
-    @Autowired
-    private VideoService videoService;
 
-    @Value("${app.video.base-url}")
-    private String videoBaseUrl;
+    private final CourseService courseService;
+    private final VideoService videoService;
+
+    public CourseAdminController(CourseService courseService, VideoService videoService) {
+        this.courseService = courseService;
+        this.videoService = videoService;
+    }
 
     /**
      * 课程注册下拉选项
@@ -54,6 +52,7 @@ public class CourseAdminController {
 
     /**
      * 课程注册
+     *
      * @param registerDTO 注册信息，包含课程的相关信息
      * @return 返回注册结果，成功返回提示信息，失败返回对应错误信息
      */
@@ -118,7 +117,6 @@ public class CourseAdminController {
             CourseVideoUploadVO vo = new CourseVideoUploadVO();
             vo.setCourseId(courseId);
             vo.setVideoPath(relativePath);
-            vo.setVideoUrl(videoBaseUrl + "/videos/" + relativePath);
             vo.setDurationSeconds(videoService.getVideoDurationInSeconds(courseId));
 
             courseService.updateCourseStatus(courseId, CourseStatus.ONLINE.getCode()); // 视频上传成功后将课程状态改为上线
@@ -142,11 +140,12 @@ public class CourseAdminController {
     }
 
     /**
-    * 课程上下架
-    * @param courseId 课程 ID
-    * @param status 目标状态（0=草稿，1=上线，2=下架）
-    * @return 操作结果，成功返回提示信息，失败返回对应错误信息
-    */
+     * 课程上下架
+     *
+     * @param courseId 课程 ID
+     * @param status   目标状态（0=草稿，1=上线，2=下架）
+     * @return 操作结果，成功返回提示信息，失败返回对应错误信息
+     */
     @PatchMapping("/{courseId}/status")
     public Result<String> updateCourseStatus(@PathVariable Long courseId,
             @RequestBody CourseStatusUpdateDTO request) {

@@ -35,9 +35,6 @@ public interface CourseService {
 
     PageResult<CourseVO> pageForAdmin(CourseQueryDTO queryDTO);
 
-    // ===== 获取课程视频地址 =====
-    String getCourseVideoPath(Long courseId);
-
     // ===== 根据课程id获取课程详情 =====
     CourseDetailVO getCourseByIdForUser(Long courseId);
 
@@ -54,7 +51,7 @@ public interface CourseService {
 
     // ===== 后台课程管理 =====
 
-     // ===== 课程修改 =====
+    // ===== 课程修改 =====
     boolean update(CourseUpdateDTO updateDTO);
 
     // ===== 课程删除（逻辑删除）=====

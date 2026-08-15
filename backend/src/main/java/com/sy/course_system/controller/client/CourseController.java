@@ -10,11 +10,11 @@ import com.sy.course_system.entity.UserCourseRelation;
 import com.sy.course_system.enums.CourseStatus;
 import com.sy.course_system.mapper.CategoryMapper;
 import com.sy.course_system.vo.CategoryVO;
+import com.sy.course_system.vo.CoursePlaybackVO;
 import com.sy.course_system.vo.CourseDetailVO;
 import com.sy.course_system.vo.CourseVO;
 import com.sy.course_system.vo.KnowledgeVO;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,22 +23,33 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import jakarta.servlet.http.HttpServletResponse;
+
 import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.UserCourseService;
+import com.sy.course_system.service.VideoPlaybackService;
 
 import java.util.List;
 
 @RestController
 @RequestMapping(ApiPaths.API_V1)
 public class CourseController {
-    @Autowired
-    private CourseService courseService;
+    private final CourseService courseService;
 
-    @Autowired
-    private CategoryMapper categoryMapper;
+    private final CategoryMapper categoryMapper;
 
-    @Autowired
-    private UserCourseService userCourseService;
+    private final UserCourseService userCourseService;
+
+    private final VideoPlaybackService videoPlaybackService;
+
+    public CourseController(CourseService courseService, CategoryMapper categoryMapper,
+            UserCourseService userCourseService,
+            VideoPlaybackService videoPlaybackService) {
+        this.courseService = courseService;
+        this.categoryMapper = categoryMapper;
+        this.userCourseService = userCourseService;
+        this.videoPlaybackService = videoPlaybackService;
+    }
 
     // 根据课程id获取课程详情
     @GetMapping("/courses/{courseId}")
@@ -59,6 +70,7 @@ public class CourseController {
         }
         return Result.success(courseDetails);
     }
+
     // 根据课程id获取课程关联的知识点列表
     @GetMapping("/courses/{courseId}/knowledge-points")
     public Result<List<KnowledgeVO>> getKnowledgePointsByCourseId(@PathVariable Long courseId) {
@@ -92,29 +104,22 @@ public class CourseController {
     public Result<Boolean> userAttendCourse(@PathVariable Long courseId) {
         Boolean status = userCourseService.userAttendCourse(courseId);
         if (!status) {
-            return Result.error(400,"用户已添加过该课程。");
+            return Result.error(400, "用户已添加过该课程。");
         }
         return Result.success("添加课程成功。", status);
     }
 
-    // 获取课程视频地址
-    @GetMapping("/courses/{courseId}/video")
-    public Result<String> getCourseVideo(@PathVariable Long courseId) {
-        String videoPath = courseService.getCourseVideoPath(courseId);
-        if (videoPath == null || videoPath.isEmpty()) {
+    // 签发仅允许访问当前课程视频的短期播放地址
+    @PostMapping("/courses/{courseId}/playback")
+    public Result<CoursePlaybackVO> createCoursePlayback(@PathVariable Long courseId,
+            HttpServletResponse response) {
+        response.setHeader("Cache-Control", "no-store");
+        response.setHeader("Pragma", "no-cache");
+        CoursePlaybackVO playback = videoPlaybackService.issue(UserContext.getUserId(), courseId);
+        if (playback == null) {
             return Result.error(404, "课程视频未找到。");
         }
-        String normalized = videoPath;
-        if (normalized.startsWith("/")) {
-            normalized = normalized.substring(1);
-        }
-        String videoUrl;
-        if (normalized.contains(".")) {
-            videoUrl = "/videos/" + normalized;
-        } else {
-            videoUrl = "/videos/" + normalized + ".mp4";
-        }
-        return Result.success(videoUrl);
+        return Result.success(playback);
     }
 
     // 获取用户与课程的关系状态

@@ -13,7 +13,7 @@ const setCurrentTime = (video, value) => {
 describe('CourseMediaPlayer', () => {
   it('应用起播时间并向父组件上报播放快照', async () => {
     const wrapper = mount(CourseMediaPlayer, {
-      props: { videoUrl: '/videos/course.mp4', startTime: 12 },
+      props: { videoUrl: '/videos/course.mp4', mediaId: 1, startTime: 12 },
     })
     const video = wrapper.get('video').element
     setCurrentTime(video, 0)
@@ -34,7 +34,7 @@ describe('CourseMediaPlayer', () => {
 
   it('不把拖拽造成的大跨度时间变化计入观看时长', async () => {
     const wrapper = mount(CourseMediaPlayer, {
-      props: { videoUrl: '/videos/course.mp4' },
+      props: { videoUrl: '/videos/course.mp4', mediaId: 1 },
     })
     const video = wrapper.get('video').element
     setCurrentTime(video, 0)
@@ -51,7 +51,7 @@ describe('CourseMediaPlayer', () => {
 
   it('用户开始播放后不再用延迟返回的断点覆盖当前位置', async () => {
     const wrapper = mount(CourseMediaPlayer, {
-      props: { videoUrl: '/videos/course.mp4', startTime: 0 },
+      props: { videoUrl: '/videos/course.mp4', mediaId: 1, startTime: 0 },
     })
     const video = wrapper.get('video').element
     setCurrentTime(video, 0)
@@ -66,7 +66,7 @@ describe('CourseMediaPlayer', () => {
 
   it('首次播放前仍会应用延迟返回的断点', async () => {
     const wrapper = mount(CourseMediaPlayer, {
-      props: { videoUrl: '/videos/course.mp4', startTime: 0 },
+      props: { videoUrl: '/videos/course.mp4', mediaId: 1, startTime: 0 },
     })
     const video = wrapper.get('video').element
     setCurrentTime(video, 0)
@@ -79,14 +79,11 @@ describe('CourseMediaPlayer', () => {
 
   it('切换视频时重置快照，并透传加载错误', async () => {
     const wrapper = mount(CourseMediaPlayer, {
-      props: { videoUrl: '/videos/first.mp4' },
+      props: { videoUrl: '/videos/first.mp4', mediaId: 1 },
     })
 
     await wrapper.setProps({ videoUrl: '/videos/second.mp4' })
-    expect(wrapper.emitted('progress').at(-1)[0]).toEqual({
-      currentTime: 0,
-      watchedSeconds: 0,
-    })
+    expect(wrapper.emitted('progress')).toBeUndefined()
 
     await wrapper.get('video').trigger('error')
     expect(wrapper.emitted('error')).toHaveLength(1)
@@ -94,7 +91,7 @@ describe('CourseMediaPlayer', () => {
 
   it('每个视频只在元数据首次就绪时上报 ready', async () => {
     const wrapper = mount(CourseMediaPlayer, {
-      props: { videoUrl: '/videos/first.mp4' },
+      props: { videoUrl: '/videos/first.mp4', mediaId: 1 },
     })
 
     await wrapper.get('video').trigger('loadedmetadata')
@@ -108,7 +105,7 @@ describe('CourseMediaPlayer', () => {
 
   it('卸载前上报最终播放位置', async () => {
     const wrapper = mount(CourseMediaPlayer, {
-      props: { videoUrl: '/videos/course.mp4' },
+      props: { videoUrl: '/videos/course.mp4', mediaId: 1 },
     })
     const video = wrapper.get('video').element
     setCurrentTime(video, 8)
@@ -116,5 +113,22 @@ describe('CourseMediaPlayer', () => {
     wrapper.unmount()
 
     expect(wrapper.emitted('progress').at(-1)[0].currentTime).toBe(8)
+  })
+
+  it('续签 URL 后保留累计观看时长并恢复播放位置', async () => {
+    const wrapper = mount(CourseMediaPlayer, {
+      props: { videoUrl: '/videos/course.mp4?token=first', mediaId: 1, resumeOnLoad: true },
+    })
+    const video = wrapper.get('video').element
+    setCurrentTime(video, 10)
+    await wrapper.get('video').trigger('play')
+    video.currentTime = 11
+    await wrapper.get('video').trigger('timeupdate')
+
+    await wrapper.setProps({ videoUrl: '/videos/course.mp4?token=second' })
+    await wrapper.get('video').trigger('loadedmetadata')
+
+    expect(video.currentTime).toBe(11)
+    expect(wrapper.emitted('progress').at(-1)[0].watchedSeconds).toBe(1)
   })
 })

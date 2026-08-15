@@ -20,6 +20,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sy.course_system.entity.Video;
 import com.sy.course_system.mapper.VideoMapper;
+import com.sy.course_system.service.VideoPlaybackSource;
 import com.sy.course_system.service.VideoService;
 import com.sy.course_system.vo.CourseDetailVO;
 
@@ -53,17 +54,14 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
     }
 
     @Override
-    public String getVideoPath(Long courseId) {
-        // 构造查询条件：按 courseId 查询视频记录
-        LambdaQueryWrapper <Video> queryWrapper = new LambdaQueryWrapper<>();
+    public VideoPlaybackSource getPlaybackSource(Long courseId) {
+        LambdaQueryWrapper<Video> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(Video::getCourseId, courseId);
-        // 查询单条记录
         Video video = this.getOne(queryWrapper);
-        // 返回视频相对路径（如：{courseId}/{filename}），若不存在则返回 null
-        if (video != null) {
-            return video.getVideoPath();
+        if (video == null) {
+            return null;
         }
-        return null;
+        return new VideoPlaybackSource(video.getVideoPath(), video.getDurationSeconds());
     }
 
     /**

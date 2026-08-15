@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -41,19 +42,21 @@ import org.springframework.http.HttpStatus;
 
 import com.sy.course_system.common.UserContext;
 import com.sy.course_system.common.util.JwtUtil;
+import com.sy.course_system.service.PlaybackTokenService;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import jakarta.servlet.DispatcherType;
-import jakarta.servlet.http.Cookie;
 
 @WebMvcTest(controllers = JwtSecurityIntegrationTest.SecurityProbeController.class)
 @ContextConfiguration(classes = {
         JwtSecurityIntegrationTest.SecurityProbeController.class,
         SecurityConfig.class,
         JwtAuthenticationFilter.class,
+        PlaybackTokenAuthenticationFilter.class,
+        PlaybackTokenService.class,
         JwtUtil.class,
         CorConfig.class,
         WebConfig.class
@@ -62,6 +65,7 @@ import jakarta.servlet.http.Cookie;
 class JwtSecurityIntegrationTest {
 
     private static final String TEST_SECRET_BASE64 = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+    private static final String TEST_PLAYBACK_SECRET_BASE64 = "YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk=";
     private static final String ALLOWED_ORIGIN = "http://allowed.test";
     private static final Path VIDEO_DIRECTORY = createVideoDirectory();
 
@@ -70,13 +74,18 @@ class JwtSecurityIntegrationTest {
     @Autowired
     private JwtUtil jwtUtil;
     @Autowired
+    private PlaybackTokenService playbackTokenService;
+    @Autowired
     private SecurityProbeController probeController;
     @Autowired
     private FilterRegistrationBean<JwtAuthenticationFilter> jwtAuthenticationFilterRegistration;
+    @Autowired
+    private FilterRegistrationBean<PlaybackTokenAuthenticationFilter> playbackTokenAuthenticationFilterRegistration;
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
         registry.add("app.jwt.secret-base64", () -> TEST_SECRET_BASE64);
+        registry.add("app.playback-token.secret-base64", () -> TEST_PLAYBACK_SECRET_BASE64);
         registry.add("app.upload.video-dir", VIDEO_DIRECTORY::toString);
         registry.add("app.cors.allowed-origin-patterns", () -> ALLOWED_ORIGIN);
     }
@@ -90,6 +99,7 @@ class JwtSecurityIntegrationTest {
     @Test
     void disablesServletContainerRegistrationForJwtFilter() {
         assertFalse(jwtAuthenticationFilterRegistration.isEnabled());
+        assertFalse(playbackTokenAuthenticationFilterRegistration.isEnabled());
     }
 
     @AfterAll
@@ -210,33 +220,36 @@ class JwtSecurityIntegrationTest {
     }
 
     @Test
-    void acceptsBearerOrCookieForVideoAndPreservesRangeRequests() throws Exception {
-        String token = token("STUDENT");
+    void acceptsSignedPlaybackUrlAndPreservesRangeRequests() throws Exception {
+        String token = playbackToken("sample.mp4");
 
-        mockMvc.perform(get("/videos/sample.mp4")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+        mockMvc.perform(get("/videos/sample.mp4").queryParam("token", token))
                 .andExpect(status().isOk())
                 .andExpect(content().bytes("0123456789".getBytes(StandardCharsets.UTF_8)));
         mockMvc.perform(get("/videos/sample.mp4")
-                        .cookie(new Cookie("auth_token", token)))
-                .andExpect(status().isOk());
-        mockMvc.perform(get("/videos/sample.mp4")
                         .header(HttpHeaders.RANGE, "bytes=0-3")
-                        .cookie(new Cookie("auth_token", token)))
+                        .queryParam("token", token))
                 .andExpect(status().isPartialContent())
                 .andExpect(header().string(HttpHeaders.CONTENT_RANGE, "bytes 0-3/10"))
                 .andExpect(content().bytes("0123".getBytes(StandardCharsets.UTF_8)));
+        mockMvc.perform(head("/videos/sample.mp4").queryParam("token", token))
+                .andExpect(status().isOk());
     }
 
     @Test
-    void doesNotUseVideoCookieForBusinessApi() throws Exception {
-        String token = token("STUDENT");
-
-        mockMvc.perform(get("/api/v1/courses/probe")
-                        .cookie(new Cookie("auth_token", token)))
+    void rejectsLoginCredentialsAndMismatchedPlaybackTokensForVideo() throws Exception {
+        mockMvc.perform(get("/videos/sample.mp4")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken("STUDENT")))
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/videos/sample.mp4"))
                 .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/videos/sample.mp4")
+                        .queryParam("token", playbackToken("other.mp4")))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/videos/sample.mp4")
+                        .queryParam("token", expiredPlaybackToken()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().string("视频播放凭证无效或已过期"));
     }
 
     @Test
@@ -265,11 +278,31 @@ class JwtSecurityIntegrationTest {
                 "role", role));
     }
 
+    private String playbackToken(String videoPath) {
+        String playbackUrl = playbackTokenService.issue(1L, 1L, videoPath, 10).playbackUrl();
+        return playbackUrl.substring(playbackUrl.indexOf("?token=") + "?token=".length());
+    }
+
     private String expiredToken() {
         SecretKey key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(TEST_SECRET_BASE64));
         long now = System.currentTimeMillis();
         return Jwts.builder()
                 .setClaims(Map.of("userId", 1L, "username", "tester", "role", "STUDENT"))
+                .setIssuedAt(new Date(now - 2_000))
+                .setExpiration(new Date(now - 1_000))
+                .signWith(key, SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    private String expiredPlaybackToken() {
+        SecretKey key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(TEST_PLAYBACK_SECRET_BASE64));
+        long now = System.currentTimeMillis();
+        return Jwts.builder()
+                .setIssuer("course-system")
+                .setAudience("video-playback")
+                .setSubject("/videos/sample.mp4")
+                .claim("userId", 1L)
+                .claim("courseId", 1L)
                 .setIssuedAt(new Date(now - 2_000))
                 .setExpiration(new Date(now - 1_000))
                 .signWith(key, SignatureAlgorithm.HS256)
