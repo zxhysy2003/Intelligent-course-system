@@ -131,6 +131,7 @@ docker compose -f docker-compose.local.yml up -d --build
 - 总操作手册：[docs/OPERATION_MANUAL.md](./docs/OPERATION_MANUAL.md)
 - 本机 Docker 部署：[docs/DOCKER_LOCAL_DEPLOY.md](./docs/DOCKER_LOCAL_DEPLOY.md)
 - Spring Security 鉴权学习报告：[docs/spring-security-authentication.md](./docs/spring-security-authentication.md)
+- 高并发实验：[experiments/concurrency/README.md](./experiments/concurrency/README.md)
 - 后端说明：[backend/README.md](./backend/README.md)
 - 前端说明：[frontend/README.md](./frontend/README.md)
 - 推荐服务说明：[recommend-service/README.md](./recommend-service/README.md)
