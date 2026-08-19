@@ -335,4 +335,4 @@ progress=71
 
 按本实验公式，进度应为 `500 × 100 DIV 705 = 70`。结果表明当前 Mapper 在同一条 UPDATE 中先更新 `learned_seconds`，随后计算 `progress` 时又加了一次 `duration`。详细分析见 [`../../CON-02实验结果.md`](../../CON-02实验结果.md)。
 
-因此 CON-02 当前状态是“发现缺陷，待修复复测”，尚未满足本节完成标准。
+该缺陷随后已在 `UserCourseRelationMapper.xml` 中修复，并通过 Mapper SQL 契约测试和 MySQL 临时表的 495、695、700 秒三组边界验证。完整复跑 ABC 三轮后，课程 10 得到 `learned_seconds=500, progress=70`，课程 11、12 仍各只有一条 FINISH，双实例仍为 50/50 分流。CON-02 已满足本节完成标准。

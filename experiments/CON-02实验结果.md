@@ -43,27 +43,22 @@ study_unexpected = 0
 
 每轮包含 3 个登录检查和 100 × 2 个学习行为检查，因此均为 203/203 个检查通过。轮次 C 的两个 `backend_index` 数量阈值分别为 50，证明两个 JVM 都实际处理了请求。
 
+第 8 节保留首轮 k6 原始输出。修复后复跑时，三轮的 HTTP、业务成功、非预期响应和双实例分流阈值仍然全部通过，因此不重复粘贴功能上等价的 k6 输出；修复是否生效以复测后的数据库状态为最终依据。
+
 ## 4. 数据库正确性结果
-
-SQL 原始导出：
-
-- [轮次 A](./round-a.csv)
-- [轮次 B](./round-b.csv)
-- [轮次 C](./round-c.csv)
-- [三轮汇总](./round-result.csv)
 
 ### 4.1 轮次 A：并发累加
 
-| 断言 | 期望 | 实际 | 结果 |
-|---|---:|---:|---|
-| `learned_seconds` | 500 | 500 | 通过 |
-| `STUDY` 行为数 | 100 | 100 | 通过 |
-| `STUDY duration` 总和 | 500 | 500 | 通过 |
-| `status` | 1 | 1 | 通过 |
-| `complete_time` | NULL | NULL | 通过 |
-| `progress` | 70 | 71 | **未通过** |
+| 断言 | 期望 | 首轮 | 修复后复测 | 最终结果 |
+|---|---:|---:|---:|---|
+| `learned_seconds` | 500 | 500 | 500 | 通过 |
+| `STUDY` 行为数 | 100 | 100 | 100 | 通过 |
+| `STUDY duration` 总和 | 500 | 500 | 500 | 通过 |
+| `status` | 1 | 1 | 1 | 通过 |
+| `complete_time` | NULL | NULL | NULL | 通过 |
+| `progress` | 70 | 71 | 70 | 修复后通过 |
 
-学习时长和行为日志证明 100 个增量全部提交，没有发生丢失更新；但进度值比 `500 × 100 DIV 705 = 70` 多 1，关系表内部出现 `learned_seconds=500`、`progress=71` 的不一致状态。
+首轮已经证明 100 个增量全部提交，没有发生丢失更新，但暴露了 `progress=71` 的一致性缺陷。修复后使用相同数据和负载复测，最终得到 `learned_seconds=500, progress=70`，关系表重新满足进度派生公式。
 
 ### 4.2 轮次 B：单实例首次完课
 
@@ -71,7 +66,7 @@ SQL 原始导出：
 progress=100
 learned_seconds=705
 status=2
-complete_time=2026-08-19 17:17:41
+complete_time=2026-08-19 22:06:30
 STUDY: 100 条，duration_sum=500
 FINISH: 1 条，duration_sum=0
 ```
@@ -84,7 +79,7 @@ FINISH: 1 条，duration_sum=0
 progress=100
 learned_seconds=705
 status=2
-complete_time=2026-08-19 17:39:52
+complete_time=2026-08-19 22:10:52
 STUDY: 100 条，duration_sum=500
 FINISH: 1 条，duration_sum=0
 ```
@@ -93,15 +88,41 @@ FINISH: 1 条，duration_sum=0
 
 ### 4.4 三轮最终状态
 
-| 课程 | progress | learned_seconds | status | complete_time | STUDY 数 | STUDY 时长和 | FINISH 数 |
-|---:|---:|---:|---:|---|---:|---:|---:|
-| 10 | 71 | 500 | 1 | NULL | 100 | 500 | 0 |
-| 11 | 100 | 705 | 2 | 2026-08-19 17:17:41 | 100 | 500 | 1 |
-| 12 | 100 | 705 | 2 | 2026-08-19 17:39:52 | 100 | 500 | 1 |
+复测后执行：
+
+```sql
+SELECT course_id, progress, learned_seconds, status, complete_time
+FROM course_concurrency.user_course_relation
+WHERE user_id = 6 AND course_id IN (10, 11, 12)
+ORDER BY course_id;
+
+SELECT course_id, behavior_type, COUNT(*) AS behavior_count,
+       COALESCE(SUM(duration), 0) AS duration_sum
+FROM course_concurrency.learning_behavior
+WHERE user_id = 6 AND course_id IN (10, 11, 12)
+GROUP BY course_id, behavior_type
+ORDER BY course_id, behavior_type;
+```
+
+SQL 结果直接记录如下：
+
+```text
+course_id  progress  learned_seconds  status  complete_time
+10         70        500              1       NULL
+11         100       705              2       2026-08-19 22:06:30
+12         100       705              2       2026-08-19 22:10:52
+
+course_id  behavior_type  behavior_count  duration_sum
+10         STUDY          100             500
+11         FINISH         1               0
+11         STUDY          100             500
+12         FINISH         1               0
+12         STUDY          100             500
+```
 
 ## 5. 进度偏差分析
 
-当前 Mapper 的更新顺序是：
+修复前 Mapper 的更新顺序是：
 
 ```sql
 SET learned_seconds = LEAST(learned_seconds + :duration, :totalSeconds),
@@ -125,7 +146,23 @@ SET learned_seconds = LEAST(learned_seconds + :duration, :totalSeconds),
 
 这不只是显示误差：在接近完课线时，进度和 `status` 可能比 `learned_seconds` 提前一个事件达到 100。例如从 695 秒上报 5 秒，关系时长可能只有 700 秒，但进度计算可能已经使用 705 秒并触发完课。轮次 B、C 都从 700 秒开始，第一次 5 秒上报本来就应该完成，因此没有覆盖这个提前完课边界。
 
-本次只记录和定位问题，不在结果整理提交中修改业务 Mapper。修复后需要重新运行轮次 A，并增加“695 + 5 秒不能完课”的边界用例。
+随后已修复 Mapper：`learned_seconds` 仍先完成原子累加，`progress` 和 `status` 直接使用本语句中已经更新后的 `learned_seconds`，不再重复叠加 `duration`：
+
+```sql
+learned_seconds = LEAST(learned_seconds + :duration, :totalSeconds),
+progress = LEAST(100, (learned_seconds * 100) DIV :totalSeconds),
+status = CASE WHEN learned_seconds >= :totalSeconds THEN 2 ELSE 1 END
+```
+
+MySQL 临时表回归验证结果：
+
+| 场景 | 更新前 | 上报 | 更新后 learned | progress | status |
+|---|---:|---:|---:|---:|---:|
+| 普通进度 | 495 | 5 | 500 | 70 | 1 |
+| 完课前边界 | 695 | 5 | 700 | 99 | 1 |
+| 正好完课 | 700 | 5 | 705 | 100 | 2 |
+
+临时表验证和 Mapper SQL 契约测试通过后，又重新运行了完整 ABC 三轮。真实接口链路最终得到课程 10 的 `500/70`，课程 11、12 各一条 FINISH，说明修复生效且没有破坏首次完课门闩。
 
 ## 6. 性能结果解读
 
@@ -149,22 +186,18 @@ SET learned_seconds = LEAST(learned_seconds + :duration, :totalSeconds),
 - 双实例各收到 50 个请求，跨 JVM 验证有效。
 - 关系时长能够封顶在课程总时长 705 秒。
 
-发现的问题：
+问题及处置：
 
 - 轮次 A 的 `progress=71` 与 `learned_seconds=500` 不一致，暴露出同一条 UPDATE 中重复计入 `duration` 的进度计算问题。
 - k6 的 HTTP 和业务阈值全部为绿色，但数据库状态仍然违反业务不变量，说明并发实验不能只看接口成功率。
+- Mapper 修复后完整复跑，课程 10 恢复为 `learned_seconds=500, progress=70`，问题关闭。
+- 轮次 B、C 复测后仍各只有一条 FINISH，修复没有破坏单实例或跨 JVM 首次完课语义。
 
-CON-02 当前结论为“原子累加和首次完课门闩通过，进度计算发现缺陷，待修复复测”，不能标记为完全完成。
+CON-02 的假设现已全部通过，可以标记为完成：原子累加没有丢失更新，进度与学习时长保持一致，首次完课最多触发一次，并且这些结论在双实例下仍然成立。
 
 本实验仍未验证同一逻辑学习事件的重复投递。当前 100 个请求被定义为 100 个不同事件；如果它们是同一个请求的重试，仍会累计 100 次。该幂等问题属于 CON-03。
 
-后续顺序：
-
-1. 修复 `addStudyTimeAndUpdateProgress` 中进度和状态的计算偏差。
-2. 增加 Mapper/Service 并发测试及 695 秒边界测试。
-3. 复跑轮次 A，并确认 `learned_seconds=500`、`progress=70`。
-4. 复跑首次完课场景，确认 FINISH 仍然只有一条。
-5. CON-02 全部通过后进入 CON-03 重复消费幂等实验。
+后续进入 CON-03 重复消费幂等实验，并可将 695 秒完课前边界进一步加入需要真实 MySQL 的长期自动化集成测试。
 
 ## 8. 原始 k6 输出
 

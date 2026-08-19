@@ -35,13 +35,17 @@
     <!-- addStudyTimeAndUpdateProgress --> 
 
     <update id="addStudyTimeAndUpdateProgress">
+        <!--
+            MySQL 单表 UPDATE 的 SET 赋值按从左到右生效。
+            progress/status 读取的是本语句中已经更新后的 learned_seconds，不能再次叠加 duration。
+        -->
         UPDATE user_course_relation
         SET
         learned_seconds = LEAST(learned_seconds + #{duration}, #{totalSeconds}),
-        progress = LEAST(100, (LEAST(learned_seconds + #{duration}, #{totalSeconds}) * 100) DIV #{totalSeconds}),
+        progress = LEAST(100, (learned_seconds * 100) DIV #{totalSeconds}),
         last_learn_time = #{now},
         status = CASE
-                    WHEN LEAST(100, (LEAST(learned_seconds + #{duration}, #{totalSeconds}) * 100) DIV #{totalSeconds}) = 100
+                    WHEN learned_seconds &gt;= #{totalSeconds}
                     THEN 2 ELSE 1
                 END
         WHERE user_id = #{userId}
