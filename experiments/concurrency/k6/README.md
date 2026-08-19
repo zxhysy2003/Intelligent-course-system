@@ -74,3 +74,26 @@ k6 run experiments/concurrency/k6/con-01-concurrent-enrollment.js
 ```
 
 登录请求发送到第一个地址；选课请求按照 VU 编号在所有地址间轮询。100 VU、两个地址时，每个实例应恰好收到 50 次选课请求。脚本会为每个 `backend_index` 增加 `http_reqs` 数量阈值，确保双实例不是“启动了两个、实际只请求了一个”。两个实例必须共享 MySQL 和 JWT 签名密钥。
+
+## CON-02 并发学习进度
+
+已实现脚本：
+
+- [`con-02-concurrent-study-progress.js`](./con-02-concurrent-study-progress.js)
+- 详细方案见 [CON-02 并发学习进度与首次完课实验](../docs/02-concurrent-learning-progress.md)。
+- 数据准备见 [`../data/con-02-prepare.sql`](../data/con-02-prepare.sql)。
+
+单实例运行示例：
+
+```bash
+k6 run \
+  -e CON02_BASE_URL=http://127.0.0.1:8080 \
+  -e CON02_USERNAME=stu_newbie \
+  -e CON02_PASSWORD=123456 \
+  -e CON02_COURSE_ID=10 \
+  -e CON02_DURATION=5 \
+  -e CON02_VUS=100 \
+  experiments/concurrency/k6/con-02-concurrent-study-progress.js
+```
+
+双实例通过 `CON02_BASE_URLS` 传入两个地址。脚本要求所有 STUDY 请求业务成功，并验证每个实例实际收到的请求数。学习时长、进度和 FINISH 数量必须在运行后通过 SQL 断言，不能仅根据 k6 成功率判断实验通过。
