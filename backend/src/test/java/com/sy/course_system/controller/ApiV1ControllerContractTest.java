@@ -34,6 +34,7 @@ import com.sy.course_system.dto.UserUpdateDTO;
 import com.sy.course_system.dto.course.CourseQueryDTO;
 import com.sy.course_system.dto.course.CourseUpdateDTO;
 import com.sy.course_system.entity.UserCourseRelation;
+import com.sy.course_system.enums.BehaviorRecordOutcome;
 import com.sy.course_system.enums.LearnBehaviorType;
 import com.sy.course_system.enums.UserType;
 import com.sy.course_system.mapper.CategoryMapper;
@@ -73,8 +74,8 @@ class ApiV1ControllerContractTest {
                 userCourseService,
                 videoPlaybackService);
 
-        LearningBehaviorRecordController behaviorController = new LearningBehaviorRecordController();
-        ReflectionTestUtils.setField(behaviorController, "learningBehaviorService", learningBehaviorService);
+        LearningBehaviorRecordController behaviorController =
+                new LearningBehaviorRecordController(learningBehaviorService);
 
         CourseAdminController courseAdminController = new CourseAdminController(courseService, videoService);
 
@@ -165,13 +166,20 @@ class ApiV1ControllerContractTest {
 
     @Test
     void learningBehaviorUsesJsonBody() throws Exception {
+        when(learningBehaviorService.recordBehavior(
+                7L, LearnBehaviorType.STUDY, 12, "study-event-7"))
+                .thenReturn(BehaviorRecordOutcome.PROCESSED);
+
         mockMvc.perform(post("/api/v1/learning-behaviors")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"courseId\":7,\"behaviorType\":\"STUDY\",\"duration\":12}"))
+                .content("{\"eventId\":\"study-event-7\",\"courseId\":7,"
+                        + "\"behaviorType\":\"STUDY\",\"duration\":12}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200));
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.replayed").value(false));
 
-        verify(learningBehaviorService).recordBehavior(7L, LearnBehaviorType.STUDY, 12);
+        verify(learningBehaviorService).recordBehavior(
+                7L, LearnBehaviorType.STUDY, 12, "study-event-7");
     }
 
     @Test

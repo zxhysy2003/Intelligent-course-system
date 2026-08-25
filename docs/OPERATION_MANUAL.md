@@ -620,8 +620,10 @@ curl -X POST "http://127.0.0.1:8080/api/v1/courses/1/enrollment" \
 curl -X POST "http://127.0.0.1:8080/api/v1/learning-behaviors" \
   -H "Authorization: Bearer <your_token>" \
   -H "Content-Type: application/json" \
-  -d '{"courseId":1,"behaviorType":"STUDY","duration":300}'
+  -d '{"eventId":"study-550e8400-e29b-41d4-a716-446655440000","courseId":1,"behaviorType":"STUDY","duration":300}'
 ```
+
+同一段 STUDY 行为重试时必须复用 `eventId`；新的学习事件应生成新的 ID。首次处理返回 `data.replayed=false`，重复回放返回 `data.replayed=true`，两者的业务码均为 `200`。
 
 ### 11.7 新用户引导
 

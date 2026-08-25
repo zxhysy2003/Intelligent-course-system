@@ -3,9 +3,18 @@ package com.sy.course_system.dto;
 import com.sy.course_system.enums.LearnBehaviorType;
 
 public class LearningBehaviorRecordDTO {
+    private String eventId;
     private Long courseId;
     private LearnBehaviorType behaviorType;
     private Integer duration;
+
+    public String getEventId() {
+        return eventId;
+    }
+
+    public void setEventId(String eventId) {
+        this.eventId = eventId;
+    }
 
     public Long getCourseId() {
         return courseId;

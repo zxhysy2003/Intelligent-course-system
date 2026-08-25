@@ -1,6 +1,5 @@
 package com.sy.course_system.controller.client;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -9,8 +8,11 @@ import org.springframework.web.bind.annotation.RestController;
 import com.sy.course_system.common.ApiPaths;
 import com.sy.course_system.common.Result;
 import com.sy.course_system.dto.LearningBehaviorRecordDTO;
+import com.sy.course_system.enums.BehaviorRecordOutcome;
 import com.sy.course_system.enums.LearnBehaviorType;
+import com.sy.course_system.exception.LearningBehaviorEventConflictException;
 import com.sy.course_system.service.LearningBehaviorService;
+import com.sy.course_system.vo.LearningBehaviorRecordVO;
 
 /**
  * 学习行为控制器
@@ -21,8 +23,11 @@ import com.sy.course_system.service.LearningBehaviorService;
 @RequestMapping(ApiPaths.LEARNING_BEHAVIORS)
 public class LearningBehaviorRecordController {
 
-    @Autowired
-    private LearningBehaviorService learningBehaviorService;
+    private final LearningBehaviorService learningBehaviorService;
+
+    public LearningBehaviorRecordController(LearningBehaviorService learningBehaviorService) {
+        this.learningBehaviorService = learningBehaviorService;
+    }
 
     /**
      * 统一行为记录接口
@@ -35,8 +40,18 @@ public class LearningBehaviorRecordController {
         if (request.getBehaviorType() == LearnBehaviorType.FINISH) {
             return Result.error(400, "FINISH 行为由学习进度自动生成，不能直接提交");
         }
-        learningBehaviorService.recordBehavior(request.getCourseId(), request.getBehaviorType(), request.getDuration());
-        return Result.success(null);
+        try {
+            BehaviorRecordOutcome outcome = learningBehaviorService.recordBehavior(
+                    request.getCourseId(),
+                    request.getBehaviorType(),
+                    request.getDuration(),
+                    request.getEventId());
+            return Result.success(new LearningBehaviorRecordVO(outcome == BehaviorRecordOutcome.REPLAYED));
+        } catch (LearningBehaviorEventConflictException ex) {
+            return Result.error(409, ex.getMessage());
+        } catch (IllegalArgumentException ex) {
+            return Result.error(400, ex.getMessage());
+        }
     }
 
 }

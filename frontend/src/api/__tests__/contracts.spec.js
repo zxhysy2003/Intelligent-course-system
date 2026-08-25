@@ -58,7 +58,12 @@ describe('API v1 contracts', () => {
   })
 
   it('sends learning and onboarding writes as JSON', () => {
-    const behavior = { courseId: 7, behaviorType: 'STUDY', duration: 12 }
+    const behavior = {
+      eventId: 'study-event-7',
+      courseId: 7,
+      behaviorType: 'STUDY',
+      duration: 12,
+    }
     recordLearningBehavior(behavior)
     submitOnboarding({ currentLevel: 2 })
 

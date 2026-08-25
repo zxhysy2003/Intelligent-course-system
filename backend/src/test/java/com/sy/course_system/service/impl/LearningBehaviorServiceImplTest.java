@@ -7,6 +7,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -31,7 +34,9 @@ import com.sy.course_system.common.UserContext;
 import com.sy.course_system.common.UserInfo;
 import com.sy.course_system.entity.LearningBehavior;
 import com.sy.course_system.entity.UserCourseRelation;
+import com.sy.course_system.enums.BehaviorRecordOutcome;
 import com.sy.course_system.enums.LearnBehaviorType;
+import com.sy.course_system.exception.LearningBehaviorEventConflictException;
 import com.sy.course_system.mapper.LearningBehaviorMapper;
 import com.sy.course_system.recommend.RecommendCacheInvalidator;
 import com.sy.course_system.repository.KnowledgeRepository;
@@ -71,6 +76,7 @@ class LearningBehaviorServiceImplTest {
                 learningAnalysisService, userCourseService, videoService, stringRedisTemplate,
                 recommendCacheInvalidator, recommendScoreSnapshotService));
         ReflectionTestUtils.setField(learningBehaviorService, "baseMapper", learningBehaviorMapper);
+        lenient().doReturn(1).when(learningBehaviorMapper).insertStudyIfAbsent(any(LearningBehavior.class));
         UserContext.set(new UserInfo(1L, "student", "USER"));
     }
 
@@ -92,10 +98,12 @@ class LearningBehaviorServiceImplTest {
         doReturn(1).when(userCourseService).tryMarkFinished(eq(1L), eq(10L), any(LocalDateTime.class));
         doReturn(List.of(100L, 101L)).when(courseService).getKnowledgePointIdsByCourseId(10L);
         doReturn(40.0).when(learningBehaviorMapper).getUserCourseBaseScore(1L, 10L);
-        doReturn(true).when(learningBehaviorService).save(any(LearningBehavior.class));
+        learningBehaviorService.recordBehavior(10L, LearnBehaviorType.STUDY, 60, "study-event-1");
 
-        learningBehaviorService.recordBehavior(10L, LearnBehaviorType.STUDY, 60);
-
+        InOrder writeOrder = inOrder(learningBehaviorMapper, userCourseService);
+        writeOrder.verify(learningBehaviorMapper).insertStudyIfAbsent(any(LearningBehavior.class));
+        writeOrder.verify(userCourseService).addStudyTimeAndUpdateProgress(
+                eq(1L), eq(10L), eq(60), eq(600), any(LocalDateTime.class));
         verify(userCourseService).addStudyTimeAndUpdateProgress(eq(1L), eq(10L), eq(60), eq(600),
                 any(LocalDateTime.class));
         verify(userCourseService).tryMarkFinished(eq(1L), eq(10L), any(LocalDateTime.class));
@@ -105,10 +113,14 @@ class LearningBehaviorServiceImplTest {
         verify(recommendScoreSnapshotService).refreshUserCourseScore(1L, 10L);
         verify(learningAnalysisService).increaseCourseHot(10L, 2.0d);
 
-        ArgumentCaptor<LearningBehavior> behaviorCaptor = ArgumentCaptor.forClass(LearningBehavior.class);
-        verify(learningBehaviorService, org.mockito.Mockito.times(2)).save(behaviorCaptor.capture());
-        assertEquals(List.of(LearnBehaviorType.STUDY, LearnBehaviorType.FINISH),
-                behaviorCaptor.getAllValues().stream().map(LearningBehavior::getBehaviorType).toList());
+        ArgumentCaptor<LearningBehavior> studyCaptor = ArgumentCaptor.forClass(LearningBehavior.class);
+        verify(learningBehaviorMapper).insertStudyIfAbsent(studyCaptor.capture());
+        assertEquals("study-event-1", studyCaptor.getValue().getEventId());
+        assertEquals(LearnBehaviorType.STUDY, studyCaptor.getValue().getBehaviorType());
+
+        ArgumentCaptor<LearningBehavior> finishCaptor = ArgumentCaptor.forClass(LearningBehavior.class);
+        verify(learningBehaviorService).save(finishCaptor.capture());
+        assertEquals(LearnBehaviorType.FINISH, finishCaptor.getValue().getBehaviorType());
     }
 
     @Test
@@ -117,9 +129,7 @@ class LearningBehaviorServiceImplTest {
         completed.setCompleteTime(LocalDateTime.now());
         doReturn(completed).when(userCourseService).getUserCourseRelation(1L, 10L);
         doReturn(600).when(videoService).getVideoDurationInSeconds(10L);
-        doReturn(true).when(learningBehaviorService).save(any(LearningBehavior.class));
-
-        learningBehaviorService.recordBehavior(10L, LearnBehaviorType.STUDY, 60);
+        learningBehaviorService.recordBehavior(10L, LearnBehaviorType.STUDY, 60, "study-event-1");
 
         verify(userCourseService).addStudyTimeAndUpdateProgress(eq(1L), eq(10L), eq(60), eq(600),
                 any(LocalDateTime.class));
@@ -130,9 +140,8 @@ class LearningBehaviorServiceImplTest {
         verify(recommendCacheInvalidator, never()).invalidateStrongUserRecommend(1L);
         verify(recommendScoreSnapshotService).refreshUserCourseScore(1L, 10L);
 
-        ArgumentCaptor<LearningBehavior> behaviorCaptor = ArgumentCaptor.forClass(LearningBehavior.class);
-        verify(learningBehaviorService).save(behaviorCaptor.capture());
-        assertEquals(LearnBehaviorType.STUDY, behaviorCaptor.getValue().getBehaviorType());
+        verify(learningBehaviorMapper).insertStudyIfAbsent(any(LearningBehavior.class));
+        verify(learningBehaviorService, never()).save(any(LearningBehavior.class));
     }
 
     @Test
@@ -146,9 +155,7 @@ class LearningBehaviorServiceImplTest {
         doReturn(1).when(userCourseService).tryMarkFinished(eq(1L), eq(10L), any(LocalDateTime.class));
         doReturn(List.of(100L, 101L)).when(courseService).getKnowledgePointIdsByCourseId(10L);
         doReturn(40.0).when(learningBehaviorMapper).getUserCourseBaseScore(1L, 10L);
-        doReturn(true).when(learningBehaviorService).save(any(LearningBehavior.class));
-
-        learningBehaviorService.recordBehavior(10L, LearnBehaviorType.STUDY, 60);
+        learningBehaviorService.recordBehavior(10L, LearnBehaviorType.STUDY, 60, "study-event-1");
 
         verify(userCourseService).tryMarkFinished(eq(1L), eq(10L), any(LocalDateTime.class));
         verify(knowledgeRepository).markUserMasteredBatch(1L, List.of(100L, 101L), 1.0d);
@@ -156,10 +163,10 @@ class LearningBehaviorServiceImplTest {
         verify(recommendCacheInvalidator, never()).invalidateStudyUserRecommend(1L);
         verify(recommendScoreSnapshotService).refreshUserCourseScore(1L, 10L);
 
-        ArgumentCaptor<LearningBehavior> behaviorCaptor = ArgumentCaptor.forClass(LearningBehavior.class);
-        verify(learningBehaviorService, org.mockito.Mockito.times(2)).save(behaviorCaptor.capture());
-        assertEquals(List.of(LearnBehaviorType.STUDY, LearnBehaviorType.FINISH),
-                behaviorCaptor.getAllValues().stream().map(LearningBehavior::getBehaviorType).toList());
+        verify(learningBehaviorMapper).insertStudyIfAbsent(any(LearningBehavior.class));
+        ArgumentCaptor<LearningBehavior> finishCaptor = ArgumentCaptor.forClass(LearningBehavior.class);
+        verify(learningBehaviorService).save(finishCaptor.capture());
+        assertEquals(LearnBehaviorType.FINISH, finishCaptor.getValue().getBehaviorType());
     }
 
     @Test
@@ -168,9 +175,8 @@ class LearningBehaviorServiceImplTest {
         doReturn(active).when(userCourseService).getUserCourseRelation(1L, 10L);
         doReturn(600).when(videoService).getVideoDurationInSeconds(10L);
         doReturn(0).when(userCourseService).tryMarkFinished(eq(1L), eq(10L), any(LocalDateTime.class));
-        doReturn(true).when(learningBehaviorService).save(any(LearningBehavior.class));
 
-        learningBehaviorService.recordBehavior(10L, LearnBehaviorType.STUDY, 60);
+        learningBehaviorService.recordBehavior(10L, LearnBehaviorType.STUDY, 60, "study-event-1");
 
         verify(userCourseService).addStudyTimeAndUpdateProgress(eq(1L), eq(10L), eq(60), eq(600),
                 any(LocalDateTime.class));
@@ -186,7 +192,7 @@ class LearningBehaviorServiceImplTest {
         doReturn(relation).when(userCourseService).getUserCourseRelation(1L, 10L);
         doReturn(true).when(learningBehaviorService).save(any(LearningBehavior.class));
 
-        learningBehaviorService.recordBehavior(10L, LearnBehaviorType.FAVORITE, null);
+        learningBehaviorService.recordBehavior(10L, LearnBehaviorType.FAVORITE, null, null);
 
         assertEquals(1, relation.getIsFavorite());
         verify(userCourseService).updateUserCourseRelation(relation);
@@ -202,7 +208,7 @@ class LearningBehaviorServiceImplTest {
         relation.setIsFavorite(1);
         doReturn(relation).when(userCourseService).getUserCourseRelation(1L, 10L);
 
-        learningBehaviorService.recordBehavior(10L, LearnBehaviorType.UNFAVORITE, null);
+        learningBehaviorService.recordBehavior(10L, LearnBehaviorType.UNFAVORITE, null, null);
 
         assertEquals(0, relation.getIsFavorite());
         verify(userCourseService).updateUserCourseRelation(relation);
@@ -222,13 +228,14 @@ class LearningBehaviorServiceImplTest {
         doReturn(List.of()).when(courseService).getKnowledgePointIdsByCourseId(10L);
         doReturn(true).when(learningBehaviorService).save(any(LearningBehavior.class));
 
-        learningBehaviorService.recordBehavior(10L, LearnBehaviorType.STUDY, 60);
+        learningBehaviorService.recordBehavior(10L, LearnBehaviorType.STUDY, 60, "study-event-1");
 
         verify(recommendCacheInvalidator).invalidateStrongUserRecommend(1L);
         verify(recommendCacheInvalidator, never()).invalidateStudyUserRecommend(1L);
         verify(recommendScoreSnapshotService).refreshUserCourseScore(1L, 10L);
         verify(knowledgeRepository, never()).markUserMasteredBatch(any(), any(), any());
-        verify(learningBehaviorService, org.mockito.Mockito.times(2)).save(any(LearningBehavior.class));
+        verify(learningBehaviorMapper).insertStudyIfAbsent(any(LearningBehavior.class));
+        verify(learningBehaviorService).save(any(LearningBehavior.class));
     }
 
     @Test
@@ -238,9 +245,8 @@ class LearningBehaviorServiceImplTest {
         doReturn(active).when(userCourseService).getUserCourseRelation(1L, 10L);
         doReturn(600).when(videoService).getVideoDurationInSeconds(10L);
         doReturn(0).when(userCourseService).tryMarkFinished(eq(1L), eq(10L), any(LocalDateTime.class));
-        doReturn(true).when(learningBehaviorService).save(any(LearningBehavior.class));
 
-        learningBehaviorService.recordBehavior(10L, LearnBehaviorType.STUDY, 60);
+        learningBehaviorService.recordBehavior(10L, LearnBehaviorType.STUDY, 60, "study-event-1");
 
         verify(recommendScoreSnapshotService, never()).refreshUserCourseScore(1L, 10L);
 
@@ -260,7 +266,8 @@ class LearningBehaviorServiceImplTest {
         doThrow(new RuntimeException("snapshot unavailable"))
                 .when(recommendScoreSnapshotService).refreshUserCourseScore(1L, 10L);
 
-        assertDoesNotThrow(() -> learningBehaviorService.recordBehavior(10L, LearnBehaviorType.FAVORITE, null));
+        assertDoesNotThrow(() -> learningBehaviorService.recordBehavior(
+                10L, LearnBehaviorType.FAVORITE, null, null));
 
         verify(learningBehaviorService).save(any(LearningBehavior.class));
         verify(recommendScoreSnapshotService).refreshUserCourseScore(1L, 10L);
@@ -269,10 +276,57 @@ class LearningBehaviorServiceImplTest {
     @Test
     void recordBehaviorShouldRejectDirectFinish() {
         assertThrows(IllegalArgumentException.class,
-                () -> learningBehaviorService.recordBehavior(10L, LearnBehaviorType.FINISH, null));
+                () -> learningBehaviorService.recordBehavior(10L, LearnBehaviorType.FINISH, null, null));
 
         verifyNoInteractions(userCourseService, recommendScoreSnapshotService, learningAnalysisService);
         verify(learningBehaviorService, never()).save(any(LearningBehavior.class));
+    }
+
+    @Test
+    void recordBehaviorShouldReplaySameStudyEventWithoutRepeatingSideEffects() {
+        UserCourseRelation active = relation(1, 120);
+        LearningBehavior existing = behavior(10L, 60, "study-event-1");
+        doReturn(active).when(userCourseService).getUserCourseRelation(1L, 10L);
+        doReturn(0).when(learningBehaviorMapper).insertStudyIfAbsent(any(LearningBehavior.class));
+        doReturn(existing).when(learningBehaviorMapper)
+                .selectByUserIdAndEventIdForShare(1L, "study-event-1");
+
+        BehaviorRecordOutcome outcome = learningBehaviorService.recordBehavior(
+                10L, LearnBehaviorType.STUDY, 60, "study-event-1");
+
+        assertEquals(BehaviorRecordOutcome.REPLAYED, outcome);
+        verify(userCourseService, never()).addStudyTimeAndUpdateProgress(any(), any(), any(), any(), any());
+        verify(learningBehaviorService, never()).save(any(LearningBehavior.class));
+        verifyNoInteractions(videoService, learningAnalysisService, recommendCacheInvalidator,
+                recommendScoreSnapshotService, knowledgeRepository);
+    }
+
+    @Test
+    void recordBehaviorShouldRejectReusedEventIdWithDifferentPayload() {
+        UserCourseRelation active = relation(1, 120);
+        LearningBehavior existing = behavior(10L, 30, "study-event-1");
+        doReturn(active).when(userCourseService).getUserCourseRelation(1L, 10L);
+        doReturn(0).when(learningBehaviorMapper).insertStudyIfAbsent(any(LearningBehavior.class));
+        doReturn(existing).when(learningBehaviorMapper)
+                .selectByUserIdAndEventIdForShare(1L, "study-event-1");
+
+        assertThrows(LearningBehaviorEventConflictException.class,
+                () -> learningBehaviorService.recordBehavior(
+                        10L, LearnBehaviorType.STUDY, 60, "study-event-1"));
+
+        verify(userCourseService, never()).addStudyTimeAndUpdateProgress(any(), any(), any(), any(), any());
+        verifyNoInteractions(videoService, learningAnalysisService, recommendCacheInvalidator,
+                recommendScoreSnapshotService, knowledgeRepository);
+    }
+
+    @Test
+    void recordBehaviorShouldRequireValidStudyEventId() {
+        assertThrows(IllegalArgumentException.class,
+                () -> learningBehaviorService.recordBehavior(10L, LearnBehaviorType.STUDY, 60, null));
+        assertThrows(IllegalArgumentException.class,
+                () -> learningBehaviorService.recordBehavior(10L, LearnBehaviorType.STUDY, 60, "bad event"));
+
+        verifyNoInteractions(userCourseService, learningBehaviorMapper, videoService, learningAnalysisService);
     }
 
     private UserCourseRelation relation(Integer status, Integer learnedSeconds) {
@@ -282,5 +336,15 @@ class LearningBehaviorServiceImplTest {
         relation.setStatus(status);
         relation.setLearnedSeconds(learnedSeconds);
         return relation;
+    }
+
+    private LearningBehavior behavior(Long courseId, Integer duration, String eventId) {
+        LearningBehavior behavior = new LearningBehavior();
+        behavior.setUserId(1L);
+        behavior.setCourseId(courseId);
+        behavior.setEventId(eventId);
+        behavior.setBehaviorType(LearnBehaviorType.STUDY);
+        behavior.setDuration(duration);
+        return behavior;
     }
 }

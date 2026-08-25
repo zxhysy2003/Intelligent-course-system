@@ -88,8 +88,8 @@ export function setup() {
 }
 
 /**
- * 每个 VU 上报一段独立的 STUDY 行为。CON-02 刻意把这些请求视为不同学习事件，
- * 用于验证数据库原子累加与首次完课门闩；重复事件幂等由 CON-03 单独验证。
+ * 每个 VU 上报一段独立的 STUDY 行为，并使用不同 eventId。
+ * CON-02 验证数据库原子累加与首次完课门闩；相同 eventId 的并发回放由 CON-03 验证。
  */
 export default function (data) {
   const backendIndex = (__VU - 1) % baseUrls.length
@@ -97,6 +97,7 @@ export default function (data) {
   const response = http.post(
     `${targetBaseUrl}/api/v1/learning-behaviors`,
     JSON.stringify({
+      eventId: `con02-${courseId}-${__VU}-${__ITER}`,
       courseId,
       behaviorType: 'STUDY',
       duration: durationSeconds,
@@ -115,7 +116,8 @@ export default function (data) {
     },
   )
   const body = parseJson(response)
-  const isSuccess = response.status === 200 && body?.code === 200
+  const isSuccess =
+    response.status === 200 && body?.code === 200 && body?.data?.replayed === false
 
   // 每次请求都写入 0 或 1，让零值指标也稳定出现在阈值和结果汇总中。
   studySuccess.add(isSuccess ? 1 : 0)
@@ -126,6 +128,7 @@ export default function (data) {
     {
       '学习行为 HTTP 状态为 200': (res) => res.status === 200,
       '学习行为业务码为 200': () => body?.code === 200,
+      '学习行为为首次处理': () => body?.data?.replayed === false,
     },
     { phase: 'load' },
   )

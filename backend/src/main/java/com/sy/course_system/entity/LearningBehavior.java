@@ -16,6 +16,7 @@ public class LearningBehavior {
     private Long id;
     private Long userId;
     private Long courseId;
+    private String eventId;
     private LearnBehaviorType behaviorType;
     private Integer duration;
     @TableField(fill = FieldFill.INSERT)
@@ -38,6 +39,12 @@ public class LearningBehavior {
     }
     public void setCourseId(Long courseId) {
         this.courseId = courseId;
+    }
+    public String getEventId() {
+        return eventId;
+    }
+    public void setEventId(String eventId) {
+        this.eventId = eventId;
     }
     public LearnBehaviorType getBehaviorType() {
         return behaviorType;

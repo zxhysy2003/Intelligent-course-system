@@ -2,6 +2,7 @@ package com.sy.course_system.mapper;
 
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
@@ -15,6 +16,33 @@ import com.sy.course_system.entity.LearningBehavior;
 
 @Mapper
 public interface LearningBehaviorMapper extends BaseMapper<LearningBehavior> {
+
+    /**
+     * 先写入 STUDY 行为取得事件处理资格。输入已在 Service 校验，IGNORE 只用于唯一键竞争。
+     */
+    @Insert("""
+            INSERT IGNORE INTO learning_behavior (
+                user_id, course_id, event_id, behavior_type, duration
+            ) VALUES (
+                #{behavior.userId}, #{behavior.courseId}, #{behavior.eventId},
+                #{behavior.behaviorType}, #{behavior.duration}
+            )
+            """)
+    int insertStudyIfAbsent(@Param("behavior") LearningBehavior behavior);
+
+    /**
+     * 使用共享锁当前读绕过 REPEATABLE READ 快照，既能看到胜出事务的记录，
+     * 又避免 INSERT IGNORE 唯一键竞争后的共享锁升级死锁。
+     */
+    @Select("""
+            SELECT id, user_id, course_id, event_id, behavior_type, duration, create_time
+            FROM learning_behavior
+            WHERE user_id = #{userId}
+              AND event_id = #{eventId}
+            FOR SHARE
+            """)
+    LearningBehavior selectByUserIdAndEventIdForShare(@Param("userId") Long userId,
+            @Param("eventId") String eventId);
 
     // 按天汇总用户最近 N 天的学习时长与活跃课程数。
     @Select("""

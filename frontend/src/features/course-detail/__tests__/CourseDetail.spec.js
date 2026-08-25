@@ -217,6 +217,7 @@ describe('CourseDetail', () => {
     await flushPromises()
 
     expect(mocks.recordBehavior).toHaveBeenCalledWith({
+      eventId: expect.stringMatching(/^study-[A-Za-z0-9-]+$/),
       courseId: 7,
       behaviorType: 'STUDY',
       duration: 11,

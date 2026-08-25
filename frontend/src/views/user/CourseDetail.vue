@@ -46,6 +46,7 @@ import CourseActions from '@/features/course-detail/components/CourseActions.vue
 import CourseMediaPlayer from '@/features/course-detail/components/CourseMediaPlayer.vue'
 import KnowledgePointList from '@/features/course-detail/components/KnowledgePointList.vue'
 import { ENROLLMENT_STATUS } from '@/features/course-detail/enrollmentStatus'
+import { createStudyEventId } from '@/features/course-detail/studyEventId'
 import { notification } from '@/services/notification'
 import { recordLearningBehavior } from '@/api/learningBehavior'
 import {
@@ -62,6 +63,7 @@ const router = useRouter()
 const courseId = route.params.courseId
 
 let disposed = false
+const studyEventId = createStudyEventId()
 
 const loading = ref(true)
 const videoUrl = ref('')
@@ -350,12 +352,17 @@ const persistPlaybackSession = async () => {
 
   if (viewRecorded.value && playbackSnapshot.watchedSeconds > 0) {
     try {
-      await recordLearningBehavior({
+      const res = await recordLearningBehavior({
+        eventId: studyEventId,
         courseId: Number(courseId),
         behaviorType: 'STUDY',
         duration: Math.round(playbackSnapshot.watchedSeconds),
       })
-      notification.debug('离开前记录观看时长', Math.round(playbackSnapshot.watchedSeconds))
+      if (res.data.code === 200) {
+        notification.debug('离开前记录观看时长', Math.round(playbackSnapshot.watchedSeconds))
+      } else {
+        notification.error('记录观看时长失败', res.data.msg)
+      }
     } catch (error) {
       notification.error('记录观看时长失败', error)
     }

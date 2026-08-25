@@ -2,6 +2,8 @@ package com.sy.course_system.service.impl;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,7 +18,9 @@ import com.sy.course_system.common.UserContext;
 import com.sy.course_system.entity.LearningBehavior;
 import com.sy.course_system.entity.UserCourseRelation;
 import com.sy.course_system.enums.BehaviorHandleResult;
+import com.sy.course_system.enums.BehaviorRecordOutcome;
 import com.sy.course_system.enums.LearnBehaviorType;
+import com.sy.course_system.exception.LearningBehaviorEventConflictException;
 import com.sy.course_system.mapper.LearningBehaviorMapper;
 import com.sy.course_system.recommend.RecommendCacheInvalidator;
 import com.sy.course_system.repository.KnowledgeRepository;
@@ -36,6 +40,7 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
     private static final int MAX_SINGLE_SESSION_SECONDS = 6 * 60 * 60; // 每次上报的最大学习时长: 6小时
     private static final double FINISH_HOT_SCORE = 2.0; // 完成课程后增加的热度分数
     private static final double BASE_SCORE_THRESHOLD = 40.0; // 基础分数阈值
+    private static final Pattern STUDY_EVENT_ID_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._:-]{0,63}");
 
     private final CourseService courseService;
     private final KnowledgeRepository knowledgeRepository;
@@ -71,23 +76,52 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
      */
     @Override
     @Transactional(transactionManager = "transactionManager")
-    public void recordBehavior(Long courseId,
+    public BehaviorRecordOutcome recordBehavior(Long courseId,
             LearnBehaviorType behaviorType,
-            Integer duration) {
+            Integer duration,
+            String eventId) {
         if (behaviorType == LearnBehaviorType.FINISH) {
             throw new IllegalArgumentException("FINISH 行为由学习进度自动生成，不能直接提交");
         }
         Long userId = UserContext.getUserId();
 
         int safeDuration = duration != null ? Math.min(MAX_SINGLE_SESSION_SECONDS, duration) : 0;
+        String normalizedEventId = behaviorType == LearnBehaviorType.STUDY
+                ? normalizeStudyEventId(eventId)
+                : null;
+
+        UserCourseRelation relation = userCourseService.getUserCourseRelation(userId, courseId);
+        if (relation == null) {
+            // 保留原接口语义：未选课时忽略行为；不占用 eventId，选课后仍可安全重试。
+            return BehaviorRecordOutcome.PROCESSED;
+        }
+
+        if (behaviorType == LearnBehaviorType.STUDY) {
+            LearningBehavior studyBehavior = newBehavior(
+                    userId, courseId, behaviorType, safeDuration, normalizedEventId);
+            int inserted = baseMapper.insertStudyIfAbsent(studyBehavior);
+            if (inserted == 0) {
+                LearningBehavior existing = baseMapper.selectByUserIdAndEventIdForShare(
+                        userId, normalizedEventId);
+                validateIdempotentReplay(existing, courseId, behaviorType, safeDuration, normalizedEventId);
+                return BehaviorRecordOutcome.REPLAYED;
+            }
+            if (inserted != 1) {
+                throw new IllegalStateException("学习事件幂等占位返回了非预期行数: " + inserted);
+            }
+        }
 
         // 1.先处理关系表（决定：是否忽略、是否触发FINISH）
-        BehaviorHandleResult result = handleUserCourseRelation(userId, courseId, behaviorType, safeDuration);
+        BehaviorHandleResult result = handleUserCourseRelation(
+                relation, userId, courseId, behaviorType, safeDuration);
 
         // 2.决定是否入库（行为表）
         // 约定： IGNORE 表示本次不写"learning_behavior"表（例如UNFAVORITE）
         if (result != BehaviorHandleResult.IGNORE) {
-            saveBehavior(userId, courseId, behaviorType, safeDuration);
+            // STUDY 已在业务更新前写入，并以唯一键决定本次是否有处理资格。
+            if (behaviorType != LearnBehaviorType.STUDY) {
+                saveBehavior(userId, courseId, behaviorType, safeDuration);
+            }
             // 热度： 对本行为加一次（STUDY/VIEW/FAVORITE）
             double hotScore = calcHotScore(behaviorType, safeDuration);
             learningAnalysisService.increaseCourseHot(courseId, hotScore);
@@ -100,6 +134,32 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
             recordFinishInternal(userId, courseId);
         }
         refreshScoreSnapshotIfNeeded(userId, courseId, behaviorType, result);
+        return BehaviorRecordOutcome.PROCESSED;
+    }
+
+    private String normalizeStudyEventId(String eventId) {
+        String normalized = eventId == null ? "" : eventId.trim();
+        if (!STUDY_EVENT_ID_PATTERN.matcher(normalized).matches()) {
+            throw new IllegalArgumentException("STUDY 行为必须提供 1-64 位合法 eventId");
+        }
+        return normalized;
+    }
+
+    private void validateIdempotentReplay(LearningBehavior existing,
+            Long courseId,
+            LearnBehaviorType behaviorType,
+            Integer duration,
+            String eventId) {
+        if (existing == null) {
+            throw new IllegalStateException("学习事件唯一键冲突后未读取到原记录");
+        }
+        boolean samePayload = Objects.equals(existing.getCourseId(), courseId)
+                && existing.getBehaviorType() == behaviorType
+                && Objects.equals(existing.getDuration(), duration);
+        if (!samePayload) {
+            throw new LearningBehaviorEventConflictException(
+                    "eventId 已被其他学习事件使用: " + eventId);
+        }
     }
 
     private void refreshScoreSnapshotIfNeeded(Long userId, Long courseId,
@@ -138,16 +198,11 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
     /**
      * 用户课程关系处理
      */
-    private BehaviorHandleResult handleUserCourseRelation(Long userId,
+    private BehaviorHandleResult handleUserCourseRelation(UserCourseRelation relation,
+            Long userId,
             Long courseId,
             LearnBehaviorType behaviorType,
             Integer duration) {
-        UserCourseRelation relation = userCourseService.getUserCourseRelation(userId, courseId);
-        if (relation == null) {
-            // 要求必须先选课，否则不记录行为
-            return BehaviorHandleResult.IGNORE;
-        }
-
         LocalDateTime now = LocalDateTime.now();
 
         return switch (behaviorType) {
@@ -253,13 +308,21 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
             Long courseId,
             LearnBehaviorType behaviorType,
             Integer duration) {
+        this.save(newBehavior(userId, courseId, behaviorType, duration, null));
+    }
+
+    private LearningBehavior newBehavior(Long userId,
+            Long courseId,
+            LearnBehaviorType behaviorType,
+            Integer duration,
+            String eventId) {
         LearningBehavior behavior = new LearningBehavior();
         behavior.setUserId(userId);
         behavior.setCourseId(courseId);
+        behavior.setEventId(eventId);
         behavior.setBehaviorType(behaviorType);
         behavior.setDuration(duration != null ? Math.min(MAX_SINGLE_SESSION_SECONDS, duration) : 0);
-
-        this.save(behavior);
+        return behavior;
     }
 
     /**
