@@ -13,5 +13,13 @@
 已实现：
 
 - [`con-02-prepare.sql`](./con-02-prepare.sql)：为 `stu_newbie` 准备课程 10、11、12 的并发累加与首次完课状态。
+- [`con-03-prepare.sql`](./con-03-prepare.sql)：清空 CON-03 的三门课程并统一重置为 0 秒，同时检查 V3 字段和唯一索引。
+- [`con-03-assert.sql`](./con-03-assert.sql)：在 CON-03 四个请求轮次结束后，统一断言三门课程的进度、日志数量、时长和事件 ID 数量。
+- [`con-03-rollback-prepare.sql`](./con-03-rollback-prepare.sql)：只重置 `stu_newbie` 的课程 14，用于事件日志插入后、事务提交前的故障实验。
+- [`con-03-rollback-assert.sql`](./con-03-rollback-assert.sql)：分别断言故障后的 `ROLLED_BACK` 和成功重试后的 `RECOVERED` 两种状态。
 
 CON-02 脚本会清理目标用户在三门课程上的学习行为和推荐评分快照，并重置学习关系。执行前必须确认连接的是 `course_concurrency`。
+
+CON-03 的准备脚本同样会清理课程 10、11、12。正式实验轮次之间不要重复执行；需要重跑时，从准备数据开始完整执行所有轮次。
+
+CON-03 故障扩展脚本只作用于课程 14，不会覆盖主实验的课程 10、11、12。故障和恢复阶段之间不得重新执行准备脚本，否则无法证明同一事务回滚后的恢复过程。

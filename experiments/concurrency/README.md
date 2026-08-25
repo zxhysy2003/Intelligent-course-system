@@ -74,7 +74,7 @@ experiments/concurrency/
 |---|---|---|---|---|---|
 | CON-01 | [并发选课](./docs/01-concurrent-enrollment.md) | `POST /api/v1/courses/{courseId}/enrollment` | 唯一索引 + `DuplicateKeyException` | 数据库唯一约束、并发正确性、接口幂等语义 | 已完成 |
 | CON-02 | [并发学习进度与首次完课](./docs/02-concurrent-learning-progress.md) | `POST /api/v1/learning-behaviors` | 原子累加 + `complete_time IS NULL` | 丢失更新、CAS、状态机、首次事件 | 已完成 |
-| CON-03 | STUDY 请求重复消费 | `POST /api/v1/learning-behaviors` | 当前请求没有事件 ID | 原子性与幂等、重试去重、唯一键 | 待设计 |
+| CON-03 | [STUDY 请求重复消费](./docs/03-study-event-idempotency.md) | `POST /api/v1/learning-behaviors` | 行为日志事件 ID + 数据库唯一键 | 原子性与幂等、重试去重、唯一键 | 已完成 |
 | CON-04 | 推荐缓存击穿与雪崩 | `GET /api/v1/recommendations` | Redis 构建锁、短等待、固定 TTL | 惊群、分布式锁、逻辑过期、TTL 抖动 | 待设计 |
 | CON-05 | 慢推荐服务与线程池背压 | 后端到 `/recommend` | 30 秒读取超时 + `CallerRunsPolicy` | 超时预算、线程池隔离、熔断、舱壁 | 待设计 |
 | CON-06 | Redis 热榜与双写一致性 | 学习行为、`course:hot` | MySQL 事务内同步 `ZINCRBY` | 热点写、依赖故障、Outbox、最终一致性 | 待设计 |

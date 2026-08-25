@@ -204,33 +204,17 @@ cd ../backend
 
 ```bash
 cd /path/to/Intelligent-course-system
-set -a
-source .env.local
-set +a
-
-SERVER_PORT=8080 \
-DB_NAME=course_concurrency \
-RECOMMEND_SCORE_SNAPSHOT_REBUILD_ON_STARTUP=false \
-RECOMMEND_HOT_SYNC_ENABLED=false \
-java -jar backend/target/course-system-0.0.1-SNAPSHOT.jar
+./scripts/start-concurrency-backend.sh 8080
 ```
 
 再在终端 B 中启动实例 2：
 
 ```bash
 cd /path/to/Intelligent-course-system
-set -a
-source .env.local
-set +a
-
-SERVER_PORT=8081 \
-DB_NAME=course_concurrency \
-RECOMMEND_SCORE_SNAPSHOT_REBUILD_ON_STARTUP=false \
-RECOMMEND_HOT_SYNC_ENABLED=false \
-java -jar backend/target/course-system-0.0.1-SNAPSHOT.jar
+./scripts/start-concurrency-backend.sh 8081
 ```
 
-两个实例都读取同一个 `.env.local`，因此实例 1 签发的 JWT 可以被实例 2 验证。关闭推荐快照重建和热榜同步，是为了避免与本实验无关的后台任务干扰启动和观测，不影响选课接口。
+脚本从仓库根目录定位并加载同一个 `.env.local`，固定使用 `course_concurrency`，同时关闭推荐快照重建和热榜同步。因此实例 1 签发的 JWT 可以被实例 2 验证，且无关后台任务不会干扰启动和观测。
 
 确认两个实例都健康：
 

@@ -8,7 +8,9 @@ import org.neo4j.driver.AuthTokens;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.GraphDatabase;
 @Configuration
-@EnableNeo4jRepositories(basePackages = "com.sy.course_system.repository")
+@EnableNeo4jRepositories(
+        basePackages = "com.sy.course_system.repository",
+        transactionManagerRef = "neo4jTransactionManager")
 public class Neo4jConfig {
 
     @Value("${spring.neo4j.uri}")
