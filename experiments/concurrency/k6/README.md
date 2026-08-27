@@ -139,3 +139,12 @@ k6 run \
 该实验固定使用 `stu_newbie` 的课程 14，与主实验课程 10、11、12 隔离。完整启动、故障开关、k6 和 SQL 命令见 [CON-03 事务回滚后重试](../docs/03-study-event-idempotency.md#151-事务回滚后重试)。
 
 故障实例由 `scripts/start-concurrency-backend.sh` 通过 `spring-boot:test-run` 启动，故障代理只存在于 `backend/src/test/java`；正常启动仍使用正式 JAR，生产代码不携带实验故障能力。
+
+## CON-04 推荐缓存击穿与雪崩
+
+已实现：
+
+- [`con-04-single-key-cache.js`](./con-04-single-key-cache.js)：同一用户热缓存、快速冷构建、慢冷构建和双实例共享锁。
+- [`con-04-cache-avalanche.js`](./con-04-cache-avalanche.js)：多用户同时冷缓存，以及固定 TTL 到期后的多 key 雪崩。
+
+两个脚本都会在 teardown 阶段读取推荐 Stub 的 `/stats`，把真实回源次数和最大上游并发写入 k6 自定义指标。完整轮次、数据、Stub 和参数说明见 [CON-04 推荐缓存击穿与雪崩实验](../docs/04-recommend-cache-breakdown.md)。
