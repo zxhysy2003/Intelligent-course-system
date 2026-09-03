@@ -1,0 +1,6 @@
+interface:
+  display_name: "学习问答记录"
+  short_description: "将项目问答提炼为按主题归档、方便后续检索和复习的中文笔记"
+  default_prompt: "使用 $study-notes-recorder 把刚才的项目问题整理到复习笔记。"
+policy:
+  allow_implicit_invocation: true
