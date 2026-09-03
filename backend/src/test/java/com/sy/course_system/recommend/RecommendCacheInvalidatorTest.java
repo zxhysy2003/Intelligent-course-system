@@ -1,22 +1,25 @@
 package com.sy.course_system.recommend;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.mockito.ArgumentMatchers.anyLong;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
-import java.util.concurrent.TimeUnit;
+import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -27,58 +30,54 @@ import com.sy.course_system.support.RecommendPropertiesFixture;
 class RecommendCacheInvalidatorTest {
 
     @Mock
-    private RedisTemplate<String, Object> redisTemplate;
-    @Mock
-    private ValueOperations<String, Object> valueOperations;
+    private StringRedisTemplate stringRedisTemplate;
 
     private RecommendCacheInvalidator invalidator;
 
     @BeforeEach
     void setUp() {
-        lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        invalidator = new RecommendCacheInvalidator(redisTemplate, RecommendPropertiesFixture.builder().build());
+        lenient().when(stringRedisTemplate.execute(any(RedisScript.class), anyList(), any(Object[].class)))
+                .thenReturn(1L);
+        invalidator = new RecommendCacheInvalidator(stringRedisTemplate, RecommendPropertiesFixture.builder().build());
     }
 
     @Test
     void strongInvalidationShouldDeleteUserCaches() {
         invalidator.invalidateStrongUserRecommend(1L);
 
-        verify(redisTemplate).delete("recommend:user:1");
-        verify(redisTemplate).delete("recommend:cold:user:1");
-        verify(redisTemplate).delete("recommend:cold:status:user:1");
+        RedisScript<Long> script = captureScript(List.of(
+                "recommend:v2:version:user:1",
+                "recommend:v2:user:1",
+                "recommend:v2:cold:user:1",
+                "recommend:cold:status:user:1"));
+        assertTrue(script.getScriptAsString().contains("redis.call('incr', KEYS[1])"));
+        assertTrue(script.getScriptAsString().contains("redis.call('del', KEYS[2], KEYS[3], KEYS[4])"));
     }
 
     @Test
     void onboardingInvalidationShouldDeleteUserCaches() {
         invalidator.invalidateOnboardingRecommend(2L);
 
-        verify(redisTemplate).delete("recommend:user:2");
-        verify(redisTemplate).delete("recommend:cold:user:2");
-        verify(redisTemplate).delete("recommend:cold:status:user:2");
+        captureScript(List.of(
+                "recommend:v2:version:user:2",
+                "recommend:v2:user:2",
+                "recommend:v2:cold:user:2",
+                "recommend:cold:status:user:2"));
     }
 
     @Test
-    void studyInvalidationShouldDeleteWhenThrottleKeysAreAcquired() {
-        when(valueOperations.setIfAbsent("recommend:invalidate:study:user:3", "1", 90L, TimeUnit.SECONDS))
-                .thenReturn(true);
-
+    void studyInvalidationShouldAtomicallyThrottleAdvanceVersionAndClearColdStatus() {
         invalidator.invalidateStudyUserRecommend(3L);
 
-        verify(redisTemplate).delete("recommend:user:3");
-        verify(redisTemplate).delete("recommend:cold:user:3");
-        verify(redisTemplate).delete("recommend:cold:status:user:3");
-    }
-
-    @Test
-    void studyInvalidationShouldSkipDeletesWhenThrottleKeysAreBusy() {
-        when(valueOperations.setIfAbsent("recommend:invalidate:study:user:4", "1", 90L, TimeUnit.SECONDS))
-                .thenReturn(false);
-
-        invalidator.invalidateStudyUserRecommend(4L);
-
-        verify(redisTemplate, never()).delete("recommend:user:4");
-        verify(redisTemplate, never()).delete("recommend:cold:user:4");
-        verify(redisTemplate, never()).delete("recommend:cold:status:user:4");
+        ArgumentCaptor<RedisScript<Long>> scriptCaptor = scriptCaptor();
+        verify(stringRedisTemplate).execute(scriptCaptor.capture(), eq(List.of(
+                "recommend:invalidate:study:user:3",
+                "recommend:v2:version:user:3",
+                "recommend:cold:status:user:3")), eq("90"));
+        String script = scriptCaptor.getValue().getScriptAsString();
+        assertTrue(script.contains("'EX', throttleSeconds, 'NX'"));
+        assertTrue(script.contains("redis.call('incr', KEYS[2])"));
+        assertTrue(script.contains("redis.call('del', KEYS[3])"));
     }
 
     @Test
@@ -86,27 +85,27 @@ class RecommendCacheInvalidatorTest {
         RecommendProperties properties = RecommendPropertiesFixture.builder()
                 .cache(cache -> cache.studyInvalidateThrottleSeconds(0))
                 .build();
-        invalidator = new RecommendCacheInvalidator(redisTemplate, properties);
+        invalidator = new RecommendCacheInvalidator(stringRedisTemplate, properties);
 
         invalidator.invalidateStudyUserRecommend(5L);
 
-        verify(valueOperations, never()).setIfAbsent(eq("recommend:invalidate:study:user:5"), eq("1"), anyLong(),
-                eq(TimeUnit.SECONDS));
-        verify(redisTemplate).delete("recommend:user:5");
-        verify(redisTemplate).delete("recommend:cold:user:5");
-        verify(redisTemplate).delete("recommend:cold:status:user:5");
+        verify(stringRedisTemplate).execute(any(RedisScript.class), eq(List.of(
+                "recommend:invalidate:study:user:5",
+                "recommend:v2:version:user:5",
+                "recommend:cold:status:user:5")), eq("0"));
     }
 
     @Test
     void redisFailuresShouldNotEscapeInvalidation() {
-        when(valueOperations.setIfAbsent("recommend:invalidate:study:user:6", "1", 90L, TimeUnit.SECONDS))
-                .thenThrow(new RuntimeException("redis unavailable"));
-        when(redisTemplate.delete("recommend:user:6")).thenThrow(new RuntimeException("delete failed"));
+        doThrow(new RuntimeException("redis unavailable"))
+                .when(stringRedisTemplate).execute(any(RedisScript.class), anyList(), any(Object[].class));
 
         assertDoesNotThrow(() -> invalidator.invalidateStudyUserRecommend(6L));
 
-        verify(redisTemplate).delete("recommend:cold:user:6");
-        verify(redisTemplate).delete("recommend:cold:status:user:6");
+        verify(stringRedisTemplate).execute(any(RedisScript.class), eq(List.of(
+                "recommend:invalidate:study:user:6",
+                "recommend:v2:version:user:6",
+                "recommend:cold:status:user:6")), eq("90"));
     }
 
     @Test
@@ -115,17 +114,30 @@ class RecommendCacheInvalidatorTest {
         try {
             invalidator.invalidateStrongUserRecommend(7L);
 
-            verify(redisTemplate, never()).delete("recommend:user:7");
+            verify(stringRedisTemplate, never()).execute(any(RedisScript.class), anyList(), any(Object[].class));
 
             for (TransactionSynchronization synchronization : TransactionSynchronizationManager.getSynchronizations()) {
                 synchronization.afterCommit();
             }
 
-            verify(redisTemplate).delete("recommend:user:7");
-            verify(redisTemplate).delete("recommend:cold:user:7");
-            verify(redisTemplate).delete("recommend:cold:status:user:7");
+            captureScript(List.of(
+                    "recommend:v2:version:user:7",
+                    "recommend:v2:user:7",
+                    "recommend:v2:cold:user:7",
+                    "recommend:cold:status:user:7"));
         } finally {
             TransactionSynchronizationManager.clearSynchronization();
         }
+    }
+
+    private RedisScript<Long> captureScript(List<String> keys) {
+        ArgumentCaptor<RedisScript<Long>> scriptCaptor = scriptCaptor();
+        verify(stringRedisTemplate).execute(scriptCaptor.capture(), eq(keys));
+        return scriptCaptor.getValue();
+    }
+
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    private ArgumentCaptor<RedisScript<Long>> scriptCaptor() {
+        return (ArgumentCaptor) ArgumentCaptor.forClass(RedisScript.class);
     }
 }

@@ -38,10 +38,16 @@ mysql_user_id_by_index() {
 append_user_keys() {
   local user_id=$1
   REDIS_KEYS+=(
+    # 前四项仅用于清理重构前的本地实验残留；应用运行时只使用 recommend:v2:*。
     "recommend:user:$user_id"
     "recommend:lock:user:$user_id"
     "recommend:cold:user:$user_id"
     "recommend:cold:lock:user:$user_id"
+    "recommend:v2:user:$user_id"
+    "recommend:v2:lock:user:$user_id"
+    "recommend:v2:cold:user:$user_id"
+    "recommend:v2:cold:lock:user:$user_id"
+    "recommend:v2:version:user:$user_id"
     "recommend:cold:status:user:$user_id"
   )
 }
@@ -100,7 +106,7 @@ case "$ACTION" in
     fi
     CACHE_KEYS=()
     while IFS= read -r user_id; do
-      [[ -n "$user_id" ]] && CACHE_KEYS+=("recommend:user:$user_id")
+      [[ -n "$user_id" ]] && CACHE_KEYS+=("recommend:v2:user:$user_id")
     done < <(mysql_user_ids)
     if (( ${#CACHE_KEYS[@]} == 0 )); then
       printf 'No CON-04 users found. Run con-04-prepare.sql first.\n' >&2
@@ -119,7 +125,8 @@ case "$ACTION" in
       printf 'CON-04 user %03d not found.\n' "$USER_INDEX" >&2
       exit 1
     fi
-    for key in "recommend:user:$USER_ID" "recommend:lock:user:$USER_ID"; do
+    for key in "recommend:v2:user:$USER_ID" "recommend:v2:lock:user:$USER_ID" \
+      "recommend:v2:version:user:$USER_ID"; do
       EXISTS=$(docker compose -f "$COMPOSE_FILE" exec -T redis \
         redis-cli -a "$REDIS_PASSWORD" --no-auth-warning EXISTS "$key")
       TTL=$(docker compose -f "$COMPOSE_FILE" exec -T redis \

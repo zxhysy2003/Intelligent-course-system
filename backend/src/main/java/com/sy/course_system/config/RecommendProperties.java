@@ -9,7 +9,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * 推荐链路统一配置入口。
  *
  * 这里集中管理推荐相关的可调参数，避免业务类里散落 @Value 和硬编码常量。
- * 默认值与历史代码保持一致：即使 application.yaml 未显式配置，也不会改变现有行为。
+ * record 上的默认值与 application.yaml 保持一致，便于配置绑定测试和最小化部署配置。
  */
 @ConfigurationProperties(prefix = "recommend")
 public record RecommendProperties(
@@ -23,10 +23,21 @@ public record RecommendProperties(
         @DefaultValue Async async,
         @DefaultValue HotSync hotSync) {
 
+    public RecommendProperties {
+        long lockBudgetMs = cache.buildLockTtlSeconds() * 1000L;
+        long minimumBudgetMs = (long) regular.connectTimeoutMs()
+                + regular.readTimeoutMs()
+                + cache.initialBuildWaitMillis();
+        if (lockBudgetMs <= minimumBudgetMs) {
+            throw new IllegalArgumentException(
+                    "recommend.cache.build-lock-ttl-seconds must exceed the CF timeout and request wait budget");
+        }
+    }
+
     public record Regular(
             @DefaultValue("http://localhost:8000") String serviceUrl,
-            @DefaultValue("5000") int connectTimeoutMs,
-            @DefaultValue("30000") int readTimeoutMs,
+            @DefaultValue("500") int connectTimeoutMs,
+            @DefaultValue("2000") int readTimeoutMs,
             @DefaultValue("100") int requestTopN,
             @DefaultValue("10") int coldStartLimit,
             @DefaultValue("20") int candidatePoolSize,
@@ -36,10 +47,37 @@ public record RecommendProperties(
     public record Cache(
             @DefaultValue("10") long coldStartTtlMinutes,
             @DefaultValue("30") long regularTtlMinutes,
+            @DefaultValue("3") long coldStartTtlJitterMinutes,
+            @DefaultValue("10") long regularTtlJitterMinutes,
+            @DefaultValue("60") long staleRetentionMinutes,
             @DefaultValue("20") long buildLockTtlSeconds,
             @DefaultValue("3") int waitRetryTimes,
             @DefaultValue("80") long waitMillis,
+            @DefaultValue("2500") long initialBuildWaitMillis,
+            @DefaultValue("2") int buildCoreSize,
+            @DefaultValue("4") int buildMaxSize,
+            @DefaultValue("16") int buildQueueCapacity,
+            @DefaultValue("300000") long fallbackRefreshMillis,
+            @DefaultValue("0") long fallbackInitialDelayMillis,
             @DefaultValue("90") long studyInvalidateThrottleSeconds) {
+
+        public Cache {
+            if (coldStartTtlMinutes <= 0 || regularTtlMinutes <= 0 || staleRetentionMinutes <= 0) {
+                throw new IllegalArgumentException("recommend cache TTL values must be positive");
+            }
+            if (coldStartTtlJitterMinutes < 0 || regularTtlJitterMinutes < 0) {
+                throw new IllegalArgumentException("recommend cache TTL jitter must not be negative");
+            }
+            if (buildCoreSize <= 0 || buildMaxSize < buildCoreSize || buildQueueCapacity < 0) {
+                throw new IllegalArgumentException("invalid recommend cache build executor configuration");
+            }
+            if (initialBuildWaitMillis < 0 || waitRetryTimes < 0 || waitMillis < 0) {
+                throw new IllegalArgumentException("recommend cache wait settings must not be negative");
+            }
+            if (fallbackRefreshMillis <= 0 || fallbackInitialDelayMillis < 0) {
+                throw new IllegalArgumentException("invalid recommend fallback snapshot schedule configuration");
+            }
+        }
     }
 
     public record ScoreSnapshot(

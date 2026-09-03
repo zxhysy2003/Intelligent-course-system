@@ -1,6 +1,15 @@
 server:
   port: 8080
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when_authorized
+      roles: ADMIN
 app:
   name: course-system
   cors:
@@ -45,6 +54,8 @@ spring:
           max-idle: 5
           min-idle: 1
           max-wait: 3000
+      repositories:
+        enabled: false
   neo4j:
     uri: ${NEO4J_URI:bolt://localhost:7687}
     authentication:
@@ -61,8 +72,8 @@ recommend:
   # 常规 CF 推荐主链路配置
   regular:
     service-url: ${RECOMMEND_SERVICE_URL:http://localhost:8000}
-    connect-timeout-ms: ${RECOMMEND_CF_CONNECT_TIMEOUT_MS:5000}
-    read-timeout-ms: ${RECOMMEND_CF_READ_TIMEOUT_MS:30000}
+    connect-timeout-ms: ${RECOMMEND_CF_CONNECT_TIMEOUT_MS:500}
+    read-timeout-ms: ${RECOMMEND_CF_READ_TIMEOUT_MS:2000}
     request-top-n: ${RECOMMEND_CF_REQUEST_TOP_N:100}
     cold-start-limit: ${RECOMMEND_COLD_START_LIMIT:10}
     candidate-pool-size: ${RECOMMEND_CANDIDATE_POOL_SIZE:20}
@@ -71,9 +82,18 @@ recommend:
   cache:
     cold-start-ttl-minutes: ${RECOMMEND_COLD_START_CACHE_TTL_MINUTES:10}
     regular-ttl-minutes: ${RECOMMEND_CACHE_TTL_MINUTES:30}
+    cold-start-ttl-jitter-minutes: ${RECOMMEND_COLD_START_CACHE_TTL_JITTER_MINUTES:3}
+    regular-ttl-jitter-minutes: ${RECOMMEND_CACHE_TTL_JITTER_MINUTES:10}
+    stale-retention-minutes: ${RECOMMEND_CACHE_STALE_RETENTION_MINUTES:60}
     build-lock-ttl-seconds: ${RECOMMEND_CACHE_BUILD_LOCK_TTL_SECONDS:20}
     wait-retry-times: ${RECOMMEND_CACHE_WAIT_RETRY_TIMES:3}
     wait-millis: ${RECOMMEND_CACHE_WAIT_MILLIS:80}
+    initial-build-wait-millis: ${RECOMMEND_CACHE_INITIAL_BUILD_WAIT_MILLIS:2500}
+    build-core-size: ${RECOMMEND_CACHE_BUILD_CORE_SIZE:2}
+    build-max-size: ${RECOMMEND_CACHE_BUILD_MAX_SIZE:4}
+    build-queue-capacity: ${RECOMMEND_CACHE_BUILD_QUEUE_CAPACITY:16}
+    fallback-refresh-millis: ${RECOMMEND_FALLBACK_REFRESH_MILLIS:300000}
+    fallback-initial-delay-millis: ${RECOMMEND_FALLBACK_INITIAL_DELAY_MILLIS:0}
     study-invalidate-throttle-seconds: ${RECOMMEND_STUDY_INVALIDATE_THROTTLE_SECONDS:90}
   # CF 评分快照表配置：后端维护快照，recommend-service 直接读取该表训练模型
   score-snapshot:

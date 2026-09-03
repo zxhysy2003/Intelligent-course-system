@@ -2,12 +2,15 @@ package com.sy.course_system.service.impl;
 
 import java.util.concurrent.TimeUnit;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import com.sy.course_system.dto.recommend.ColdStartSignalDTO;
 import com.sy.course_system.mapper.LearningBehaviorMapper;
+import com.sy.course_system.recommend.RecommendCacheMetrics;
+import com.sy.course_system.service.ColdStartDecision;
 import com.sy.course_system.service.ColdStartSupportService;
 
 /**
@@ -18,10 +21,13 @@ import com.sy.course_system.service.ColdStartSupportService;
  * - 结合学习过的课程数、总学习时长、完课次数做联合判定，而不是只看行为总条数。
  *
  * 性能策略：
- * - 先读短 TTL Redis 缓存，减少高频推荐请求下的数据库聚合压力。
+ * - 先读短 TTL Redis 缓存，减少高频推荐请求下的数据库聚合压力；
+ * - Redis 不可用时返回 UNAVAILABLE，由推荐入口直接走内存降级，禁止回源数据库。
  */
 @Service
 public class ColdStartSupportServiceImpl implements ColdStartSupportService {
+
+    private static final Logger log = LoggerFactory.getLogger(ColdStartSupportServiceImpl.class);
 
     // 仅统计 STUDY/FAVORITE/FINISH 的有效行为数，避免 VIEW 过早将用户切离冷启动
     private static final long EFFECTIVE_BEHAVIOR_THRESHOLD = 3L;
@@ -34,10 +40,17 @@ public class ColdStartSupportServiceImpl implements ColdStartSupportService {
     // 冷启动状态缓存有效期（秒）
     private static final long COLD_START_STATUS_TTL_SECONDS = 120L;
 
-    @Autowired
-    private LearningBehaviorMapper learningBehaviorMapper;
-    @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
+    private final LearningBehaviorMapper learningBehaviorMapper;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final RecommendCacheMetrics recommendCacheMetrics;
+
+    ColdStartSupportServiceImpl(LearningBehaviorMapper learningBehaviorMapper,
+            RedisTemplate<String, Object> redisTemplate,
+            RecommendCacheMetrics recommendCacheMetrics) {
+        this.learningBehaviorMapper = learningBehaviorMapper;
+        this.redisTemplate = redisTemplate;
+        this.recommendCacheMetrics = recommendCacheMetrics;
+    }
 
     /**
      * 判断用户是否为冷启动用户。
@@ -45,22 +58,30 @@ public class ColdStartSupportServiceImpl implements ColdStartSupportService {
      * 流程：
      * 1) 参数校验；
      * 2) 优先读取 Redis 缓存；
-     * 3) 未命中时回源数据库统计冷启动摘要信号；
-     * 4) 根据阈值判定并写回短 TTL 缓存。
+     * 3) Redis 读取异常时返回 UNAVAILABLE，不回源数据库；
+     * 4) Redis 正常但未命中时回源数据库统计冷启动摘要信号；
+     * 5) 根据阈值判定并写回短 TTL 缓存。
      */
     @Override
-    public boolean isColdStartUser(Long userId) {
+    public ColdStartDecision decide(Long userId) {
         if (userId == null) {
             throw new IllegalArgumentException("userId 不能为空");
         }
 
         String cacheKey = COLD_START_STATUS_KEY + userId;
-        Object cached = redisTemplate.opsForValue().get(cacheKey);
+        Object cached;
+        try {
+            cached = redisTemplate.opsForValue().get(cacheKey);
+        } catch (RuntimeException ex) {
+            recommendCacheMetrics.event("redis_error");
+            log.debug("Cold-start status cache unavailable for user {}; using memory fallback", userId, ex);
+            return ColdStartDecision.UNAVAILABLE;
+        }
         if (cached instanceof Boolean b) {
-            return b;
+            return toDecision(b);
         }
         if (cached != null) {
-            return Boolean.parseBoolean(cached.toString());
+            return toDecision(Boolean.parseBoolean(cached.toString()));
         }
 
         ColdStartSignalDTO signal = learningBehaviorMapper.selectColdStartSignal(userId);
@@ -85,7 +106,16 @@ public class ColdStartSupportServiceImpl implements ColdStartSupportService {
                 && studiedCourseCount < STUDIED_COURSE_THRESHOLD
                 && totalStudySeconds < TOTAL_STUDY_SECONDS_THRESHOLD
                 && effectiveBehaviorCount < EFFECTIVE_BEHAVIOR_THRESHOLD;
-        redisTemplate.opsForValue().set(cacheKey, coldStart, COLD_START_STATUS_TTL_SECONDS, TimeUnit.SECONDS);
-        return coldStart;
+        try {
+            redisTemplate.opsForValue().set(cacheKey, coldStart, COLD_START_STATUS_TTL_SECONDS, TimeUnit.SECONDS);
+        } catch (RuntimeException ex) {
+            recommendCacheMetrics.event("redis_error");
+            log.debug("Failed to write cold-start status cache for user {}", userId, ex);
+        }
+        return toDecision(coldStart);
+    }
+
+    private ColdStartDecision toDecision(boolean coldStart) {
+        return coldStart ? ColdStartDecision.COLD_START : ColdStartDecision.REGULAR;
     }
 }

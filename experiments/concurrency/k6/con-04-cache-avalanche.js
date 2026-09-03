@@ -2,6 +2,18 @@ import http from 'k6/http'
 import { check } from 'k6'
 import exec from 'k6/execution'
 import { Counter, Gauge, Trend } from 'k6/metrics'
+import {
+  isValidBackendState,
+  isValidStubStats,
+  login,
+  parseJson,
+  readBaseUrls,
+  readHttpUrl,
+  readNonNegativeInteger,
+  readPositiveInteger,
+  requireSettledState,
+  waitForSettledStubStats,
+} from './con-04-common.js'
 
 const recommendRequests = new Counter('con04_avalanche_recommend_requests')
 const upstreamRequests = new Counter('con04_avalanche_upstream_requests')
@@ -15,7 +27,12 @@ const stubUrl = readHttpUrl(__ENV.CON04_STUB_URL || 'http://127.0.0.1:18000', 'C
 const userCount = readRangeInteger(__ENV.CON04_USERS || '50', 'CON04_USERS', 1, 100)
 const usernamePrefix = (__ENV.CON04_USERNAME_PREFIX || 'con04_user_').trim()
 const password = __ENV.CON04_PASSWORD || '123456'
-const avalancheStartTime = (__ENV.CON04_AVALANCHE_START_TIME || '70s').trim()
+const adminUsername = (__ENV.CON04_ADMIN_USERNAME || 'con04_admin').trim()
+const adminPassword = __ENV.CON04_ADMIN_PASSWORD || '123456'
+const providedAdminToken = (__ENV.CON04_ADMIN_TOKEN || '').trim()
+const prewarmResetStartTime = '62s'
+const prewarmResetStartMs = 62000
+const avalancheStartTime = (__ENV.CON04_AVALANCHE_START_TIME || '100s').trim()
 const expectedUpstreamMin = readNonNegativeInteger(
   __ENV.CON04_EXPECT_UPSTREAM_MIN || String(userCount),
   'CON04_EXPECT_UPSTREAM_MIN',
@@ -28,10 +45,51 @@ const expectedMaxActiveMin = readNonNegativeInteger(
   __ENV.CON04_EXPECT_MAX_ACTIVE_MIN || '2',
   'CON04_EXPECT_MAX_ACTIVE_MIN',
 )
+const expectedMaxActiveMax = readNonNegativeInteger(
+  __ENV.CON04_EXPECT_MAX_ACTIVE_MAX || String(userCount),
+  'CON04_EXPECT_MAX_ACTIVE_MAX',
+)
 const p95LimitMs = readPositiveInteger(__ENV.CON04_P95_LIMIT_MS || '10000', 'CON04_P95_LIMIT_MS')
+const statsSettleTimeoutMs = readPositiveInteger(
+  __ENV.CON04_STATS_SETTLE_TIMEOUT_MS || '30000',
+  'CON04_STATS_SETTLE_TIMEOUT_MS',
+)
+const statsPollIntervalMs = readPositiveInteger(
+  __ENV.CON04_STATS_POLL_INTERVAL_MS || '200',
+  'CON04_STATS_POLL_INTERVAL_MS',
+)
+const statsStablePolls = readPositiveInteger(
+  __ENV.CON04_STATS_STABLE_POLLS || '5',
+  'CON04_STATS_STABLE_POLLS',
+)
+const settleOptions = {
+  baseUrls,
+  stubUrl,
+  timeoutMs: statsSettleTimeoutMs,
+  pollIntervalMs: statsPollIntervalMs,
+  requiredStablePolls: statsStablePolls,
+}
 
 if (!usernamePrefix || !password) {
   throw new Error('CON04_USERNAME_PREFIX 和 CON04_PASSWORD 不能为空')
+}
+if (!providedAdminToken && (!adminUsername || !adminPassword)) {
+  throw new Error('请提供 CON04_ADMIN_TOKEN，或者提供 CON04_ADMIN_USERNAME 和 CON04_ADMIN_PASSWORD')
+}
+if (expectedUpstreamMin > expectedUpstreamMax) {
+  throw new Error('CON04_EXPECT_UPSTREAM_MIN 不能大于 CON04_EXPECT_UPSTREAM_MAX')
+}
+if (expectedMaxActiveMin > expectedMaxActiveMax) {
+  throw new Error('CON04_EXPECT_MAX_ACTIVE_MIN 不能大于 CON04_EXPECT_MAX_ACTIVE_MAX')
+}
+if (
+  mode === 'EXPIRE' &&
+  readDurationMilliseconds(avalancheStartTime, 'CON04_AVALANCHE_START_TIME') <=
+    prewarmResetStartMs + statsSettleTimeoutMs + 5000
+) {
+  throw new Error(
+    `CON04_AVALANCHE_START_TIME 必须晚于预热收尾的最长等待窗口，当前需要大于 ${prewarmResetStartMs + statsSettleTimeoutMs + 5000}ms`,
+  )
 }
 
 const avalancheScenario = {
@@ -45,14 +103,18 @@ const avalancheScenario = {
 }
 
 export const options = {
+  setupTimeout: `${Math.ceil(statsSettleTimeoutMs / 1000) + 30}s`,
+  teardownTimeout: `${Math.ceil(statsSettleTimeoutMs / 1000) + 5}s`,
   scenarios:
     mode === 'EXPIRE'
       ? {
           prewarm: {
-            executor: 'per-vu-iterations',
-            vus: userCount,
-            iterations: 1,
-            maxDuration: '30s',
+            // 预热并发不超过默认 Java 构建上限，避免预热阶段自身触发线程池拒绝，
+            // 确保正式阶段观察到的是 TTL 分散效果而不是首次 miss。
+            executor: 'shared-iterations',
+            vus: Math.min(4, userCount),
+            iterations: userCount,
+            maxDuration: '60s',
             gracefulStop: '0s',
             exec: 'prewarm',
             tags: { experiment: 'CON-04', phase: 'prewarm' },
@@ -61,8 +123,9 @@ export const options = {
             executor: 'shared-iterations',
             vus: 1,
             iterations: 1,
-            startTime: '10s',
-            maxDuration: '10s',
+            startTime: prewarmResetStartTime,
+            maxDuration: `${Math.ceil(statsSettleTimeoutMs / 1000) + 5}s`,
+            gracefulStop: '0s',
             exec: 'resetStatsAfterPrewarm',
             tags: { experiment: 'CON-04', phase: 'reset' },
           },
@@ -77,7 +140,10 @@ export const options = {
       `count>=${expectedUpstreamMin}`,
       `count<=${expectedUpstreamMax}`,
     ],
-    con04_avalanche_upstream_max_active: [`value>=${expectedMaxActiveMin}`],
+    con04_avalanche_upstream_max_active: [
+      `value>=${expectedMaxActiveMin}`,
+      `value<=${expectedMaxActiveMax}`,
+    ],
     con04_avalanche_unexpected: ['count==0'],
     con04_avalanche_duration: [`p(95)<${p95LimitMs}`],
     'http_reqs{phase:load}': [`count==${userCount}`],
@@ -88,10 +154,18 @@ export function setup() {
   const tokens = []
   for (let index = 1; index <= userCount; index += 1) {
     const username = `${usernamePrefix}${String(index).padStart(3, '0')}`
-    tokens.push(login(baseUrls[0], username, password))
+    tokens.push(login(baseUrls[0], username, password, '实验用户'))
   }
+  const adminToken =
+    providedAdminToken || login(baseUrls[0], adminUsername, adminPassword, '指标观测管理员')
+  requireSettledState(
+    waitForSettledStubStats(settleOptions, adminToken, 'setup_settle'),
+    '实验开始前',
+    statsSettleTimeoutMs,
+    unexpected,
+  )
   resetStubStats('setup')
-  return { tokens }
+  return { tokens, adminToken }
 }
 
 export function prewarm(data) {
@@ -100,7 +174,15 @@ export function prewarm(data) {
   assertRecommendationResponse(response, '多用户预热')
 }
 
-export function resetStatsAfterPrewarm() {
+export function resetStatsAfterPrewarm(data) {
+  // 预热请求返回后，Java 线程池中仍可能有排队或执行中的构建。
+  // 只有后端和 Stub 都排空后才能清零，否则预热回源会污染正式负载统计。
+  requireSettledState(
+    waitForSettledStubStats(settleOptions, data.adminToken, 'prewarm_settle'),
+    '预热完成后',
+    statsSettleTimeoutMs,
+    unexpected,
+  )
   resetStubStats('reset')
 }
 
@@ -113,21 +195,25 @@ export function avalanche(data) {
   unexpected.add(valid ? 0 : 1)
 }
 
-export function teardown() {
-  const response = http.get(`${stubUrl}/stats`, { tags: { name: 'stub_stats', phase: 'teardown' } })
-  const body = parseJson(response)
-  const valid = check(response, {
-    'Stub 统计 HTTP 状态为 200': (res) => res.status === 200,
-    'Stub 统计字段完整': () =>
-      Number.isInteger(body?.requestTotal) && Number.isInteger(body?.maxActiveRequests),
+export function teardown(data) {
+  const stats = waitForSettledStubStats(settleOptions, data.adminToken, 'teardown_poll')
+  const valid = check(stats, {
+    '后端构建指标可读取': (result) => result.backendStates.every(isValidBackendState),
+    '所有后端构建任务已排空': (result) => result.backendsSettled,
+    'Stub 统计 HTTP 状态为 200': (result) => result.response?.status === 200,
+    'Stub 统计字段完整': (result) => isValidStubStats(result.body),
+    'Stub 后台任务已稳定': (result) => result.settled,
   })
   if (!valid) {
     unexpected.add(1)
-    return
   }
-  upstreamRequests.add(body.requestTotal)
-  upstreamMaxActive.add(body.maxActiveRequests)
-  console.log(`[CON-04][avalanche][${mode}] stubStats=${JSON.stringify(body)}`)
+  if (isValidStubStats(stats.body)) {
+    upstreamRequests.add(stats.body.requestTotal)
+    upstreamMaxActive.add(stats.body.maxActiveRequests)
+    console.log(
+      `[CON-04][avalanche][${mode}] settled=${stats.settled} backendBuilds=${JSON.stringify(stats.backendStates)} stubStats=${JSON.stringify(stats.body)}`,
+    )
+  }
 }
 
 function scenarioIterationIndex() {
@@ -151,27 +237,6 @@ function requestRecommendation(index, token, phase) {
   })
 }
 
-function login(baseUrl, username, loginPassword) {
-  const response = http.post(
-    `${baseUrl}/api/v1/auth/login`,
-    JSON.stringify({ username, password: loginPassword }),
-    {
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      tags: { name: 'auth_login', phase: 'setup' },
-    },
-  )
-  const body = parseJson(response)
-  const valid = check(response, {
-    '实验用户登录 HTTP 状态为 200': (res) => res.status === 200,
-    '实验用户登录业务码为 200': () => body?.code === 200,
-    '实验用户登录返回 Token': () => typeof body?.data === 'string' && body.data.length > 0,
-  })
-  if (!valid) {
-    throw new Error(`CON-04 实验用户登录失败：username=${username}，HTTP=${response.status}`)
-  }
-  return body.data
-}
-
 function assertRecommendationResponse(response, label) {
   const body = parseJson(response)
   return check(response, {
@@ -193,53 +258,10 @@ function resetStubStats(phase) {
   }
 }
 
-function parseJson(response) {
-  try {
-    return response.json()
-  } catch (_) {
-    return null
-  }
-}
-
 function readMode(value) {
   const parsed = String(value).trim().toUpperCase()
   if (!['COLD', 'EXPIRE'].includes(parsed)) {
     throw new Error(`CON04_AVALANCHE_MODE 只支持 COLD 或 EXPIRE，当前值：${value}`)
-  }
-  return parsed
-}
-
-function readBaseUrls(value) {
-  const urls = String(value)
-    .split(',')
-    .map((item) => item.trim().replace(/\/+$/, ''))
-    .filter(Boolean)
-  if (urls.length === 0 || urls.some((url) => !/^https?:\/\//.test(url))) {
-    throw new Error('CON04_BASE_URLS 必须是逗号分隔的 HTTP(S) 地址')
-  }
-  return urls
-}
-
-function readHttpUrl(value, name) {
-  const parsed = String(value).trim().replace(/\/+$/, '')
-  if (!/^https?:\/\//.test(parsed)) {
-    throw new Error(`${name} 必须是合法 HTTP(S) 地址，当前值：${value}`)
-  }
-  return parsed
-}
-
-function readPositiveInteger(value, name) {
-  const parsed = Number(value)
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`${name} 必须是正整数，当前值：${value}`)
-  }
-  return parsed
-}
-
-function readNonNegativeInteger(value, name) {
-  const parsed = Number(value)
-  if (!Number.isInteger(parsed) || parsed < 0) {
-    throw new Error(`${name} 必须是非负整数，当前值：${value}`)
   }
   return parsed
 }
@@ -250,4 +272,24 @@ function readRangeInteger(value, name, minimum, maximum) {
     throw new Error(`${name} 必须是 ${minimum}-${maximum} 的整数，当前值：${value}`)
   }
   return parsed
+}
+
+function readDurationMilliseconds(value, name) {
+  const text = String(value).trim()
+  const pattern = /(\d+(?:\.\d+)?)(ms|s|m|h)/g
+  const multipliers = { ms: 1, s: 1000, m: 60000, h: 3600000 }
+  let total = 0
+  let consumed = 0
+  let match
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index !== consumed) {
+      throw new Error(`${name} 必须是合法时长，当前值：${value}`)
+    }
+    total += Number(match[1]) * multipliers[match[2]]
+    consumed = pattern.lastIndex
+  }
+  if (consumed !== text.length || total <= 0) {
+    throw new Error(`${name} 必须是合法正时长，当前值：${value}`)
+  }
+  return total
 }

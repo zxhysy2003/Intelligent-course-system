@@ -17,6 +17,7 @@
 - 提供 `POST /model/reload` 手动重载模型，失败时保留旧模型
 - 提供 `GET /model/status` 查看模型状态、版本和训练数据规模
 - `POST /recommend` 只接收目标用户和候选数量，返回 CF 候选课程
+- `POST /recommend` 使用进程级并发舱壁，过载时快速返回 `503`
 - 模型不可用、评分表为空或目标用户不在训练集中时返回空 `items`，由后端走新课/热门兜底
 
 ## 技术栈
@@ -60,6 +61,8 @@ recommend-service
 | `DB_NAME` | 数据库名 | `course_db` |
 | `DB_USERNAME` | MySQL 用户名 | `dev` |
 | `DB_PASSWORD` | MySQL 密码 | `dev123` |
+| `RECOMMEND_MAX_CONCURRENT_REQUESTS` | 单个 Uvicorn worker 的推荐并发上限 | `8` |
+| `RECOMMEND_ACQUIRE_TIMEOUT_MS` | 等待并发许可的最长时间 | `50` |
 
 ## 本地开发
 
@@ -143,6 +146,11 @@ curl -X POST "http://127.0.0.1:8000/model/reload"
   "items": []
 }
 ```
+
+当单个进程已有 8 个推荐请求执行时，新请求最多等待 50ms；仍无法取得许可则返回
+HTTP `503`，并携带 `Retry-After: 1`。Java 后端不会在线重试，而是使用缓存旧值或
+预计算热门快照降级。若 Uvicorn 启动多个 worker，总上限为
+`worker 数 × RECOMMEND_MAX_CONCURRENT_REQUESTS`，扩容时应同步核对 Java 构建并发上限。
 
 ### GET /model/status
 

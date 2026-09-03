@@ -3,6 +3,7 @@ package com.sy.course_system.service.impl;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -20,6 +21,8 @@ import org.springframework.data.redis.core.ValueOperations;
 
 import com.sy.course_system.dto.recommend.ColdStartSignalDTO;
 import com.sy.course_system.mapper.LearningBehaviorMapper;
+import com.sy.course_system.recommend.RecommendCacheMetrics;
+import com.sy.course_system.service.ColdStartDecision;
 
 @ExtendWith(MockitoExtension.class)
 class ColdStartSupportServiceImplTest {
@@ -30,73 +33,89 @@ class ColdStartSupportServiceImplTest {
     private RedisTemplate<String, Object> redisTemplate;
     @Mock
     private ValueOperations<String, Object> valueOperations;
+    @Mock
+    private RecommendCacheMetrics recommendCacheMetrics;
 
     @InjectMocks
     private ColdStartSupportServiceImpl coldStartSupportService;
 
     @Test
-    void isColdStartUserShouldThrowWhenUserIdIsNull() {
+    void decideShouldThrowWhenUserIdIsNull() {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> coldStartSupportService.isColdStartUser(null));
+                () -> coldStartSupportService.decide(null));
 
         assertEquals("userId 不能为空", ex.getMessage());
     }
 
     @Test
-    void isColdStartUserShouldReturnCachedValue() {
+    void decideShouldReturnCachedValue() {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("recommend:cold:status:user:1")).thenReturn(Boolean.TRUE);
 
-        boolean result = coldStartSupportService.isColdStartUser(1L);
+        ColdStartDecision result = coldStartSupportService.decide(1L);
 
-        assertEquals(true, result);
+        assertEquals(ColdStartDecision.COLD_START, result);
         verify(learningBehaviorMapper, never()).selectColdStartSignal(any());
     }
 
     @Test
-    void isColdStartUserShouldRemainColdStartWhenOnlyViewSignalsExist() {
+    void decideShouldRemainColdStartWhenOnlyViewSignalsExist() {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("recommend:cold:status:user:2")).thenReturn(null);
         when(learningBehaviorMapper.selectColdStartSignal(2L)).thenReturn(signal(0L, 0L, 0L, 0L));
 
-        boolean result = coldStartSupportService.isColdStartUser(2L);
+        ColdStartDecision result = coldStartSupportService.decide(2L);
 
-        assertEquals(true, result);
+        assertEquals(ColdStartDecision.COLD_START, result);
         verify(valueOperations).set("recommend:cold:status:user:2", true, 120L, TimeUnit.SECONDS);
     }
 
     @Test
-    void isColdStartUserShouldReturnFalseWhenUserHasFinishedCourse() {
+    void decideShouldReturnRegularWhenUserHasFinishedCourse() {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("recommend:cold:status:user:3")).thenReturn(null);
         when(learningBehaviorMapper.selectColdStartSignal(3L)).thenReturn(signal(2L, 1L, 300L, 1L));
 
-        boolean result = coldStartSupportService.isColdStartUser(3L);
+        ColdStartDecision result = coldStartSupportService.decide(3L);
 
-        assertEquals(false, result);
+        assertEquals(ColdStartDecision.REGULAR, result);
     }
 
     @Test
-    void isColdStartUserShouldReturnFalseWhenTotalStudySecondsReachThreshold() {
+    void decideShouldReturnRegularWhenTotalStudySecondsReachThreshold() {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("recommend:cold:status:user:4")).thenReturn(null);
         when(learningBehaviorMapper.selectColdStartSignal(4L)).thenReturn(signal(1L, 1L, 600L, 0L));
 
-        boolean result = coldStartSupportService.isColdStartUser(4L);
+        ColdStartDecision result = coldStartSupportService.decide(4L);
 
-        assertEquals(false, result);
+        assertEquals(ColdStartDecision.REGULAR, result);
     }
 
     @Test
-    void isColdStartUserShouldReturnFalseWhenStudiedCoursesReachThreshold() {
+    void decideShouldReturnRegularWhenStudiedCoursesReachThreshold() {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("recommend:cold:status:user:5")).thenReturn(null);
         when(learningBehaviorMapper.selectColdStartSignal(5L)).thenReturn(signal(2L, 2L, 300L, 0L));
 
-        boolean result = coldStartSupportService.isColdStartUser(5L);
+        ColdStartDecision result = coldStartSupportService.decide(5L);
 
-        assertEquals(false, result);
+        assertEquals(ColdStartDecision.REGULAR, result);
         verify(valueOperations).set(eq("recommend:cold:status:user:5"), eq(false), eq(120L), eq(TimeUnit.SECONDS));
+    }
+
+    @Test
+    void decideShouldAvoidDatabaseWhenRedisIsUnavailable() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("recommend:cold:status:user:6"))
+                .thenThrow(new RuntimeException("redis unavailable"));
+
+        ColdStartDecision result = coldStartSupportService.decide(6L);
+
+        assertEquals(ColdStartDecision.UNAVAILABLE, result);
+        verify(learningBehaviorMapper, never()).selectColdStartSignal(any());
+        verify(valueOperations, never()).set(any(), any(), anyLong(), any(TimeUnit.class));
+        verify(recommendCacheMetrics).event("redis_error");
     }
 
     private ColdStartSignalDTO signal(Long effectiveBehaviorCount,

@@ -134,6 +134,25 @@ class JwtSecurityIntegrationTest {
     }
 
     @Test
+    void allowsAnonymousHealthCheckButProtectsOtherActuatorEndpoints() throws Exception {
+        mockMvc.perform(get("/actuator/health"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("health"));
+
+        mockMvc.perform(get("/actuator/metrics"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().string("缺少Token，未授权访问"));
+        mockMvc.perform(get("/actuator/metrics")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken("STUDENT")))
+                .andExpect(status().isForbidden())
+                .andExpect(content().string("无管理员权限"));
+        mockMvc.perform(get("/actuator/metrics")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(content().string("metrics"));
+    }
+
+    @Test
     void allowsInternalErrorDispatchWithoutReauthentication() throws Exception {
         mockMvc.perform(get("/api/v1/courses/probe")
                         .with(request -> {
@@ -341,6 +360,16 @@ class JwtSecurityIntegrationTest {
         @GetMapping("/api/v1/courses/business-error")
         String businessError() {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "business error");
+        }
+
+        @GetMapping("/actuator/health")
+        String health() {
+            return "health";
+        }
+
+        @GetMapping("/actuator/metrics")
+        String metrics() {
+            return "metrics";
         }
 
         @PostMapping("/api/v1/admin/courses/search")

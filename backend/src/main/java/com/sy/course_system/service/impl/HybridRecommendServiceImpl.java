@@ -24,11 +24,14 @@ import com.sy.course_system.dto.recommend.RecommendItemDTO;
 import com.sy.course_system.dto.recommend.RecommendResponseDTO;
 import com.sy.course_system.entity.Course;
 import com.sy.course_system.recommend.HotFallbackRecommendService;
+import com.sy.course_system.recommend.RecommendCacheType;
+import com.sy.course_system.recommend.RecommendFallbackSnapshot;
 import com.sy.course_system.recommend.RecommendSource;
 import com.sy.course_system.recommend.NewCourseInjector;
 import com.sy.course_system.recommend.RecommendGraphEnricher;
 import com.sy.course_system.recommend.RecommendResultCache;
 import com.sy.course_system.service.ColdStartRecommendService;
+import com.sy.course_system.service.ColdStartDecision;
 import com.sy.course_system.service.ColdStartSupportService;
 import com.sy.course_system.service.CourseService;
 import com.sy.course_system.service.HybridRecommendService;
@@ -55,12 +58,8 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
     private final RecommendResultCache recommendResultCache;
     private final HotFallbackRecommendService hotFallbackRecommendService;
     private final RecommendGraphEnricher recommendGraphEnricher;
+    private final RecommendFallbackSnapshot recommendFallbackSnapshot;
     private final RecommendProperties recommendProperties;
-
-    private static final String RECOMMEND_COURSE_KEY = "recommend:user:";
-    private static final String RECOMMEND_COLD_START_KEY = "recommend:cold:user:";
-    private static final String RECOMMEND_COURSE_LOCK_KEY = "recommend:lock:user:";
-    private static final String RECOMMEND_COLD_START_LOCK_KEY = "recommend:cold:lock:user:";
 
     private static final String ASYNC_INTERRUPTED_MSG = "推荐异步执行被中断";
     private static final String GRAPH_ASYNC_INTERRUPTED_MSG = "图谱补全异步执行被中断";
@@ -77,6 +76,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
             RecommendResultCache recommendResultCache,
             HotFallbackRecommendService hotFallbackRecommendService,
             RecommendGraphEnricher recommendGraphEnricher,
+            RecommendFallbackSnapshot recommendFallbackSnapshot,
             RecommendProperties recommendProperties,
             @Qualifier("recommendTaskExecutor") Executor recommendTaskExecutor) {
         this.cfRecommendClient = cfRecommendClient;
@@ -89,6 +89,7 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
         this.recommendResultCache = recommendResultCache;
         this.hotFallbackRecommendService = hotFallbackRecommendService;
         this.recommendGraphEnricher = recommendGraphEnricher;
+        this.recommendFallbackSnapshot = recommendFallbackSnapshot;
         this.recommendProperties = recommendProperties;
         this.recommendTaskExecutor = recommendTaskExecutor;
     }
@@ -107,22 +108,22 @@ public class HybridRecommendServiceImpl implements HybridRecommendService {
      */
     @Override
     public HybridRecommendResponseDTO recommend(Long userId) {
-        if (coldStartSupportService.isColdStartUser(userId)) {
-            String coldCacheKey = RECOMMEND_COLD_START_KEY + userId;
-            String coldLockKey = RECOMMEND_COLD_START_LOCK_KEY + userId;
-            return recommendResultCache.getOrBuildWithCache(coldCacheKey, coldLockKey,
-                    recommendProperties.cache().coldStartTtlMinutes(),
-                    () -> buildColdStartResponse(userId));
+        ColdStartDecision decision = coldStartSupportService.decide(userId);
+        if (decision == ColdStartDecision.UNAVAILABLE) {
+            return recommendFallbackSnapshot.get(userId);
+        }
+        if (decision == ColdStartDecision.COLD_START) {
+            return recommendResultCache.getOrBuild(userId, RecommendCacheType.COLD_START,
+                    () -> buildColdStartResponse(userId),
+                    () -> recommendFallbackSnapshot.get(userId));
         }
 
         // 用户转为非冷启动后，及时清理冷启动结果缓存，避免堆积无效 key。
-        recommendResultCache.delete(RECOMMEND_COLD_START_KEY + userId);
+        recommendResultCache.delete(userId, RecommendCacheType.COLD_START);
 
-        String cacheKey = RECOMMEND_COURSE_KEY + userId;
-        String lockKey = RECOMMEND_COURSE_LOCK_KEY + userId;
-        return recommendResultCache.getOrBuildWithCache(cacheKey, lockKey,
-                recommendProperties.cache().regularTtlMinutes(),
-                () -> buildRegularResponse(userId));
+        return recommendResultCache.getOrBuild(userId, RecommendCacheType.REGULAR,
+                () -> buildRegularResponse(userId),
+                () -> recommendFallbackSnapshot.get(userId));
     }
 
     private HybridRecommendResponseDTO buildColdStartResponse(Long userId) {

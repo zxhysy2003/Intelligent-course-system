@@ -2,6 +2,7 @@ package com.sy.course_system.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.util.List;
 
@@ -23,6 +24,9 @@ class RecommendPropertiesBindingTest {
                         "recommend.new-course.enabled=false",
                         "recommend.async.enabled=false",
                         "recommend.cache.wait-retry-times=5",
+                        "recommend.cache.regular-ttl-jitter-minutes=7",
+                        "recommend.cache.build-max-size=6",
+                        "recommend.cache.initial-build-wait-millis=1800",
                         "recommend.cache.study-invalidate-throttle-seconds=45",
                         "recommend.score-snapshot.rebuild-on-startup=false",
                         "recommend.score-snapshot.batch-size=200",
@@ -36,6 +40,9 @@ class RecommendPropertiesBindingTest {
                     assertFalse(properties.newCourse().enabled());
                     assertFalse(properties.async().enabled());
                     assertEquals(5, properties.cache().waitRetryTimes());
+                    assertEquals(7L, properties.cache().regularTtlJitterMinutes());
+                    assertEquals(6, properties.cache().buildMaxSize());
+                    assertEquals(1800L, properties.cache().initialBuildWaitMillis());
                     assertEquals(45L, properties.cache().studyInvalidateThrottleSeconds());
                     assertFalse(properties.scoreSnapshot().rebuildOnStartup());
                     assertEquals(200, properties.scoreSnapshot().batchSize());
@@ -43,6 +50,28 @@ class RecommendPropertiesBindingTest {
                     assertEquals(0.2d, properties.scoreSnapshot().minScore());
                     assertEquals(60, properties.regular().requestTopN());
                 });
+    }
+
+    @Test
+    void shouldRejectBuildLockTtlThatCannotCoverTimeoutBudgets() {
+        contextRunner
+                .withPropertyValues(
+                        "recommend.regular.connect-timeout-ms=500",
+                        "recommend.regular.read-timeout-ms=2000",
+                        "recommend.cache.initial-build-wait-millis=2500",
+                        "recommend.cache.build-lock-ttl-seconds=5")
+                .run(context -> assertNotNull(context.getStartupFailure()));
+    }
+
+    @Test
+    void shouldRejectInvalidFallbackSnapshotSchedule() {
+        contextRunner
+                .withPropertyValues("recommend.cache.fallback-refresh-millis=0")
+                .run(context -> assertNotNull(context.getStartupFailure()));
+
+        contextRunner
+                .withPropertyValues("recommend.cache.fallback-initial-delay-millis=-1")
+                .run(context -> assertNotNull(context.getStartupFailure()));
     }
 
     @Configuration

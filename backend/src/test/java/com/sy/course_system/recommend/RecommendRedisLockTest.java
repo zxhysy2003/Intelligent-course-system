@@ -42,10 +42,10 @@ class RecommendRedisLockTest {
     @Test
     void acquireShouldReturnGeneratedTokenWhenLockIsAcquired() {
         ArgumentCaptor<String> tokenCaptor = ArgumentCaptor.forClass(String.class);
-        when(valueOperations.setIfAbsent(eq("recommend:lock:user:1"), tokenCaptor.capture(), eq(20L),
+        when(valueOperations.setIfAbsent(eq("recommend:v2:lock:user:1"), tokenCaptor.capture(), eq(20L),
                 eq(TimeUnit.SECONDS))).thenReturn(true);
 
-        Optional<String> token = recommendRedisLock.acquire("recommend:lock:user:1", 20L);
+        Optional<String> token = recommendRedisLock.acquire("recommend:v2:lock:user:1", 20L);
 
         assertTrue(token.isPresent());
         assertFalse(token.get().isBlank());
@@ -55,31 +55,31 @@ class RecommendRedisLockTest {
 
     @Test
     void acquireShouldReturnEmptyWhenLockIsBusy() {
-        when(valueOperations.setIfAbsent(eq("recommend:lock:user:1"), any(String.class), eq(20L),
+        when(valueOperations.setIfAbsent(eq("recommend:v2:lock:user:1"), any(String.class), eq(20L),
                 eq(TimeUnit.SECONDS))).thenReturn(false);
 
-        Optional<String> token = recommendRedisLock.acquire("recommend:lock:user:1", 20L);
+        Optional<String> token = recommendRedisLock.acquire("recommend:v2:lock:user:1", 20L);
 
         assertTrue(token.isEmpty());
     }
 
     @Test
     void releaseShouldReturnTrueWhenRedisDeletesOwnedLock() {
-        when(stringRedisTemplate.execute(any(RedisScript.class), eq(List.of("recommend:lock:user:1")), eq("token-1")))
+        when(stringRedisTemplate.execute(any(RedisScript.class), eq(List.of("recommend:v2:lock:user:1")), eq("token-1")))
                 .thenReturn(1L);
 
-        boolean released = recommendRedisLock.release("recommend:lock:user:1", "token-1");
+        boolean released = recommendRedisLock.release("recommend:v2:lock:user:1", "token-1");
 
         assertTrue(released);
-        verify(stringRedisTemplate).execute(any(RedisScript.class), eq(List.of("recommend:lock:user:1")), eq("token-1"));
+        verify(stringRedisTemplate).execute(any(RedisScript.class), eq(List.of("recommend:v2:lock:user:1")), eq("token-1"));
     }
 
     @Test
     void releaseShouldReturnFalseWhenLockIsExpiredOrOwnedByAnotherWorker() {
-        when(stringRedisTemplate.execute(any(RedisScript.class), eq(List.of("recommend:lock:user:1")), eq("token-1")))
+        when(stringRedisTemplate.execute(any(RedisScript.class), eq(List.of("recommend:v2:lock:user:1")), eq("token-1")))
                 .thenReturn(0L);
 
-        boolean released = recommendRedisLock.release("recommend:lock:user:1", "token-1");
+        boolean released = recommendRedisLock.release("recommend:v2:lock:user:1", "token-1");
 
         assertFalse(released);
     }

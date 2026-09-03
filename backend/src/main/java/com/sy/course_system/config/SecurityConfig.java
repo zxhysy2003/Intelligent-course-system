@@ -71,6 +71,9 @@ public class SecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(ApiPaths.AUTH + "/login", ApiPaths.AUTH + "/register").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+                        // 健康检查供本地编排和探针匿名使用；其余管理端点可能包含运行信息，仅管理员可见。
+                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                        .requestMatchers("/actuator", "/actuator/**").hasRole("ADMIN")
                         .requestMatchers(ApiPaths.ADMIN, ApiPaths.ADMIN + "/**").hasRole("ADMIN")
                         .requestMatchers(ApiPaths.API_V1, ApiPaths.API_V1 + "/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/videos/**")

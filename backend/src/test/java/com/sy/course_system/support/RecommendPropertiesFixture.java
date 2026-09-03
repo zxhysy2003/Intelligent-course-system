@@ -86,8 +86,8 @@ public final class RecommendPropertiesFixture {
 
     public static final class RegularBuilder {
         private String serviceUrl = "http://localhost:8000";
-        private int connectTimeoutMs = 5000;
-        private int readTimeoutMs = 30000;
+        private int connectTimeoutMs = 500;
+        private int readTimeoutMs = 2000;
         private int requestTopN = 100;
         private int coldStartLimit = 10;
         private int candidatePoolSize = 20;
@@ -137,9 +137,18 @@ public final class RecommendPropertiesFixture {
     public static final class CacheBuilder {
         private long coldStartTtlMinutes = 10L;
         private long regularTtlMinutes = 30L;
+        private long coldStartTtlJitterMinutes = 3L;
+        private long regularTtlJitterMinutes = 10L;
+        private long staleRetentionMinutes = 60L;
         private long buildLockTtlSeconds = 20L;
         private int waitRetryTimes = 3;
         private long waitMillis = 80L;
+        private long initialBuildWaitMillis = 2500L;
+        private int buildCoreSize = 2;
+        private int buildMaxSize = 4;
+        private int buildQueueCapacity = 16;
+        private long fallbackRefreshMillis = 300000L;
+        private long fallbackInitialDelayMillis = 0L;
         private long studyInvalidateThrottleSeconds = 90L;
 
         public CacheBuilder coldStartTtlMinutes(long coldStartTtlMinutes) {
@@ -149,6 +158,21 @@ public final class RecommendPropertiesFixture {
 
         public CacheBuilder regularTtlMinutes(long regularTtlMinutes) {
             this.regularTtlMinutes = regularTtlMinutes;
+            return this;
+        }
+
+        public CacheBuilder coldStartTtlJitterMinutes(long value) {
+            this.coldStartTtlJitterMinutes = value;
+            return this;
+        }
+
+        public CacheBuilder regularTtlJitterMinutes(long value) {
+            this.regularTtlJitterMinutes = value;
+            return this;
+        }
+
+        public CacheBuilder staleRetentionMinutes(long value) {
+            this.staleRetentionMinutes = value;
             return this;
         }
 
@@ -167,14 +191,37 @@ public final class RecommendPropertiesFixture {
             return this;
         }
 
+        public CacheBuilder initialBuildWaitMillis(long value) {
+            this.initialBuildWaitMillis = value;
+            return this;
+        }
+
+        public CacheBuilder buildCoreSize(int value) {
+            this.buildCoreSize = value;
+            return this;
+        }
+
+        public CacheBuilder buildMaxSize(int value) {
+            this.buildMaxSize = value;
+            return this;
+        }
+
+        public CacheBuilder buildQueueCapacity(int value) {
+            this.buildQueueCapacity = value;
+            return this;
+        }
+
         public CacheBuilder studyInvalidateThrottleSeconds(long studyInvalidateThrottleSeconds) {
             this.studyInvalidateThrottleSeconds = studyInvalidateThrottleSeconds;
             return this;
         }
 
         private RecommendProperties.Cache build() {
-            return new RecommendProperties.Cache(coldStartTtlMinutes, regularTtlMinutes, buildLockTtlSeconds,
-                    waitRetryTimes, waitMillis, studyInvalidateThrottleSeconds);
+            return new RecommendProperties.Cache(coldStartTtlMinutes, regularTtlMinutes,
+                    coldStartTtlJitterMinutes, regularTtlJitterMinutes, staleRetentionMinutes,
+                    buildLockTtlSeconds, waitRetryTimes, waitMillis, initialBuildWaitMillis,
+                    buildCoreSize, buildMaxSize, buildQueueCapacity, fallbackRefreshMillis,
+                    fallbackInitialDelayMillis, studyInvalidateThrottleSeconds);
         }
     }
 

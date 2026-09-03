@@ -1,5 +1,5 @@
 -- CON-04 推荐缓存击穿与雪崩实验用户准备
--- 固定作用于 course_concurrency 和 con04_user_001 ~ con04_user_100。
+-- 固定作用于 course_concurrency、con04_user_001 ~ con04_user_100 和指标观测账号 con04_admin。
 -- 每个用户写入 600 秒 STUDY 信号，确保进入普通推荐分支而不是冷启动分支。
 
 USE course_concurrency;
@@ -41,6 +41,35 @@ SELECT
     1,
     0
 FROM con04_sequence
+ON DUPLICATE KEY UPDATE
+    password = VALUES(password),
+    nickname = VALUES(nickname),
+    email = VALUES(email),
+    role = VALUES(role),
+    status = VALUES(status),
+    deleted = VALUES(deleted);
+
+-- k6 收尾需读取每个后端实例的 Actuator 构建任务数；管理指标仍保持 ADMIN 权限。
+INSERT INTO `user` (
+    username,
+    password,
+    nickname,
+    email,
+    phone,
+    role,
+    status,
+    deleted
+)
+VALUES (
+    'con04_admin',
+    '123456',
+    'CON-04 指标观测员',
+    'con04_admin@example.test',
+    NULL,
+    'ADMIN',
+    1,
+    0
+)
 ON DUPLICATE KEY UPDATE
     password = VALUES(password),
     nickname = VALUES(nickname),
