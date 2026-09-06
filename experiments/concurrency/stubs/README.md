@@ -23,4 +23,6 @@
 STUB_DELAY_MS=800 python3 experiments/concurrency/stubs/recommend-cache-stub.py
 ```
 
-可选 `STUB_ERROR_RATE=0.1` 用于注入确定种子的随机错误；CON-04 击穿和雪崩主轮次保持 `0`，错误与超时留给 CON-05。
+可选 `STUB_ERROR_RATE=0.1` 用于注入确定种子的随机错误；CON-04 击穿和雪崩主轮次保持 `0`。
+H 轮使用 `STUB_ERROR_RATE=1` 并断言 `failureTotal=1`，只验收 Java 对上游 503 的处理。
+Stub 没有真实推荐服务的并发舱壁；真实上限与持续过载在 CON-05 独立验收。

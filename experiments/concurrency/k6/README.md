@@ -145,6 +145,10 @@ k6 run \
 已实现：
 
 - [`con-04-single-key-cache.js`](./con-04-single-key-cache.js)：同一用户热缓存、快速冷构建、慢冷构建和双实例共享锁。
-- [`con-04-cache-avalanche.js`](./con-04-cache-avalanche.js)：多用户同时冷缓存，以及固定 TTL 到期后的多 key 雪崩。
+- [`con-04-cache-avalanche.js`](./con-04-cache-avalanche.js)：多用户同时冷缓存，以及带抖动的逻辑过期刷新。
 
-两个脚本都会在 teardown 阶段读取推荐 Stub 的 `/stats`，把真实回源次数和最大上游并发写入 k6 自定义指标。完整轮次、数据、Stub 和参数说明见 [CON-04 推荐缓存击穿与雪崩实验](../docs/04-recommend-cache-breakdown.md)。
+两个脚本在后端构建与 Stub 请求排空后才采纳统计；检查真实回源、最大并发和上游失败次数。
+单 key 默认上限为一次回源；雪崩默认累计上限为用户数、每用户最多一次、最大并发为每实例 4。
+默认上游失败数为 0，H 轮须显式传入 `CON04_EXPECT_FAILURES=1`。
+F 轮还须人工记录只读缓存元数据快照，不能以 k6 全绿代替 TTL 抖动证据。
+完整操作和结果记录见 [CON-04 重构后验收](../docs/04-recommend-cache-breakdown.md)。

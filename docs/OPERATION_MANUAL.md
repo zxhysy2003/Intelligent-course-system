@@ -237,6 +237,8 @@ PLAYBACK_TOKEN_SECRET_BASE64=另一个生成的Base64值
 | `REDIS_HOST` | Redis 地址 | `localhost` |
 | `REDIS_PORT` | Redis 端口 | `6379` |
 | `REDIS_PASSWORD` | Redis 密码 | `redis123` |
+| `REDIS_CONNECT_TIMEOUT` | Lettuce 建立 Redis 连接的超时 | `500ms` |
+| `REDIS_COMMAND_TIMEOUT` | Lettuce 等待 Redis 命令完成的超时 | `500ms` |
 | `NEO4J_URI` | Neo4j Bolt 地址 | `bolt://localhost:7687` |
 | `NEO4J_USERNAME` | Neo4j 用户名 | `neo4j` |
 | `NEO4J_PASSWORD` | Neo4j 密码 | `neo4j123` |

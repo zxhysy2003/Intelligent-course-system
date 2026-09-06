@@ -18,6 +18,8 @@ import {
 const recommendRequests = new Counter('con04_avalanche_recommend_requests')
 const upstreamRequests = new Counter('con04_avalanche_upstream_requests')
 const upstreamMaxActive = new Gauge('con04_avalanche_upstream_max_active')
+const upstreamPerUserMax = new Gauge('con04_avalanche_upstream_per_user_max')
+const upstreamFailures = new Counter('con04_avalanche_upstream_failures')
 const unexpected = new Counter('con04_avalanche_unexpected')
 const recommendDuration = new Trend('con04_avalanche_duration', true)
 
@@ -34,7 +36,7 @@ const prewarmResetStartTime = '62s'
 const prewarmResetStartMs = 62000
 const avalancheStartTime = (__ENV.CON04_AVALANCHE_START_TIME || '100s').trim()
 const expectedUpstreamMin = readNonNegativeInteger(
-  __ENV.CON04_EXPECT_UPSTREAM_MIN || String(userCount),
+  __ENV.CON04_EXPECT_UPSTREAM_MIN || (mode === 'EXPIRE' ? '0' : '1'),
   'CON04_EXPECT_UPSTREAM_MIN',
 )
 const expectedUpstreamMax = readNonNegativeInteger(
@@ -42,11 +44,11 @@ const expectedUpstreamMax = readNonNegativeInteger(
   'CON04_EXPECT_UPSTREAM_MAX',
 )
 const expectedMaxActiveMin = readNonNegativeInteger(
-  __ENV.CON04_EXPECT_MAX_ACTIVE_MIN || '2',
+  __ENV.CON04_EXPECT_MAX_ACTIVE_MIN || (mode === 'EXPIRE' ? '0' : '1'),
   'CON04_EXPECT_MAX_ACTIVE_MIN',
 )
 const expectedMaxActiveMax = readNonNegativeInteger(
-  __ENV.CON04_EXPECT_MAX_ACTIVE_MAX || String(userCount),
+  __ENV.CON04_EXPECT_MAX_ACTIVE_MAX || String(4 * baseUrls.length),
   'CON04_EXPECT_MAX_ACTIVE_MAX',
 )
 const p95LimitMs = readPositiveInteger(__ENV.CON04_P95_LIMIT_MS || '10000', 'CON04_P95_LIMIT_MS')
@@ -144,6 +146,8 @@ export const options = {
       `value>=${expectedMaxActiveMin}`,
       `value<=${expectedMaxActiveMax}`,
     ],
+    con04_avalanche_upstream_per_user_max: ['value<=1'],
+    con04_avalanche_upstream_failures: ['count==0'],
     con04_avalanche_unexpected: ['count==0'],
     con04_avalanche_duration: [`p(95)<${p95LimitMs}`],
     'http_reqs{phase:load}': [`count==${userCount}`],
@@ -184,10 +188,14 @@ export function resetStatsAfterPrewarm(data) {
     unexpected,
   )
   resetStubStats('reset')
+  console.log(`[CON-04] prewarm drained at ${Date.now()}; inspect-all ${userCount} in another terminal before the ${avalancheStartTime} load phase`)
 }
 
 export function avalanche(data) {
   const index = scenarioIterationIndex()
+  if (index === 0) {
+    console.log(`[CON-04] load phase reference time=${Date.now()}`)
+  }
   const response = requestRecommendation(index, data.tokens[index], 'load')
   recommendRequests.add(1)
   recommendDuration.add(response.timings.duration)
@@ -210,6 +218,8 @@ export function teardown(data) {
   if (isValidStubStats(stats.body)) {
     upstreamRequests.add(stats.body.requestTotal)
     upstreamMaxActive.add(stats.body.maxActiveRequests)
+    upstreamPerUserMax.add(Math.max(0, ...Object.values(stats.body.perUser)))
+    upstreamFailures.add(stats.body.failureTotal)
     console.log(
       `[CON-04][avalanche][${mode}] settled=${stats.settled} backendBuilds=${JSON.stringify(stats.backendStates)} stubStats=${JSON.stringify(stats.body)}`,
     )

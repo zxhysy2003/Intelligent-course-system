@@ -15,8 +15,10 @@ Usage: ./experiments/concurrency/data/con-04-redis.sh <action> [argument]
 Actions:
   reset-single [index]    Delete cache/lock/status keys for con04_user_NNN (default: 1).
   reset-all               Delete cache/lock/status keys for every CON-04 user.
-  expire-all <seconds>    Give every existing regular cache key the same short TTL.
+  expire-all <seconds>    Set PHYSICAL TTL; this removes old values, not logical expiry.
   status-single [index]   Show EXISTS/TTL for one user's regular cache and build lock.
+  inspect-single [index]  Read v2 cache timestamps, versions and fresh/stale state.
+  inspect-all [count]     Read the first N users' v2 metadata (default: 50; max: 100).
 EOF
 }
 
@@ -49,6 +51,7 @@ append_user_keys() {
     "recommend:v2:cold:lock:user:$user_id"
     "recommend:v2:version:user:$user_id"
     "recommend:cold:status:user:$user_id"
+    "recommend:invalidate:study:user:$user_id"
   )
 }
 
@@ -70,6 +73,14 @@ read_index() {
   printf '%s' "$value"
 }
 
+inspect_caches() {
+  local snapshot_script
+  snapshot_script=$(<"$SCRIPT_DIR/con-04-cache-snapshot.lua")
+  docker compose -f "$COMPOSE_FILE" exec -T redis \
+    redis-cli -a "$REDIS_PASSWORD" --no-auth-warning --raw \
+    EVAL "$snapshot_script" "${#SNAPSHOT_KEYS[@]}" "${SNAPSHOT_KEYS[@]}"
+}
+
 ACTION=${1:-}
 if [[ -z "$ACTION" || "$ACTION" == "-h" || "$ACTION" == "--help" ]]; then
   usage
@@ -78,6 +89,33 @@ fi
 shift
 
 case "$ACTION" in
+  inspect-single)
+    USER_INDEX=$(read_index "${1:-1}")
+    USER_ID=$(mysql_user_id_by_index "$USER_INDEX")
+    if [[ -z "$USER_ID" ]]; then
+      printf 'CON-04 user %03d not found.\n' "$USER_INDEX" >&2
+      exit 1
+    fi
+    SNAPSHOT_KEYS=("recommend:v2:user:$USER_ID" "recommend:v2:version:user:$USER_ID")
+    inspect_caches
+    ;;
+  inspect-all)
+    USER_COUNT=$(read_index "${1:-50}")
+    USER_IDS=$(mysql_user_ids)
+    SNAPSHOT_KEYS=()
+    while IFS= read -r user_id; do
+      [[ -z "$user_id" ]] && continue
+      SNAPSHOT_KEYS+=("recommend:v2:user:$user_id" "recommend:v2:version:user:$user_id")
+      if (( ${#SNAPSHOT_KEYS[@]} == USER_COUNT * 2 )); then
+        break
+      fi
+    done <<< "$USER_IDS"
+    if (( ${#SNAPSHOT_KEYS[@]} != USER_COUNT * 2 )); then
+      printf 'Not enough CON-04 users; prepare %s users first.\n' "$USER_COUNT" >&2
+      exit 1
+    fi
+    inspect_caches
+    ;;
   reset-single)
     USER_INDEX=$(read_index "${1:-1}")
     USER_ID=$(mysql_user_id_by_index "$USER_INDEX")

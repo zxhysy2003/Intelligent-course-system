@@ -19,6 +19,7 @@
 | 主题 | 文件 | 核心内容 | 最后更新 |
 |---|---|---|---|
 | 推荐构建线程池 | [recommend-build-thread-pool.md](recommend-build-thread-pool.md) | 核心线程、最大线程与队列容量；2 / 4 / 16 接收顺序；single-flight、拒绝与超时降级 | 2026-09-03 |
+| Micrometer 与推荐缓存指标观测 | [micrometer-observability.md](micrometer-observability.md) | Counter、Timer、Gauge；推荐缓存埋点；Actuator 暴露与 CON-04 实验观测 | 2026-09-04 |
 
 ## 组织约定
 

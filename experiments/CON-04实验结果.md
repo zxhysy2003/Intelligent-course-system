@@ -1,8 +1,12 @@
 # CON-04 推荐缓存击穿与雪崩实验结果
 
+> 第 2～7 节及附录 A～F 保存 **重构前历史基线**，其中“当前实现”指当时的版本，不代表最新代码。
+> 第 8 节汇总重构后 A～J 的实测结果。本文不保存完整终端输出，只保留能够支撑结论的关键证据。
+
 ## 1. 实验范围
 
-本文记录 CON-04 的全部六轮实验：
+本文分两部分记录 CON-04：重构前使用 A～F 复现问题，重构后使用 A～J 验收保护机制和故障恢复。
+重构前六轮为：
 
 - 轮次 A：缓存命中基线。
 - 轮次 B：快速构建下的单 key 冷缓存。
@@ -13,13 +17,13 @@
 
 实验方案、启动命令和参数说明见 [CON-04 推荐缓存击穿与雪崩实验](./concurrency/docs/04-recommend-cache-breakdown.md)。
 
-A-D 使用同一用户验证单 key 行为，E-F 使用 50 个用户验证多 key 行为。当前缓存等待预算为：
+A-D 使用同一用户验证单 key 行为，E-F 使用 50 个用户验证多 key 行为。重构前缓存等待预算为：
 
 ```text
 3 次 × 80ms = 240ms
 ```
 
-## 2. 结果汇总
+## 2. 重构前历史基线
 
 | 轮次 | 缓存状态 | Stub 延迟 | 业务请求 | HTTP 失败 | 回源次数 | 最大上游并发 | 推荐接口平均耗时 | 推荐接口 p95 | 结果 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---|
@@ -41,7 +45,7 @@ E：50 个不同 key → 50 次回源，最大并发 50
 F：50 个固定 TTL key 同时到期 → 50 次回源，最大并发 50
 ```
 
-## 3. 分轮分析
+## 3. 重构前分轮分析
 
 ### 3.1 轮次 A：缓存命中基线
 
@@ -147,7 +151,7 @@ http_req_failed = 0
 
 50 个缓存先在相近时间写入，再使用相同的一分钟 TTL，并在 70 秒时同时访问。结果是 50 个 key 全部回源且最大上游并发达到 50，证明固定 TTL 会把同批缓存的重建压力集中到同一时间窗口。TTL 随机抖动可以打散过期时刻，但仍需全局并发限制保护首次访问和主动失效等不受 TTL 抖动控制的场景。
 
-## 4. 如何理解问题复现轮次的绿色阈值
+## 4. 如何理解重构前问题复现轮次的绿色阈值
 
 C、E、F 的 k6 阈值有意设置为确认问题是否被复现，例如：
 
@@ -166,7 +170,7 @@ con04_upstream_requests = 1
 con04_upstream_max_active = 1
 ```
 
-## 5. 当前结论
+## 5. 重构前结论
 
 1. Redis 热缓存能够避免推荐上游调用，并显著降低接口耗时。
 2. 当前分布式构建锁在快速构建场景中有效，同一 key 只会回源一次。
@@ -188,16 +192,22 @@ con04_upstream_max_active = 1
 
 可以将本实验概括为：
 
-> 项目使用 Redis `SET NX` 对推荐缓存构建加锁。实验发现，快速构建和双实例场景都只回源一次，证明分布式锁能够跨 JVM 防止同 key 重复构建；但构建超过 240ms 后，等待请求会无锁回源，100 个请求产生 100 次上游调用。进一步使用 50 个不同 key 验证时，无论首次冷启动还是固定 TTL 集中过期，上游并发都达到 50。这说明缓存保护需要同时处理单 key 击穿和多 key 雪崩，不能只依赖分布式锁。
+> 项目最初使用 Redis `SET NX` 对推荐缓存构建加锁。快速构建和双实例实验都只回源一次，
+> 但构建超过等待预算后，请求会绕过锁无锁回源，100 个同 key 请求被放大成 100 次上游调用；
+> 50 个不同 key 同时失效时，上游并发也达到 50。随后将抢锁移动到有界构建线程、增加 JVM
+> single-flight、禁止无锁回源，并引入逻辑过期、TTL 抖动和降级快照。复测后，慢构建同 key
+> 回源从 100 降为 1，多 key 最大并发从 50 限制为 4，TTL 场景回源从 50 降为 3；Redis
+> 和推荐服务故障也不会触发回源放大。这说明分布式锁只解决同 key 互斥，完整方案还需要有界并发、
+> stale-while-revalidate、超时降级和可观测性。
 
-后续优化时，应重点比较以下方案：
+本次重构采用并验证了以下方案：
 
 - 等待超时后重新竞争锁，不允许直接无锁回源。
 - 使用逻辑过期，非刷新请求返回旧值。
 - 根据真实构建 p99 设置等待预算、锁租约和请求总超时。
 - 对推荐上游设置全局并发上限、排队上限和降级策略。
 
-## 7. 优化顺序与复测目标
+## 7. 优化方案与复测目标
 
 1. 禁止等待超时后直接无锁回源；未持锁请求只能读取新值、返回旧值或走轻量热门兜底。
 2. 使用逻辑过期和较长物理 TTL，让刷新期间的请求立即返回旧推荐。
@@ -206,7 +216,7 @@ con04_upstream_max_active = 1
 5. 使完整构建硬超时小于锁 TTL，避免旧构建未结束时锁已过期。
 6. 记录命中、锁竞争、等待超时、旧值返回、构建耗时、回源和降级指标。
 
-优化后使用相同脚本复测，目标为：
+重构后使用相同脚本复测时采用以下核心验收目标：
 
 ```text
 C：回源次数 = 1，最大上游并发 = 1
@@ -215,1057 +225,187 @@ E：最大上游并发不超过配置的舱壁上限
 F：70 秒时只有部分 key 到期，且最大上游并发不超过舱壁上限
 ```
 
-## 附录 A：轮次 A 原始 k6 输出
+## 8. 重构后验收结果
 
-```bash
+重构代码提交为 `aaf5ed4`；I/J 的实际代码基线为 `c5f44e2` 加当时工作区改动。验收步骤与阈值以
+[CON-04 指导手册](./concurrency/docs/04-recommend-cache-breakdown.md) 为准。A～J 的 HTTP 检查均通过，
+且 k6 teardown 均等待后端构建和 Stub 请求稳定后再采样。
 
-         /\      Grafana   /‾‾/
-    /\  /  \     |\  __   /  /
-   /  \/    \    | |/ /  /   ‾‾\
-  /          \   |   (  |  (‾)  |
- / __________ \  |_|\_\  \_____/
+### 8.1 结果汇总
 
+| 轮次 | 验收场景 | 回源次数 | 最大上游并发 | 推荐请求 p95 | 关键证据 | 结论 |
+|---|---|---:|---:|---:|---|---|
+| A | 热缓存命中 | 0 | 0 | 76.32ms | 100 个请求，零回源 | 通过 |
+| B | 单 key、100ms 构建 | 1 | 1 | 230.60ms | 同 key 只构建一次 | 通过 |
+| C | 单 key、800ms 构建 | 1 | 1 | 917.69ms | 不再发生 100 倍无锁回源 | 通过 |
+| D | 双实例共享单 key | 1 | 1 | 389.33ms | 两实例各处理 50 个请求 | 通过 |
+| E | 50 个 key 同时冷启动 | 20 | 4 | 2.54s | 每用户最多 1 次；30 次拒绝、42 次降级 | 通过 |
+| F | TTL 抖动后的集中访问 | 3 | 2 | 64.49ms | 逻辑 TTL 分布为 1～11 分钟 | 通过 |
+| G | Redis 不可用 | 0 | 0 | 54.77ms | 故障时降级；恢复后 COLD=1、WARM=0 | 通过 |
+| H | 推荐 Stub 返回 503 | 1 | 1 | 377.15ms | `failureTotal=1`，后端未重试 | 故障阶段通过，恢复阶段未记录 |
+| I | stale 立即返回并异步刷新 | 1 | 1 | 117.07ms | `stale_hit` +100，时间戳更新 | 通过 |
+| J-COLD | 200ms 等待预算后降级 | 1 | 1 | 270.45ms | `wait_timeout`、`degraded` 各 +100 | 通过 |
+| J-WARM | 后台写入后的缓存命中 | 0 | 0 | 59.37ms | Counter 不再增长，缓存为 FRESH | 通过 |
 
-     execution: local
-        script: experiments/concurrency/k6/con-04-single-key-cache.js
-        output: -
+### 8.2 A～D：单 key 与跨实例互斥
 
-     scenarios: (100.00%) 1 scenario, 100 max VUs, 30s max duration (incl. graceful stop):
-              * recommend_single_key: 1 iterations for each of 100 VUs (maxDuration: 30s)
+- A：100 个热缓存请求没有访问 Stub，建立了重构后的缓存命中基线。
+- B：100ms 构建时，100 个并发请求合并为 1 次构建。
+- C：Stub 延迟提高到 800ms 后仍只有 1 次回源、最大并发为 1。与重构前的 100 次回源、
+  最大并发 100 相比，证明等待结束后不再无锁执行 builder。
+- D：两个后端实例各处理 50 个请求，合计仍只回源 1 次，证明 Redis 锁继续承担跨 JVM 仲裁。
 
+### 8.3 E：多 key 冷启动与构建线程池
 
+50 个不同 key 同时 miss 时，Stub 收到 20 次请求，最大并发被限制为 4，且单个用户最多回源 1 次。
+这与每个 JVM `max-size=4` 的构建上限一致。Counter 变化为：
 
-  █ THRESHOLDS
-
-    checks
-    ✓ 'rate==1' rate=100.00%
-
-    con04_recommend_duration
-    ✓ 'p(95)<5000' p(95)=65.26ms
-
-    con04_recommend_requests
-    ✓ 'count==100' count=100
-
-    con04_unexpected
-    ✓ 'count==0' count=0
-
-    con04_upstream_max_active
-    ✓ 'value>=0' value=0
-    ✓ 'value<=0' value=0
-
-    con04_upstream_requests
-    ✓ 'count>=0' count=0
-    ✓ 'count<=0' count=0
-
-    http_req_failed
-    ✓ 'rate==0' rate=0.00%
-
-    http_reqs{phase:load,backend_index:1}
-    ✓ 'count==100' count=100
-
-
-  █ TOTAL RESULTS
-
-    checks_total.......: 309     500.387031/s
-    checks_succeeded...: 100.00% 309 out of 309
-    checks_failed......: 0.00%   0 out of 309
-
-    ✓ 登录 HTTP 状态为 200
-    ✓ 登录业务码为 200
-    ✓ 登录返回非空 Token
-    ✓ 预热推荐 HTTP 状态为 200
-    ✓ 预热推荐业务码为 200
-    ✓ 预热推荐返回 items 数组
-    ✓ Stub 统计重置成功
-    ✓ 并发推荐 HTTP 状态为 200
-    ✓ 并发推荐业务码为 200
-    ✓ 并发推荐返回 items 数组
-    ✓ Stub 统计 HTTP 状态为 200
-    ✓ Stub 统计字段完整
-
-    CUSTOM
-    con04_recommend_duration...........: avg=46.37ms min=18.36ms med=48.99ms max=66.54ms  p(90)=64.74ms p(95)=65.26ms
-    con04_recommend_requests...........: 100    161.93755/s
-    con04_unexpected...................: 0      0/s
-    con04_upstream_max_active..........: 0      min=0        max=0
-    con04_upstream_requests............: 0      0/s
-
-    HTTP
-    http_req_duration..................: avg=49.81ms min=330µs   med=48.99ms max=433.45ms p(90)=64.92ms p(95)=65.72ms
-      { expected_response:true }.......: avg=49.81ms min=330µs   med=48.99ms max=433.45ms p(90)=64.92ms p(95)=65.72ms
-    http_req_failed....................: 0.00%  0 out of 104
-    http_reqs..........................: 104    168.415052/s
-      { phase:load,backend_index:1 }...: 100    161.93755/s
-
-    EXECUTION
-    iteration_duration.................: avg=47.75ms min=19.23ms med=50.38ms max=67.99ms  p(90)=66.43ms p(95)=66.79ms
-    iterations.........................: 100    161.93755/s
-
-    NETWORK
-    data_received......................: 183 kB 296 kB/s
-    data_sent..........................: 34 kB  55 kB/s
-
-
-
-
-running (00.6s), 000/100 VUs, 100 complete and 0 interrupted iterations
-recommend_single_key ✓ [ 100% ] 100 VUs  00.1s/30s  100/100 iters, 1 per VU
-
+```text
+event                 before   after   delta
+refresh_rejected            0      30      30
+degraded                    0      42      42
+wait_timeout                0      12      12
 ```
 
-## 附录 B：轮次 B 原始 k6 输出
+20 次回源来自线程池可接纳的 4 个运行任务和 16 个排队任务；另外 30 个任务被拒绝。42 次降级由
+30 次拒绝和 12 次等待超时组成。回源总数不必等于瞬时并发上限，但上游同时在途请求始终不超过 4。
+
+### 8.4 F：TTL 抖动与逻辑过期
+
+50 个 key 的逻辑 TTL 实际分布在 1～11 分钟，而不是同一时刻到期。负载前快照为
+`fresh=48`、`stale=2`、`missing=0`；稍后快照为 `fresh=46`、`stale=4`、`missing=0`。
+详细 Redis 元数据保存在 [CON-04 Redis 快照记录](./con04-13-redis快照记录.md)。
+
+在预热后集中访问 50 个 key，最终只有 3 次回源，最大并发为 2，每个用户最多回源 1 次；重构前
+固定 TTL 场景是 50 次回源、最大并发 50。结果说明随机抖动已经打散过期时刻，同时物理旧值仍在，
+stale 请求可以先返回旧推荐。不过两次快照相隔一段时间，第二次出现更多 stale 是时间继续推进的
+自然结果，不能据此理解为刷新失败。
+
+### 8.5 G：Redis 故障与恢复
+
+Redis 停止时，100 个推荐请求全部得到合法响应，p95 为 54.77ms，推荐 Stub 回源次数和最大并发
+均为 0。这说明 Redis 异常分支没有绕过锁直接访问推荐服务，而是使用 JVM 中的热门快照或空结果降级。
+
+Redis 恢复后，在不重启后端的情况下完成了两步验证：
+
+| 恢复步骤 | 回源次数 | 最大并发 | p95 | 结果 |
+|---|---:|---:|---:|---|
+| COLD 重建 | 1 | 1 | 1.02s | 成功重新构建缓存 |
+| WARM 命中 | 0 | 0 | 58.25ms | 成功读取恢复后的缓存 |
+
+最终 `inspect-single 1` 显示 `state=FRESH`、`generatedAt=1788618072162`、逻辑 TTL 为 32 分钟。
+因此本轮验证的是完整的“故障时降级 → Redis 恢复 → 冷缓存重建 → 热缓存命中”，而不只是容器启动成功。
+
+### 8.6 H：上游 503
+
+故障 Stub 实际收到 1 次请求并返回 503，`failureTotal=1`；后端没有重试，100 个客户端请求仍获得
+合法业务响应，回源次数和最大并发都为 1。该结果证明单次上游失败不会被并发请求放大。
+
+当前文档没有保存 H 轮恢复后 COLD/WARM 的独立结果，因此只将“故障注入与不重试”标记为通过，
+不声称 H 的恢复链路已经取得实测证据。恢复能力可参考 G，但不能用 G 替代 H 的专门验收。
+
+### 8.7 I：确定性 stale 返回与后台刷新
+
+I/J 实测于 2026-09-06，环境为 macOS 26.6.2、Apple Silicon、k6 2.2.0，使用单后端实例和
+800ms、无错误 Stub。I 轮将普通推荐逻辑 TTL 固定为 1 分钟且关闭抖动：
 
 ```bash
-
-         /\      Grafana   /‾‾/
-    /\  /  \     |\  __   /  /
-   /  \/    \    | |/ /  /   ‾‾\
-  /          \   |   (  |  (‾)  |
- / __________ \  |_|\_\  \_____/
-
-
-     execution: local
-        script: experiments/concurrency/k6/con-04-single-key-cache.js
-        output: -
-
-     scenarios: (100.00%) 1 scenario, 100 max VUs, 30s max duration (incl. graceful stop):
-              * recommend_single_key: 1 iterations for each of 100 VUs (maxDuration: 30s)
-
-
-
-  █ THRESHOLDS
-
-    checks
-    ✓ 'rate==1' rate=100.00%
-
-    con04_recommend_duration
-    ✓ 'p(95)<5000' p(95)=230.2ms
-
-    con04_recommend_requests
-    ✓ 'count==100' count=100
-
-    con04_unexpected
-    ✓ 'count==0' count=0
-
-    con04_upstream_max_active
-    ✓ 'value>=1' value=1
-    ✓ 'value<=1' value=1
-
-    con04_upstream_requests
-    ✓ 'count>=1' count=1
-    ✓ 'count<=1' count=1
-
-    http_req_failed
-    ✓ 'rate==0' rate=0.00%
-
-    http_reqs{phase:load,backend_index:1}
-    ✓ 'count==100' count=100
-
-
-  █ TOTAL RESULTS
-
-    checks_total.......: 306     1177.22191/s
-    checks_succeeded...: 100.00% 306 out of 306
-    checks_failed......: 0.00%   0 out of 306
-
-    ✓ 登录 HTTP 状态为 200
-    ✓ 登录业务码为 200
-    ✓ 登录返回非空 Token
-    ✓ Stub 统计重置成功
-    ✓ 并发推荐 HTTP 状态为 200
-    ✓ 并发推荐业务码为 200
-    ✓ 并发推荐返回 items 数组
-    ✓ Stub 统计 HTTP 状态为 200
-    ✓ Stub 统计字段完整
-
-    CUSTOM
-    con04_recommend_duration...........: avg=214.58ms min=188.49ms med=216ms    max=231.25ms p(90)=228.05ms p(95)=230.2ms
-    con04_recommend_requests...........: 100    384.713043/s
-    con04_unexpected...................: 0      0/s
-    con04_upstream_max_active..........: 1      min=1        max=1
-    con04_upstream_requests............: 1      3.84713/s
-
-    HTTP
-    http_req_duration..................: avg=208.53ms min=377µs    med=215.51ms max=231.25ms p(90)=227.84ms p(95)=230.17ms
-      { expected_response:true }.......: avg=208.53ms min=377µs    med=215.51ms max=231.25ms p(90)=227.84ms p(95)=230.17ms
-    http_req_failed....................: 0.00%  0 out of 103
-    http_reqs..........................: 103    396.254434/s
-      { phase:load,backend_index:1 }...: 100    384.713043/s
-
-    EXECUTION
-    iteration_duration.................: avg=215.93ms min=189.57ms med=217.47ms max=232.69ms p(90)=229.33ms p(95)=231.93ms
-    iterations.........................: 100    384.713043/s
-
-    NETWORK
-    data_received......................: 181 kB 697 kB/s
-    data_sent..........................: 34 kB  129 kB/s
-
-
-
-
-running (00.3s), 000/100 VUs, 100 complete and 0 interrupted iterations
-recommend_single_key ✓ [ 100% ] 100 VUs  00.2s/30s  100/100 iters, 1 per VU
-
+CON04_REGULAR_TTL_MINUTES=1 CON04_REGULAR_TTL_JITTER_MINUTES=0 \
+./scripts/start-con04-backend.sh 8080 http://127.0.0.1:18000
 ```
 
-## 附录 C：轮次 C 原始 k6 输出
+首次 COLD 构建只回源 1 次。缓存从以下 FRESH 状态自然进入 STALE；等待期间没有请求推荐接口、
+没有 reset，也没有修改物理 TTL：
+
+```text
+初始：state=FRESH, generatedAt=1788677315109, logicalExpireAt=1788677375109
+过期：state=STALE, remainingLogicalMs=-4602, physicalTtlMs=3595415
+```
+
+对 stale 缓存发起 100 个并发请求后，p95 为 117.07ms，明显低于 800ms Stub 延迟；
+`stale_hit` 从 0 增加到 100，但回源次数和最大并发均为 1。后台排空后缓存恢复为 FRESH，
+`generatedAt` 更新为 `1788677394261`。这同时证明了“立即返回旧值”和“后台只刷新一次”。
+
+### 8.8 J：请求超时降级，后台继续构建
+
+J 轮只把首次构建等待预算缩短到 200ms：
 
 ```bash
-
-         /\      Grafana   /‾‾/
-    /\  /  \     |\  __   /  /
-   /  \/    \    | |/ /  /   ‾‾\
-  /          \   |   (  |  (‾)  |
- / __________ \  |_|\_\  \_____/
-
-
-     execution: local
-        script: experiments/concurrency/k6/con-04-single-key-cache.js
-        output: -
-
-     scenarios: (100.00%) 1 scenario, 100 max VUs, 30s max duration (incl. graceful stop):
-              * recommend_single_key: 1 iterations for each of 100 VUs (maxDuration: 30s)
-
-
-running (01.0s), 099/100 VUs, 1 complete and 0 interrupted iterations
-recommend_single_key   [   1% ] 100 VUs  01.0s/30s  001/100 iters, 1 per VU
-
-
-  █ THRESHOLDS
-
-    checks
-    ✓ 'rate==1' rate=100.00%
-
-    con04_recommend_duration
-    ✓ 'p(95)<5000' p(95)=1.44s
-
-    con04_recommend_requests
-    ✓ 'count==100' count=100
-
-    con04_unexpected
-    ✓ 'count==0' count=0
-
-    con04_upstream_max_active
-    ✓ 'value>=2' value=100
-    ✓ 'value<=100' value=100
-
-    con04_upstream_requests
-    ✓ 'count>=2' count=100
-    ✓ 'count<=100' count=100
-
-    http_req_failed
-    ✓ 'rate==0' rate=0.00%
-
-    http_reqs{phase:load,backend_index:1}
-    ✓ 'count==100' count=100
-
-
-  █ TOTAL RESULTS
-
-    checks_total.......: 306     205.920552/s
-    checks_succeeded...: 100.00% 306 out of 306
-    checks_failed......: 0.00%   0 out of 306
-
-    ✓ 登录 HTTP 状态为 200
-    ✓ 登录业务码为 200
-    ✓ 登录返回非空 Token
-    ✓ Stub 统计重置成功
-    ✓ 并发推荐 HTTP 状态为 200
-    ✓ 并发推荐业务码为 200
-    ✓ 并发推荐返回 items 数组
-    ✓ Stub 统计 HTTP 状态为 200
-    ✓ Stub 统计字段完整
-
-    CUSTOM
-    con04_recommend_duration...........: avg=1.4s  min=954.81ms med=1.41s max=1.45s p(90)=1.44s p(95)=1.44s
-    con04_recommend_requests...........: 100    67.294298/s
-    con04_unexpected...................: 0      0/s
-    con04_upstream_max_active..........: 100    min=100      max=100
-    con04_upstream_requests............: 100    67.294298/s
-
-    HTTP
-    http_req_duration..................: avg=1.36s min=477µs    med=1.41s max=1.45s p(90)=1.44s p(95)=1.44s
-      { expected_response:true }.......: avg=1.36s min=477µs    med=1.41s max=1.45s p(90)=1.44s p(95)=1.44s
-    http_req_failed....................: 0.00%  0 out of 103
-    http_reqs..........................: 103    69.313127/s
-      { phase:load,backend_index:1 }...: 100    67.294298/s
-
-    EXECUTION
-    iteration_duration.................: avg=1.4s  min=955.92ms med=1.41s max=1.45s p(90)=1.44s p(95)=1.44s
-    iterations.........................: 100    67.294298/s
-    vus................................: 99     min=99       max=99
-    vus_max............................: 100    min=100      max=100
-
-    NETWORK
-    data_received......................: 181 kB 122 kB/s
-    data_sent..........................: 34 kB  23 kB/s
-
-
-
-
-running (01.5s), 000/100 VUs, 100 complete and 0 interrupted iterations
-recommend_single_key ✓ [ 100% ] 100 VUs  01.5s/30s  100/100 iters, 1 per VU
-
+CON04_INITIAL_BUILD_WAIT_MILLIS=200 \
+./scripts/start-con04-backend.sh 8080 http://127.0.0.1:18000
 ```
 
-## 附录 D-1：轮次 D 首次异常输出（不纳入有效结论）
+清理缓存后执行 100 VU COLD，`wait_timeout` 和 `degraded` 均从 0 增加到 100。请求 p95 为
+270.45ms；它高于 200ms，是因为 future 等待预算不包含入口查询、Redis 调用和 HTTP 调度开销。
+请求返回时 800ms 构建尚未完成，但 teardown 最终观察到 Stub 仅成功调用 1 次、后台任务归零，
+缓存成为 FRESH：
 
-```bash
-
-         /\      Grafana   /‾‾/
-    /\  /  \     |\  __   /  /
-   /  \/    \    | |/ /  /   ‾‾\
-  /          \   |   (  |  (‾)  |
- / __________ \  |_|\_\  \_____/
-
-
-     execution: local
-        script: experiments/concurrency/k6/con-04-single-key-cache.js
-        output: -
-
-     scenarios: (100.00%) 1 scenario, 100 max VUs, 30s max duration (incl. graceful stop):
-              * recommend_single_key: 1 iterations for each of 100 VUs (maxDuration: 30s)
-
-
-running (01.0s), 014/100 VUs, 86 complete and 0 interrupted iterations
-recommend_single_key   [  86% ] 100 VUs  00.9s/30s  086/100 iters, 1 per VU
-
-
-  █ THRESHOLDS
-
-    checks
-    ✓ 'rate==1' rate=100.00%
-
-    con04_recommend_duration
-    ✓ 'p(95)<5000' p(95)=911.91ms
-
-    con04_recommend_requests
-    ✓ 'count==100' count=100
-
-    con04_unexpected
-    ✓ 'count==0' count=0
-
-    con04_upstream_max_active
-    ✓ 'value>=1' value=29
-    ✗ 'value<=1' value=29
-
-    con04_upstream_requests
-    ✓ 'count>=1' count=55
-    ✗ 'count<=1' count=55
-
-    http_req_failed
-    ✓ 'rate==0' rate=0.00%
-
-    http_reqs{phase:load,backend_index:1}
-    ✓ 'count==50' count=50
-
-    http_reqs{phase:load,backend_index:2}
-    ✓ 'count==50' count=50
-
-
-  █ TOTAL RESULTS
-
-    checks_total.......: 306     275.170948/s
-    checks_succeeded...: 100.00% 306 out of 306
-    checks_failed......: 0.00%   0 out of 306
-
-    ✓ 登录 HTTP 状态为 200
-    ✓ 登录业务码为 200
-    ✓ 登录返回非空 Token
-    ✓ Stub 统计重置成功
-    ✓ 并发推荐 HTTP 状态为 200
-    ✓ 并发推荐业务码为 200
-    ✓ 并发推荐返回 items 数组
-    ✓ Stub 统计 HTTP 状态为 200
-    ✓ Stub 统计字段完整
-
-    CUSTOM
-    con04_recommend_duration...........: avg=698.81ms min=579.05ms med=668.43ms max=984.29ms p(90)=893.23ms p(95)=911.91ms
-    con04_recommend_requests...........: 100    89.925146/s
-    con04_unexpected...................: 0      0/s
-    con04_upstream_max_active..........: 29     min=29       max=29
-    con04_upstream_requests............: 55     49.45883/s
-
-    HTTP
-    http_req_duration..................: avg=679.64ms min=437µs    med=666.79ms max=984.29ms p(90)=892.32ms p(95)=911.7ms
-      { expected_response:true }.......: avg=679.64ms min=437µs    med=666.79ms max=984.29ms p(90)=892.32ms p(95)=911.7ms
-    http_req_failed....................: 0.00%  0 out of 103
-    http_reqs..........................: 103    92.622901/s
-      { phase:load,backend_index:1 }...: 50     44.962573/s
-      { phase:load,backend_index:2 }...: 50     44.962573/s
-
-    EXECUTION
-    iteration_duration.................: avg=700.41ms min=580.03ms med=671.15ms max=985.28ms p(90)=895.18ms p(95)=912.66ms
-    iterations.........................: 100    89.925146/s
-    vus................................: 14     min=14       max=14
-    vus_max............................: 100    min=100      max=100
-
-    NETWORK
-    data_received......................: 181 kB 163 kB/s
-    data_sent..........................: 34 kB  30 kB/s
-
-
-
-
-running (01.1s), 000/100 VUs, 100 complete and 0 interrupted iterations
-recommend_single_key ✓ [ 100% ] 100 VUs  01.0s/30s  100/100 iters, 1 per VU
-
+```text
+state=FRESH
+generatedAt=1788677487162
+logicalExpireAt=1788679707162
+logicalTtlMinutes=37
 ```
 
-## 附录 D-2：轮次 D 有效复跑阈值
-
-本次只记录用户提供的阈值输出；结论所需的请求分布、回源次数、最大上游并发和 p95 均已包含。
-
-```bash
-
-         /\      Grafana   /‾‾/
-    /\  /  \     |\  __   /  /
-   /  \/    \    | |/ /  /   ‾‾\
-  /          \   |   (  |  (‾)  |
- / __________ \  |_|\_\  \_____/
-
-
-     execution: local
-        script: experiments/concurrency/k6/con-04-single-key-cache.js
-        output: -
-
-     scenarios: (100.00%) 1 scenario, 100 max VUs, 30s max duration (incl. graceful stop):
-              * recommend_single_key: 1 iterations for each of 100 VUs (maxDuration: 30s)
-
-INFO[0000] [CON-04][single-key][COLD] stubStats={"perUser":{"136":1},"requestTotal":1,"successTotal":1,"activeRequests":0,"maxActiveRequests":1,"delayMs":100,"startedAt":"2026-08-27T13:23:32.616615+00:00","failureTotal":0,"errorRate":0}  source=console
-
-
-  █ THRESHOLDS
-
-    checks
-    ✓ 'rate==1' rate=100.00%
-
-    con04_recommend_duration
-    ✓ 'p(95)<5000' p(95)=245.01ms
-
-    con04_recommend_requests
-    ✓ 'count==100' count=100
-
-    con04_unexpected
-    ✓ 'count==0' count=0
-
-    con04_upstream_max_active
-    ✓ 'value>=1' value=1
-    ✓ 'value<=1' value=1
-
-    con04_upstream_requests
-    ✓ 'count>=1' count=1
-    ✓ 'count<=1' count=1
-
-    http_req_failed
-    ✓ 'rate==0' rate=0.00%
-
-    http_reqs{phase:load,backend_index:1}
-    ✓ 'count==50' count=50
-
-    http_reqs{phase:load,backend_index:2}
-    ✓ 'count==50' count=50
-
-
-  █ TOTAL RESULTS
-
-    checks_total.......: 306     1152.321023/s
-    checks_succeeded...: 100.00% 306 out of 306
-    checks_failed......: 0.00%   0 out of 306
-
-    ✓ 登录 HTTP 状态为 200
-    ✓ 登录业务码为 200
-    ✓ 登录返回非空 Token
-    ✓ Stub 统计重置成功
-    ✓ 并发推荐 HTTP 状态为 200
-    ✓ 并发推荐业务码为 200
-    ✓ 并发推荐返回 items 数组
-    ✓ Stub 统计 HTTP 状态为 200
-    ✓ Stub 统计字段完整
-
-    CUSTOM
-    con04_recommend_duration...........: avg=220.44ms min=175.05ms med=221.49ms max=247.76ms p(90)=244.05ms p(95)=245.01ms
-    con04_recommend_requests...........: 100    376.575498/s
-    con04_unexpected...................: 0      0/s
-    con04_upstream_max_active..........: 1      min=1        max=1
-    con04_upstream_requests............: 1      3.765755/s
-
-    HTTP
-    http_req_duration..................: avg=214.11ms min=348µs    med=221.42ms max=247.76ms p(90)=244.04ms p(95)=244.97ms
-      { expected_response:true }.......: avg=214.11ms min=348µs    med=221.42ms max=247.76ms p(90)=244.04ms p(95)=244.97ms
-    http_req_failed....................: 0.00%  0 out of 103
-    http_reqs..........................: 103    387.872763/s
-      { phase:load,backend_index:1 }...: 50     188.287749/s
-      { phase:load,backend_index:2 }...: 50     188.287749/s
-
-    EXECUTION
-    iteration_duration.................: avg=222ms    min=176.49ms med=223.49ms max=249.59ms p(90)=245.73ms p(95)=246.2ms
-    iterations.........................: 100    376.575498/s
-
-    NETWORK
-    data_received......................: 181 kB 682 kB/s
-    data_sent..........................: 34 kB  126 kB/s
-
-
-
-
-running (00.3s), 000/100 VUs, 100 complete and 0 interrupted iterations
-recommend_single_key ✓ [======================================] 100 VUs  00.3s/30s  100/100 iters, 1 per VU
-```
-
-## 附录 E：多 key 同时冷启动
-
-```bash
-
-         /\      Grafana   /‾‾/
-    /\  /  \     |\  __   /  /
-   /  \/    \    | |/ /  /   ‾‾\
-  /          \   |   (  |  (‾)  |
- / __________ \  |_|\_\  \_____/
-
-
-     execution: local
-        script: experiments/concurrency/k6/con-04-cache-avalanche.js
-        output: -
-
-     scenarios: (100.00%) 1 scenario, 50 max VUs, 30s max duration (incl. graceful stop):
-              * avalanche: 1 iterations for each of 50 VUs (maxDuration: 30s, exec: avalanche)
-
-
-running (01.0s), 50/50 VUs, 0 complete and 0 interrupted iterations
-avalanche   [   0% ] 50 VUs  00.9s/30s  00/50 iters, 1 per VU
-
-
-  █ THRESHOLDS
-
-    checks
-    ✓ 'rate==1' rate=100.00%
-
-    con04_avalanche_duration
-    ✓ 'p(95)<10000' p(95)=984.5ms
-
-    con04_avalanche_recommend_requests
-    ✓ 'count==50' count=50
-
-    con04_avalanche_unexpected
-    ✓ 'count==0' count=0
-
-    con04_avalanche_upstream_max_active
-    ✓ 'value>=2' value=50
-
-    con04_avalanche_upstream_requests
-    ✓ 'count>=50' count=50
-    ✓ 'count<=50' count=50
-
-    http_req_failed
-    ✓ 'rate==0' rate=0.00%
-
-    http_reqs{phase:load}
-    ✓ 'count==50' count=50
-
-
-  █ TOTAL RESULTS
-
-    checks_total.......: 303     275.519919/s
-    checks_succeeded...: 100.00% 303 out of 303
-    checks_failed......: 0.00%   0 out of 303
-
-    ✓ 实验用户登录 HTTP 状态为 200
-    ✓ 实验用户登录业务码为 200
-    ✓ 实验用户登录返回 Token
-    ✓ Stub 统计重置成功
-    ✓ 雪崩并发推荐 HTTP 状态为 200
-    ✓ 雪崩并发推荐业务码为 200
-    ✓ 雪崩并发推荐返回 items 数组
-    ✓ Stub 统计 HTTP 状态为 200
-    ✓ Stub 统计字段完整
-
-    CUSTOM
-    con04_avalanche_duration..............: avg=965.98ms min=925.54ms med=966.69ms max=988.56ms p(90)=984.06ms p(95)=984.5ms
-    con04_avalanche_recommend_requests....: 50     45.465333/s
-    con04_avalanche_unexpected............: 0      0/s
-    con04_avalanche_upstream_max_active...: 50     min=50       max=50
-    con04_avalanche_upstream_requests.....: 50     45.465333/s
-
-    HTTP
-    http_req_duration.....................: avg=474.51ms min=483µs    med=4.66ms   max=988.56ms p(90)=982.24ms p(95)=983.99ms
-      { expected_response:true }..........: avg=474.51ms min=483µs    med=4.66ms   max=988.56ms p(90)=982.24ms p(95)=983.99ms
-    http_req_failed.......................: 0.00%  0 out of 102
-    http_reqs.............................: 102    92.74928/s
-      { phase:load }......................: 50     45.465333/s
-
-    EXECUTION
-    iteration_duration....................: avg=966.94ms min=926.33ms med=968.18ms max=990.1ms  p(90)=984.35ms p(95)=985.84ms
-    iterations............................: 50     45.465333/s
-    vus...................................: 50     min=50       max=50
-    vus_max...............................: 50     min=50       max=50
-
-    NETWORK
-    data_received.........................: 122 kB 111 kB/s
-    data_sent.............................: 28 kB  25 kB/s
-
-
-
-
-running (01.1s), 00/50 VUs, 50 complete and 0 interrupted iterations
-avalanche ✓ [ 100% ] 50 VUs  01.0s/30s  50/50 iters, 1 per VU
-
-```
-
-## 附录 F：固定 TTL 到期雪崩
-
-```bash
-
-         /\      Grafana   /‾‾/
-    /\  /  \     |\  __   /  /
-   /  \/    \    | |/ /  /   ‾‾\
-  /          \   |   (  |  (‾)  |
- / __________ \  |_|\_\  \_____/
-
-
-     execution: local
-        script: experiments/concurrency/k6/con-04-cache-avalanche.js
-        output: -
-
-     scenarios: (100.00%) 3 scenarios, 51 max VUs, 1m40s max duration (incl. graceful stop):
-              * prewarm: 1 iterations for each of 50 VUs (maxDuration: 30s, exec: prewarm)
-              * reset_stub_stats: 1 iterations shared among 1 VUs (maxDuration: 10s, exec: resetStatsAfterPrewarm, startTime: 10s, gracefulStop: 30s)
-              * avalanche: 1 iterations for each of 50 VUs (maxDuration: 30s, exec: avalanche, startTime: 1m10s)
-
-
-running (0m01.0s), 50/51 VUs, 0 complete and 0 interrupted iterations
-prewarm            [   0% ] 50 VUs   00.8s/30s  00/50 iters, 1 per VU
-reset_stub_stats • [   0% ] waiting  09.2s
-avalanche        • [   0% ] waiting  1m09.2s
-
-running (0m02.0s), 00/51 VUs, 50 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats • [   0% ] waiting  08.2s
-avalanche        • [   0% ] waiting  1m08.2s
-
-running (0m03.0s), 00/51 VUs, 50 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats • [   0% ] waiting  07.2s
-avalanche        • [   0% ] waiting  1m07.2s
-
-running (0m04.0s), 00/51 VUs, 50 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats • [   0% ] waiting  06.2s
-avalanche        • [   0% ] waiting  1m06.2s
-
-running (0m05.0s), 00/51 VUs, 50 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats • [   0% ] waiting  05.2s
-avalanche        • [   0% ] waiting  1m05.2s
-
-running (0m06.0s), 00/51 VUs, 50 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats • [   0% ] waiting  04.2s
-avalanche        • [   0% ] waiting  1m04.2s
-
-running (0m07.0s), 00/51 VUs, 50 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats • [   0% ] waiting  03.2s
-avalanche        • [   0% ] waiting  1m03.2s
-
-running (0m08.0s), 00/51 VUs, 50 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats • [   0% ] waiting  02.2s
-avalanche        • [   0% ] waiting  1m02.2s
-
-running (0m09.0s), 00/51 VUs, 50 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats • [   0% ] waiting  01.2s
-avalanche        • [   0% ] waiting  1m01.2s
-
-running (0m10.0s), 00/51 VUs, 50 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats • [   0% ] waiting  00.2s
-avalanche        • [   0% ] waiting  1m00.2s
-
-running (0m11.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m59.2s
-
-running (0m12.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m58.2s
-
-running (0m13.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m57.2s
-
-running (0m14.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m56.2s
-
-running (0m15.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m55.2s
-
-running (0m16.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m54.2s
-
-running (0m17.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m53.2s
-
-running (0m18.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m52.2s
-
-running (0m19.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m51.2s
-
-running (0m20.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m50.2s
-
-running (0m21.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m49.2s
-
-running (0m22.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m48.2s
-
-running (0m23.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m47.2s
-
-running (0m24.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m46.2s
-
-running (0m25.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m45.2s
-
-running (0m26.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m44.2s
-
-running (0m27.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m43.2s
-
-running (0m28.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m42.2s
-
-running (0m29.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m41.2s
-
-running (0m30.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m40.2s
-
-running (0m31.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m39.2s
-
-running (0m32.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m38.2s
-
-running (0m33.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m37.2s
-
-running (0m34.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m36.2s
-
-running (0m35.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m35.2s
-
-running (0m36.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m34.2s
-
-running (0m37.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m33.2s
-
-running (0m38.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m32.2s
-
-running (0m39.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m31.2s
-
-running (0m40.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m30.2s
-
-running (0m41.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m29.2s
-
-running (0m42.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m28.2s
-
-running (0m43.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m27.2s
-
-running (0m44.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m26.2s
-
-running (0m45.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m25.2s
-
-running (0m46.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m24.2s
-
-running (0m47.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m23.2s
-
-running (0m48.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m22.2s
-
-running (0m49.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m21.2s
-
-running (0m50.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m20.2s
-
-running (0m51.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m19.2s
-
-running (0m52.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m18.2s
-
-running (0m53.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m17.2s
-
-running (0m54.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m16.2s
-
-running (0m55.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m15.2s
-
-running (0m56.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m14.2s
-
-running (0m57.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m13.2s
-
-running (0m58.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m12.2s
-
-running (0m59.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m11.2s
-
-running (1m00.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m10.2s
-
-running (1m01.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m09.2s
-
-running (1m02.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m08.2s
-
-running (1m03.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m07.2s
-
-running (1m04.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m06.2s
-
-running (1m05.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m05.2s
-
-running (1m06.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m04.2s
-
-running (1m07.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m03.2s
-
-running (1m08.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m02.2s
-
-running (1m09.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m01.2s
-
-running (1m10.0s), 00/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs   01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs    00.0s/10s  1/1 shared iters
-avalanche        • [   0% ] waiting  0m00.2s
-
-running (1m11.0s), 50/51 VUs, 51 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs  01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs   00.0s/10s  1/1 shared iters
-avalanche          [   0% ] 50 VUs  00.8s/30s  00/50 iters, 1 per VU
-
-
-  █ THRESHOLDS
-
-    checks
-    ✓ 'rate==1' rate=100.00%
-
-    con04_avalanche_duration
-    ✓ 'p(95)<10000' p(95)=957.48ms
-
-    con04_avalanche_recommend_requests
-    ✓ 'count==50' count=50
-
-    con04_avalanche_unexpected
-    ✓ 'count==0' count=0
-
-    con04_avalanche_upstream_max_active
-    ✓ 'value>=2' value=50
-
-    con04_avalanche_upstream_requests
-    ✓ 'count>=50' count=50
-    ✓ 'count<=50' count=50
-
-    http_req_failed
-    ✓ 'rate==0' rate=0.00%
-
-    http_reqs{phase:load}
-    ✓ 'count==50' count=50
-
-
-  █ TOTAL RESULTS
-
-    checks_total.......: 454     6.378219/s
-    checks_succeeded...: 100.00% 454 out of 454
-    checks_failed......: 0.00%   0 out of 454
-
-    ✓ 实验用户登录 HTTP 状态为 200
-    ✓ 实验用户登录业务码为 200
-    ✓ 实验用户登录返回 Token
-    ✓ Stub 统计重置成功
-    ✓ 多用户预热 HTTP 状态为 200
-    ✓ 多用户预热业务码为 200
-    ✓ 多用户预热返回 items 数组
-    ✓ 雪崩并发推荐 HTTP 状态为 200
-    ✓ 雪崩并发推荐业务码为 200
-    ✓ 雪崩并发推荐返回 items 数组
-    ✓ Stub 统计 HTTP 状态为 200
-    ✓ Stub 统计字段完整
-
-    CUSTOM
-    con04_avalanche_duration..............: avg=946.25ms min=914.27ms med=947.51ms max=960.77ms p(90)=956.7ms p(95)=957.48ms
-    con04_avalanche_recommend_requests....: 50     0.702447/s
-    con04_avalanche_unexpected............: 0      0/s
-    con04_avalanche_upstream_max_active...: 50     min=50       max=50
-    con04_avalanche_upstream_requests.....: 50     0.702447/s
-
-    HTTP
-    http_req_duration.....................: avg=735.26ms min=444µs    med=947.46ms max=1.62s    p(90)=1.27s   p(95)=1.27s
-      { expected_response:true }..........: avg=735.26ms min=444µs    med=947.46ms max=1.62s    p(90)=1.27s   p(95)=1.27s
-    http_req_failed.......................: 0.00%  0 out of 153
-    http_reqs.............................: 153    2.149488/s
-      { phase:load }......................: 50     0.702447/s
-
-    EXECUTION
-    iteration_duration....................: avg=1.11s    min=2.28ms   med=963.68ms max=1.62s    p(90)=1.27s   p(95)=1.38s
-    iterations............................: 101    1.418943/s
-    vus...................................: 50     min=0        max=50
-    vus_max...............................: 51     min=51       max=51
-
-    NETWORK
-    data_received.........................: 212 kB 3.0 kB/s
-    data_sent.............................: 44 kB  620 B/s
-
-
-
-
-running (1m11.2s), 00/51 VUs, 101 complete and 0 interrupted iterations
-prewarm          ✓ [ 100% ] 50 VUs  01.6s/30s  50/50 iters, 1 per VU
-reset_stub_stats ✓ [ 100% ] 1 VUs   00.0s/10s  1/1 shared iters
-avalanche        ✓ [ 100% ] 50 VUs  01.0s/30s  50/50 iters, 1 per VU
-
-```
+随后不清缓存执行 WARM，回源次数和最大并发都为 0，p95 为 59.37ms，相关 Counter 未继续增长。
+因此请求等待超时不会取消唯一的后台构建，后续请求可以重新命中它写入的缓存。
+
+### 8.9 重构前后对比与最终结论
+
+| 风险 | 重构前证据 | 重构后证据 | 判断 |
+|---|---|---|---|
+| 单 key 慢构建击穿 | C：100 次回源，并发 100 | C：1 次回源，并发 1 | 已修复 |
+| 多 key 无界并发 | E：并发 50 | E：并发 4 | 已限制 |
+| 固定 TTL 雪崩 | F：50 次回源，并发 50 | F：3 次回源，并发 2 | 已显著缓解 |
+| Redis 故障时绕过保护 | 未专项验证 | G：零回源并快速降级 | 已验证 |
+| 推荐服务 503 放大 | 未专项验证 | H：仅 1 次失败且不重试 | 已验证故障阶段 |
+| stale 阻塞请求 | 无逻辑过期 | I：p95 117.07ms，后台刷新 1 次 | 已验证 |
+| 请求超时取消构建 | 无后台延续机制 | J：先降级，后台仍写入 FRESH | 已验证 |
+
+本轮重构已经解决最核心的缓存击穿问题，并通过线程池、逻辑过期、TTL 抖动和降级路径控制雪崩风险。
+仍需单独补充的证据包括：H 的恢复后 COLD/WARM、真实 FastAPI 舱壁过载、版本软/强失效真实链路，
+以及 Redis 故障期间“冷启动 SQL 查询数为 0”的集成观测。已有单元测试不能替代这些端到端证据。
+
+## 9. 证据保留与复现
+
+### 9.1 本文保留什么
+
+每轮只保留以下能够直接支持结论的信息：
+
+- 实验模式、Stub 延迟、后端实例数和特殊启动参数。
+- 业务请求数、HTTP/业务检查结果和推荐请求 p95。
+- Stub 回源次数、失败次数、最大并发及每用户最大回源次数。
+- teardown 的稳定状态，即后端 `inFlight=0`、Stub `activeRequests=0`。
+- `degraded`、`wait_timeout`、`refresh_rejected`、`stale_hit` 等 Counter 差值。
+- FRESH/STALE 状态、逻辑 TTL、物理 TTL、用户版本和 `generatedAt` 等 Redis 元数据。
+- 异常轮次的原因、是否计入最终结论，以及尚未覆盖的验证边界。
+
+这些信息已归入第 2～8 节。F 轮的完整 Redis 元数据另外保存在
+[CON-04 Redis 快照记录](./con04-13-redis快照记录.md)，因为 TTL 分布不能只用单个汇总数字替代。
+
+### 9.2 为什么不再保留完整 k6 输出
+
+完整输出中大部分内容是每秒刷新一次的 VU 进度、k6 标志、网络收发字节和重复检查名称。这些内容
+不参与击穿或雪崩判断，却会掩盖回源次数、最大并发和 Counter 等核心证据。系统代码、数据准备脚本、
+k6 脚本和实验参数均已保留，因此删除终端原文不会影响复现。
+
+若某次复跑出现异常，应先把原始输出保留在本地临时文件中，完成分析后只将异常现象、根因、有效
+复跑结果和必要日志片段整理进本文，不再整段粘贴终端会话。Token、密码和本地隐私配置始终不得记录。
+
+### 9.3 复现入口
+
+- 操作步骤与每轮阈值：
+  [CON-04 推荐缓存击穿与雪崩实验](./concurrency/docs/04-recommend-cache-breakdown.md)。
+- 单 key 脚本：
+  [`con-04-single-key-cache.js`](./concurrency/k6/con-04-single-key-cache.js)。
+- 多 key 脚本：
+  [`con-04-cache-avalanche.js`](./concurrency/k6/con-04-cache-avalanche.js)。
+- Redis 清理和快照：
+  [`con-04-redis.sh`](./concurrency/data/con-04-redis.sh)。
+- Micrometer Counter 前后差值：
+  [`con-04-metrics.sh`](./concurrency/data/con-04-metrics.sh)。
+- 推荐 Stub：
+  [`recommend-cache-stub.py`](./concurrency/stubs/recommend-cache-stub.py)。
+
+复跑时必须以脚本阈值、最终 Stub 统计和缓存/指标证据联合判定，不能只依据 `checks=100%` 或
+HTTP 200 宣布通过。

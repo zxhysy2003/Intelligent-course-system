@@ -97,10 +97,22 @@ export function isValidBackendState(state) {
 }
 
 export function isValidStubStats(body) {
+  const counts = [
+    body?.requestTotal, body?.activeRequests, body?.maxActiveRequests,
+    body?.successTotal, body?.failureTotal,
+  ]
+  if (
+    !counts.every((value) => Number.isInteger(value) && value >= 0) ||
+    !body?.perUser || typeof body.perUser !== 'object' || Array.isArray(body.perUser)
+  ) {
+    return false
+  }
+  const perUserCounts = Object.values(body.perUser)
   return (
-    Number.isInteger(body?.requestTotal) &&
-    Number.isInteger(body?.activeRequests) &&
-    Number.isInteger(body?.maxActiveRequests)
+    perUserCounts.every((value) => Number.isInteger(value) && value > 0) &&
+    perUserCounts.reduce((sum, value) => sum + value, 0) === body.requestTotal &&
+    body.successTotal + body.failureTotal + body.activeRequests === body.requestTotal &&
+    body.activeRequests <= body.maxActiveRequests && body.maxActiveRequests <= body.requestTotal
   )
 }
 

@@ -17,6 +17,7 @@ import {
 const recommendRequests = new Counter('con04_recommend_requests')
 const upstreamRequests = new Counter('con04_upstream_requests')
 const upstreamMaxActive = new Gauge('con04_upstream_max_active')
+const upstreamFailures = new Counter('con04_upstream_failures')
 const unexpected = new Counter('con04_unexpected')
 const recommendDuration = new Trend('con04_recommend_duration', true)
 
@@ -36,7 +37,7 @@ const expectedUpstreamMin = readNonNegativeInteger(
   'CON04_EXPECT_UPSTREAM_MIN',
 )
 const expectedUpstreamMax = readNonNegativeInteger(
-  __ENV.CON04_EXPECT_UPSTREAM_MAX || (mode === 'WARM' ? '0' : String(virtualUsers)),
+  __ENV.CON04_EXPECT_UPSTREAM_MAX || (mode === 'WARM' ? '0' : '1'),
   'CON04_EXPECT_UPSTREAM_MAX',
 )
 const expectedMaxActiveMin = readNonNegativeInteger(
@@ -44,10 +45,13 @@ const expectedMaxActiveMin = readNonNegativeInteger(
   'CON04_EXPECT_MAX_ACTIVE_MIN',
 )
 const expectedMaxActiveMax = readNonNegativeInteger(
-  __ENV.CON04_EXPECT_MAX_ACTIVE_MAX || (mode === 'WARM' ? '0' : String(virtualUsers)),
+  __ENV.CON04_EXPECT_MAX_ACTIVE_MAX || (mode === 'WARM' ? '0' : '1'),
   'CON04_EXPECT_MAX_ACTIVE_MAX',
 )
 const p95LimitMs = readPositiveInteger(__ENV.CON04_P95_LIMIT_MS || '5000', 'CON04_P95_LIMIT_MS')
+const expectedFailures = readNonNegativeInteger(
+  __ENV.CON04_EXPECT_FAILURES || '0', 'CON04_EXPECT_FAILURES',
+)
 const statsSettleTimeoutMs = readPositiveInteger(
   __ENV.CON04_STATS_SETTLE_TIMEOUT_MS || '30000',
   'CON04_STATS_SETTLE_TIMEOUT_MS',
@@ -103,6 +107,7 @@ export const options = {
       `value>=${expectedMaxActiveMin}`,
       `value<=${expectedMaxActiveMax}`,
     ],
+    con04_upstream_failures: [`count==${expectedFailures}`],
     con04_unexpected: ['count==0'],
     con04_recommend_duration: [`p(95)<${p95LimitMs}`],
     ...buildBackendDistributionThresholds(baseUrls, virtualUsers),
@@ -165,6 +170,7 @@ export function teardown(data) {
   if (isValidStubStats(stats.body)) {
     upstreamRequests.add(stats.body.requestTotal)
     upstreamMaxActive.add(stats.body.maxActiveRequests)
+    upstreamFailures.add(stats.body.failureTotal)
     console.log(
       `[CON-04][single-key][${mode}] settled=${stats.settled} backendBuilds=${JSON.stringify(stats.backendStates)} stubStats=${JSON.stringify(stats.body)}`,
     )
