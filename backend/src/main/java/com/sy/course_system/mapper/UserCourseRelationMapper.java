@@ -5,6 +5,7 @@ import java.util.List;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.sy.course_system.dto.ProgressSummaryDTO;
@@ -15,6 +16,20 @@ import org.apache.ibatis.annotations.Param;
 
 @Mapper
 public interface UserCourseRelationMapper extends BaseMapper<UserCourseRelation> {
+
+    @Select("SELECT * FROM user_course_relation WHERE user_id=#{userId} AND course_id=#{courseId} FOR UPDATE")
+    UserCourseRelation selectForUpdate(@Param("userId") Long userId, @Param("courseId") Long courseId);
+
+    // 保留关系不存在、用户删除和课程状态的联合判定，供异步任务判断业务是否仍有效。
+    @Select("""
+            SELECT c.status FROM user_course_relation r JOIN course c ON c.id=r.course_id
+            JOIN user u ON u.id=r.user_id
+            WHERE r.user_id=#{userId} AND r.course_id=#{courseId} AND u.deleted=0
+            """)
+    Integer selectCourseStatusForActiveRelation(@Param("userId") Long userId, @Param("courseId") Long courseId);
+
+    @Update("UPDATE user_course_relation SET last_view_recorded_at=#{now} WHERE id=#{id}")
+    int updateViewTime(@Param("id") Long id, @Param("now") LocalDateTime now);
 
     // 获取单个用户的课程进度汇总数据
     @Select("""

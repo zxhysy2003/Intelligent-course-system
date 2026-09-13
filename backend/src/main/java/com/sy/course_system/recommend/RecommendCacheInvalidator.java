@@ -28,17 +28,18 @@ public class RecommendCacheInvalidator {
     /**
      * 节流判断、版本递增和冷启动状态删除必须在 Redis 内一次完成。否则旧版本构建可能恰好在
      * 多条命令之间写回缓存，导致已经失效的数据再次变成 fresh。
+     * 先完成版本更新再占用节流键，避免 INCR 失败后重试被节流误判为成功。
      */
     private static final DefaultRedisScript<Long> SOFT_INVALIDATE_SCRIPT = new DefaultRedisScript<>("""
             local throttleSeconds = tonumber(ARGV[1])
-            if throttleSeconds > 0 then
-                local acquired = redis.call('set', KEYS[1], '1', 'EX', throttleSeconds, 'NX')
-                if not acquired then
-                    return 0
-                end
+            if throttleSeconds > 0 and redis.call('exists', KEYS[1]) == 1 then
+                return 0
             end
             redis.call('incr', KEYS[2])
             redis.call('del', KEYS[3])
+            if throttleSeconds > 0 then
+                redis.call('set', KEYS[1], '1', 'EX', throttleSeconds, 'NX')
+            end
             return 1
             """, Long.class);
 
@@ -79,6 +80,27 @@ public class RecommendCacheInvalidator {
 
     public void invalidateOnboardingRecommend(Long userId) {
         invalidateStrongUserRecommend(userId);
+    }
+
+    /** 消费失败必须传播给 Outbox；其他业务入口仍保持尽力失效的兼容语义。 */
+    public void invalidateFromOutbox(Long userId, String mode) {
+        Long result;
+        if ("strong".equals(mode)) {
+            result = stringRedisTemplate.execute(HARD_INVALIDATE_SCRIPT, List.of(
+                    RecommendCacheKeys.USER_VERSION_PREFIX + userId,
+                    RecommendCacheKeys.V2_REGULAR_PREFIX + userId,
+                    RecommendCacheKeys.V2_COLD_START_PREFIX + userId,
+                    RecommendCacheKeys.COLD_START_STATUS_PREFIX + userId));
+        } else if ("soft".equals(mode)) {
+            result = stringRedisTemplate.execute(SOFT_INVALIDATE_SCRIPT, List.of(
+                    STUDY_INVALIDATE_THROTTLE_KEY + userId,
+                    RecommendCacheKeys.USER_VERSION_PREFIX + userId,
+                    RecommendCacheKeys.COLD_START_STATUS_PREFIX + userId),
+                    String.valueOf(recommendProperties.cache().studyInvalidateThrottleSeconds()));
+        } else {
+            throw new IllegalArgumentException("未知缓存失效模式");
+        }
+        if (result == null) throw new IllegalStateException("缓存失效未返回结果");
     }
 
     private void softInvalidate(Long userId, long throttleSeconds) {

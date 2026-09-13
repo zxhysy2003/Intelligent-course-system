@@ -2,6 +2,7 @@ package com.sy.course_system.entity;
 
 import java.time.LocalDateTime;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
@@ -18,6 +19,16 @@ public class UserCourseRelation {
     private Integer learnedSeconds; // 已学习时长，单位：秒
     private Integer status; // 0: not started, 1: in progress, 2: completed
     private LocalDateTime lastLearnTime;
+    @JsonIgnore
+    private LocalDateTime lastViewRecordedAt;
+
+    public LocalDateTime getLastViewRecordedAt() {
+        return lastViewRecordedAt;
+    }
+    public void setLastViewRecordedAt(LocalDateTime value) {
+        lastViewRecordedAt = value;
+    }
+
     private LocalDateTime completeTime;
     private Integer isFavorite; // 0: no, 1: yes
     private Integer progressSeconds; // 已学习时长，单位：秒

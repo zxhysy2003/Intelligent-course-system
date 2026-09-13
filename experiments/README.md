@@ -4,7 +4,9 @@
 
 当前实验主题：
 
-- [高并发实验](./concurrency/README.md)
+- [高并发实验](./concurrency/README.md)：实验清单与实施顺序
+- [实验执行手册](./concurrency/docs/EXPERIMENT_GUIDE.md)：隔离、指标、步骤和报告模板
+- [实验结果索引](./concurrency/results/README.md)：已归档报告
 
 实验区遵守以下约定：
 

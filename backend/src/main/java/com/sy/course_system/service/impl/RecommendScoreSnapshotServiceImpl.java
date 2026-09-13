@@ -13,6 +13,7 @@ import com.sy.course_system.dto.recommend.RecommendScoreSnapshotDTO;
 import com.sy.course_system.dto.recommend.UserCourseBaseScoreDTO;
 import com.sy.course_system.mapper.LearningBehaviorMapper;
 import com.sy.course_system.mapper.RecommendScoreSnapshotMapper;
+import com.sy.course_system.mapper.UserCourseRelationMapper;
 import com.sy.course_system.service.RecommendScoreSnapshotService;
 
 @Service
@@ -21,19 +22,26 @@ public class RecommendScoreSnapshotServiceImpl implements RecommendScoreSnapshot
     private final LearningBehaviorMapper learningBehaviorMapper;
     private final RecommendScoreSnapshotMapper recommendScoreSnapshotMapper;
     private final RecommendProperties recommendProperties;
+    private final UserCourseRelationMapper relationMapper;
 
     public RecommendScoreSnapshotServiceImpl(LearningBehaviorMapper learningBehaviorMapper,
             RecommendScoreSnapshotMapper recommendScoreSnapshotMapper,
-            RecommendProperties recommendProperties) {
+            RecommendProperties recommendProperties, UserCourseRelationMapper relationMapper) {
         this.learningBehaviorMapper = learningBehaviorMapper;
         this.recommendScoreSnapshotMapper = recommendScoreSnapshotMapper;
         this.recommendProperties = recommendProperties;
+        this.relationMapper = relationMapper;
     }
 
     @Override
     @Transactional(transactionManager = "transactionManager", propagation = Propagation.REQUIRES_NEW)
     public void refreshUserCourseScore(Long userId, Long courseId) {
         if (userId == null || courseId == null) {
+            return;
+        }
+        // 必须在首次一致性读之前锁定关系，避免并发刷新写回过期计算结果。
+        if (relationMapper.selectForUpdate(userId, courseId) == null) {
+            recommendScoreSnapshotMapper.deleteByUserCourse(userId, courseId);
             return;
         }
         UserCourseBaseScoreDTO baseScore = learningBehaviorMapper.getUserCourseBaseScoreSnapshot(userId, courseId);

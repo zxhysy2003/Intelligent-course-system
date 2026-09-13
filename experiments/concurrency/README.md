@@ -1,25 +1,12 @@
 # 高并发实验
 
-本目录用于通过智能课程系统学习高并发场景中的并发正确性、缓存、线程池、数据库、分布式一致性和服务隔离。
+本目录保存基于真实业务的并发正确性、缓存与服务隔离实验。实验工具独立于正式启动流程，优化在对应业务模块中验证。
 
-这里不创建一个脱离项目的演示系统。压测和故障注入工具保存在本目录，待复现问题后，优化仍在 `backend/`、`recommend-service/` 等真实模块中完成。
-
-## 1. 实验目标
-
-每个实验都要形成下面的闭环：
-
-1. 阅读当前实现，提出可以验证的假设。
-2. 在独立环境中建立数据和性能基线。
-3. 通过并发请求、数据放大或故障注入复现现象。
-4. 同时记录性能指标和最终数据状态。
-5. 修改现有实现，并使用完全相同的负载复测。
-6. 记录收益、代价、适用边界和仍未解决的问题。
-
-## 2. 目录结构
+## 目录结构
 
 ```text
 experiments/concurrency/
-├── README.md                 # 实验总览、统一规范和推荐顺序
+├── README.md                 # 实验总览、手册入口和推荐顺序
 ├── docs/                     # 每个实验的详细手册
 ├── k6/                       # HTTP 压测脚本
 ├── data/                     # 实验数据生成和清理脚本
@@ -28,63 +15,29 @@ experiments/concurrency/
 └── results/                  # 实验报告与脱敏结果
 ```
 
-子目录当前先保存约定和设计文档。脚本、监控配置和结果在对应实验开始实施时逐步加入，避免提前放入不可运行的占位配置。
+压测脚本、数据工具和 Stub 已按实验逐步实现；各目录 README 提供文件索引。
 
-## 3. 通用隔离规则
+## 执行入口
 
-- 使用单独数据库，例如 `course_concurrency`，不要直接清理 `course_db` 中的日常开发数据。
-- 使用独立 Docker Compose project name 和 volume，确保停止或重建实验环境不会影响开发环境。
-- 实验配置使用独立 profile，例如 `application-concurrency.yaml`；默认配置仍服务日常开发。
-- 大批量造数不写入正式 Flyway 基线，统一放在 `data/`。
-- 需要模拟坏实现时，使用临时表、测试替身或独立分支，不删除正式迁移中的约束。
-- `results/` 中不保存真实 Token、密码、用户隐私或完整生产日志。
+使用独立实验数据库、Compose project 和 volume，禁止清理日常开发数据。执行步骤、观测指标与报告模板见 [实验执行手册](docs/EXPERIMENT_GUIDE.md)；脚本参数与示例见 [k6 使用手册](docs/K6_GUIDE.md)。
 
-## 4. 统一观测指标
-
-### 4.1 接口指标
-
-- 吞吐量：requests/s。
-- 延迟：p50、p95、p99、max。
-- HTTP 失败率、业务失败率、超时率。
-- 客户端主动取消后，服务端仍在执行的请求数量。
-
-### 4.2 JVM 与线程池
-
-- Tomcat 当前线程、忙线程和排队情况。
-- 推荐、Agent 线程池的 active、pool size、queue size、rejected count。
-- JVM CPU、堆、GC 次数和暂停时间。
-- Hikari active、idle、pending、acquire time。
-
-### 4.3 MySQL 与 Redis
-
-- SQL 执行次数、扫描行数、慢查询和锁等待。
-- 数据库连接数及连接池等待时间。
-- Redis 命令延迟、连接数、缓存命中率和回源构建次数。
-- 实验结束后的业务行数、唯一性、累计值和状态机结果。
-
-### 4.4 推荐服务
-
-- Python 进程 CPU、内存和请求延迟。
-- 模型版本、候选课程数、单次预测数量。
-- 模型 reload 期间在线推荐的成功率和延迟。
-
-## 5. 实验清单
+## 实验清单
 
 | 编号 | 实验 | 主要入口 | 当前实现切入点 | 重点问题 | 状态 |
 |---|---|---|---|---|---|
 | CON-01 | [并发选课](./docs/01-concurrent-enrollment.md) | `POST /api/v1/courses/{courseId}/enrollment` | 唯一索引 + `DuplicateKeyException` | 数据库唯一约束、并发正确性、接口幂等语义 | 已完成 |
 | CON-02 | [并发学习进度与首次完课](./docs/02-concurrent-learning-progress.md) | `POST /api/v1/learning-behaviors` | 原子累加 + `complete_time IS NULL` | 丢失更新、CAS、状态机、首次事件 | 已完成 |
 | CON-03 | [STUDY 请求重复消费](./docs/03-study-event-idempotency.md) | `POST /api/v1/learning-behaviors` | 行为日志事件 ID + 数据库唯一键 | 原子性与幂等、重试去重、唯一键 | 已完成 |
-| CON-04 | [推荐缓存击穿与雪崩](./docs/04-recommend-cache-breakdown.md) | `GET /api/v1/recommendations` | v2 逻辑过期、分布式锁、single-flight、有界构建 | 惊群、TTL 抖动、旧值与降级、故障恢复 | [历史基线已完成，重构后待验收](../CON-04实验结果.md) |
+| CON-04 | [推荐缓存击穿与雪崩](./docs/04-recommend-cache-breakdown.md) | `GET /api/v1/recommendations` | v2 逻辑过期、分布式锁、single-flight、有界构建 | 惊群、TTL 抖动、旧值与降级、故障恢复 | 部分完成 |
 | CON-05 | 慢推荐服务与线程池背压 | 后端到 `/recommend` | CF 2 秒读取超时、外层有界构建池、Python 舱壁 | 持续过载、超时预算、资源隔离与恢复 | 待设计 |
-| CON-06 | Redis 热榜与双写一致性 | 学习行为、`course:hot` | MySQL 事务内同步 `ZINCRBY` | 热点写、依赖故障、Outbox、最终一致性 | 待设计 |
+| CON-06 | Redis 热榜与双写一致性 | 学习行为、`course:hot` | MySQL Outbox + Redis 去重增量 | 热点写、依赖故障、Outbox、最终一致性 | 待设计 |
 | CON-07 | 课程列表 SQL 与连接池 | `POST /api/v1/courses/search` | 相关子查询、多次回补、无 pageSize 上限 | 执行计划、组合索引、连接池、分页保护 | 待设计 |
 | CON-08 | 多实例定时任务竞争 | 热度快照同步 | 每个后端实例都执行 `@Scheduled` | 集群调度、分布式锁、幂等批处理 | 待设计 |
 | CON-09 | 推荐服务 CPU 扩展与模型切换 | FastAPI `/recommend`、`/model/reload` | 在线请求遍历全部课程、进程内模型状态 | CPU 密集、预计算、横向扩容、版本一致性 | 待设计 |
 | CON-10 | 视频流量与业务 API 隔离 | `/videos/**` | Nginx 继续代理到 Spring Boot | Range 请求、IO 隔离、对象存储、CDN | 待设计 |
 | CON-11 | Agent 多实例幂等恢复 | `POST /api/v1/assistant/messages` | 数据库唯一键 + 单机处理中租约 | 数据幂等与执行互斥、分布式恢复 | 待设计 |
 
-## 6. 推荐实施顺序
+## 推荐实施顺序
 
 1. **并发正确性**：CON-01、CON-02、CON-03。
 2. **缓存与过载保护**：CON-04、CON-05。
@@ -92,44 +45,3 @@ experiments/concurrency/
 4. **服务扩展和资源隔离**：CON-09、CON-10、CON-11。
 
 CON-01 最适合作为第一个实验：数据规模要求低，结果可以用唯一行数明确判定，而且能直接对比“应用锁”和“数据库唯一约束”的边界。
-
-## 7. 每轮实验的固定步骤
-
-1. 记录 commit、运行配置、机器环境和依赖容器版本。
-2. 重建或清理实验数据，确认前置条件。
-3. 先运行低并发冒烟测试。
-4. 依次提高并发度，不在同一轮同时修改多个参数。
-5. 保存压测摘要和服务端指标。
-6. 使用 SQL 或业务查询验证最终状态。
-7. 写出结论，不能只以“接口没有报错”代表实验成功。
-
-## 8. 结果报告模板
-
-每份实验结果至少包含：
-
-```markdown
-# CON-XX 实验名称
-
-## 实验信息
-- Commit：
-- 日期：
-- 环境：
-- 数据规模：
-- 并发模型：
-
-## 假设
-
-## 配置与步骤
-
-## 性能结果
-| 指标 | 基线 | 优化后 |
-|---|---:|---:|
-| QPS | | |
-| p95 | | |
-| p99 | | |
-| 错误率 | | |
-
-## 正确性结果
-
-## 结论与边界
-```

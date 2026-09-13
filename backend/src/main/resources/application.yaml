@@ -190,3 +190,15 @@ logging:
   level:
     "[org.springframework.transaction]": DEBUG
     "[org.springframework.jdbc.datasource.DataSourceTransactionManager]": DEBUG
+
+# 学习事务提交后执行持久化副作用，暂停消费仍会保存任务。
+learning:
+  outbox:
+    enabled: ${LEARNING_OUTBOX_ENABLED:true}
+    scan-interval-ms: ${LEARNING_OUTBOX_SCAN_INTERVAL_MS:1000}
+    parallelism: ${LEARNING_OUTBOX_PARALLELISM:4}
+    lease-seconds: ${LEARNING_OUTBOX_LEASE_SECONDS:60}
+    renew-seconds: ${LEARNING_OUTBOX_RENEW_SECONDS:20}
+    max-attempts: ${LEARNING_OUTBOX_MAX_ATTEMPTS:20}
+    retry-base-seconds: ${LEARNING_OUTBOX_RETRY_BASE_SECONDS:5}
+    retry-max-seconds: ${LEARNING_OUTBOX_RETRY_MAX_SECONDS:300}

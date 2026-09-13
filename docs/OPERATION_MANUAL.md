@@ -14,6 +14,8 @@
 
 演示主线建议使用普通学生账号：登录后先完成 `/onboarding` 三步引导，再进入 `/recommendations` 查看带来源核验的推荐卡片，也可以进入 `/assistant` 让学习助手基于学习画像、进度、能力雷达、最近课程和推荐结果生成只读学习建议。
 
+相关开发参考见 [文档索引](README.md)。单独开发或联调某个服务时，可查阅 [后端](BACKEND_GUIDE.md)、[前端](FRONTEND_GUIDE.md) 和 [推荐服务](RECOMMEND_SERVICE_GUIDE.md) 手册。
+
 ## 1. 仓库结构
 
 ```text
@@ -860,3 +862,174 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8000
 - 为 FastAPI 推荐服务增加进程守护，例如 systemd、Docker 或 Supervisor
 - 为后端和推荐服务增加日志收集与监控
 - 明确前端生产构建产物的部署路径和后端 API 地址
+
+
+## 学习行为 Outbox 运行与恢复
+
+### 行为与部署
+
+学习接口返回成功表示 MySQL 中的行为、进度、首次完成状态与任务已经一起提交；Redis 热度、Neo4j 掌握关系、推荐快照和缓存失效由后台补齐。
+后台消费不依赖消息中间件。缓存失效等待对应快照和掌握度任务完成，普通 STUDY 保留弱失效节流。
+VIEW 十分钟冷却改为 MySQL `user_course_relation.last_view_recorded_at`，迁移从现有 VIEW 历史初始化；事务回滚不会消耗冷却机会。
+Neo4j 掌握分数改为历史最高值，以现存值为初值，新的低分或重试不会降低分数；完课公式保持不变，不重建过去已被覆盖的历史分数。
+
+上线时暂停学习写入，停止全部旧后端，备份数据库，启动新版让 Flyway 执行 V4，再恢复流量。
+不可混合运行旧版同步处理与新版 Outbox；本次迁移只增加列和任务表，不补偿历史跨库不一致。
+回退应用前必须暂停写入并处理或明确保留全部待办任务，不能简单删除任务表。
+
+### 配置
+
+| 环境变量 | 默认值 | 含义 |
+| --- | --- | --- |
+| LEARNING_OUTBOX_ENABLED | true | 消费开关；关闭仍记录任务，需要重启应用生效 |
+| LEARNING_OUTBOX_SCAN_INTERVAL_MS | 1000 | 扫描间隔 |
+| LEARNING_OUTBOX_PARALLELISM | 4 | 每实例最大并行任务数 |
+| LEARNING_OUTBOX_LEASE_SECONDS | 60 | 执行租约 |
+| LEARNING_OUTBOX_RENEW_SECONDS | 20 | 续租间隔，租约至少为其两倍 |
+| LEARNING_OUTBOX_MAX_ATTEMPTS | 20 | 单任务最大执行尝试次数 |
+| LEARNING_OUTBOX_RETRY_BASE_SECONDS | 5 | 首次重试基准延迟 |
+| LEARNING_OUTBOX_RETRY_MAX_SECONDS | 300 | 指数退避含抖动的最大延迟 |
+
+消费程序在独立的 READ COMMITTED 短事务中领取任务，避免状态索引间隙锁竞争；外部调用不持有领取锁。进程重启后过期租约可重新领取。
+`next_attempt_at` 是 PENDING 任务允许再次领取的最早时间；失败后按退避策略推迟，并不保证到点立即执行。
+PROCESSING 任务是否可回收由 `lease_until` 决定；每次领取都会增加尝试次数，过期且已达到上限的任务转为 DEAD。
+状态更新携带租约令牌，旧执行者不能覆盖新执行者的任务状态；副作用本身也支持重复执行。
+任务依赖为 DONE 或 SKIPPED 才可执行；依赖处于 DEAD 时，应优先修复该依赖。
+MySQL 源用户被删除、课程或选课关系不存在时跳过任务；课程下线跳过热度任务。
+MySQL 源数据存在而 Neo4j 用户或知识点缺失时视为故障，整批图写入回滚并重试，不静默丢失掌握关系。
+
+### 停机与重启
+
+Spring 容器正常销毁 `LearningOutboxProcessor` 时会自动调用其 `@PreDestroy close()`。
+处理器先通知扫描停止领取，并关闭工作线程池的提交入口，再最多等待 30 秒让已提交任务收尾；等待期间续租线程池仍可维护租约。
+等待超时或等待线程被中断时，会尝试中断工作线程，最后关闭续租线程池。
+
+中断需要任务配合响应，因此该方法返回不保证所有工作线程已结束；强制杀进程也不能保证执行销毁回调。
+重启后应检查遗留的 PROCESSING、PENDING 和 DEAD 任务，按租约和重试规则恢复，不要仅因进程已退出就重放仍有有效租约的任务。
+
+### 检查与重放
+
+使用管理员 JWT 访问 `GET /actuator/metrics/{指标名}` 查看以下指标：
+
+| 指标 | 统计口径 |
+| --- | --- |
+| `learning.outbox.pending` | MySQL 中 PENDING 与 PROCESSING 的数量之和，包含等待重试和等待依赖的任务 |
+| `learning.outbox.oldest.seconds` | 上述任务中最早的 created_at 距数据库当前时间的秒数；没有任务时为 0，重试不会重新开始计时 |
+| `learning.outbox.dead` | MySQL 中 DEAD 任务数量 |
+| `learning.outbox.completed` | 当前实例成功写入 DONE 或 SKIPPED 状态的次数，按 type 区分 |
+| `learning.outbox.failures` | 当前实例执行过程中捕获异常的次数，按 type 区分；同一任务重试可重复计数 |
+| `learning.outbox.duration` | 当前实例的任务处理耗时，按 type 区分，包含失败和提前退出的处理 |
+
+前三项在扫描时刷新，关闭消费开关后仍会查询；扫描查询失败时可能保留上次采样值。
+它们反映共享数据库的队列状态，多实例监控时不要直接相加；后三项是各实例进程内的累计观测值。
+重点关注最老待办持续增长和死任务；日志包含 taskId 和尝试次数。以下 SQL 由具有数据库运维权限的操作者执行，不向学生端开放。
+
+```sql
+SELECT status, task_type, COUNT(*) AS tasks, MIN(created_at) AS oldest
+FROM learning_outbox_task GROUP BY status, task_type;
+
+SELECT id, task_type, attempts, last_error, dependency_id, mastery_dependency_id
+FROM learning_outbox_task WHERE status='DEAD' ORDER BY created_at;
+
+-- 查找因失败依赖而等待的缓存任务。
+SELECT t.id, d.id AS failed_dependency, d.last_error
+FROM learning_outbox_task t JOIN learning_outbox_task d
+  ON d.id=t.dependency_id OR d.id=t.mastery_dependency_id
+WHERE t.status='PENDING' AND d.status='DEAD';
+```
+
+先检查指定任务的载荷和失败原因，恢复 Redis/Neo4j 或修复缺失图数据，再重放明确选定的 DEAD 任务。
+不要修改任务 ID、来源事件 ID、载荷或依赖，不重放仍在执行的任务，不复制为一条新任务。
+
+```sql
+START TRANSACTION;
+SELECT id, status, payload, last_error FROM learning_outbox_task
+WHERE id='替换为已核验的任务ID' FOR UPDATE;
+UPDATE learning_outbox_task
+SET status='PENDING', attempts=0, next_attempt_at=NOW(6),
+    lease_token=NULL, lease_until=NULL, completed_at=NULL, last_error=NULL
+WHERE id='替换为已核验的任务ID' AND status='DEAD';
+COMMIT;
+```
+
+如需要等待依赖恢复，可先关闭消费、修复后重新开启。暂时没有自动归档，已完成任务与
+`learning:outbox:hot:<taskId>` 去重键均保留，需监控存储增长，不单独删除去重键。
+
+### Redis 丢失与任务重试的区别
+
+普通请求超时或进程崩溃后，任务重试沿用原 ID，已有去重标记可阻止重复加热度。
+这依赖 Redis 热榜与去重记录仍然存在；应为相关数据配置合适的持久化、备份和不淘汰策略。
+Redis 全量丢失、恢复旧备份或去重键被淘汰，不能靠 Outbox 声称精确恢复，也不能把全部历史增量任务直接重放。
+
+发生数据丢失时，暂停消费并暂时关闭 `RECOMMEND_HOT_SYNC_ENABLED`，保留 MySQL 热度快照，
+避免空 Redis 覆盖快照；按同一恢复时点恢复热榜及去重数据，核验后再恢复消费和热度同步。
+如果没有一致的备份，需单独制定热度重建和待办对账方案，本次改造不提供自动重建工具。
+
+### 故障恢复验证
+
+`cd backend && ./mvnw test` 运行全部测试，需要 Docker；集成测试在隔离的 MySQL、Redis、Neo4j 容器中验证事务回滚、
+重复请求、并发完课/浏览、租约回收、外部执行后崩溃、Neo4j 缺失节点、Redis 错误及 HTTP 学习请求后的恢复。
+测试不会停止或清空开发环境的数据库。
+
+
+## 一键开发启动与演示
+
+完成依赖安装并启动基础服务后，推荐用一键脚本拉起前端、后端和推荐服务：
+
+首次运行先生成两个不同的本机固定密钥，并写入已被 Git 忽略的 `.env.local`：
+
+```bash
+openssl rand -base64 32
+openssl rand -base64 32
+```
+
+```dotenv
+JWT_SECRET_BASE64=把上一步生成的值粘贴到这里
+PLAYBACK_TOKEN_SECRET_BASE64=把第二个生成值粘贴到这里
+```
+
+开发脚本会自动加载 `.env.local`，后续重启继续使用同一密钥：
+
+```bash
+./scripts/dev.sh
+```
+
+如果当前环境没有 zsh，也可以使用 Bash 版本：
+
+```bash
+./scripts/dev.bash
+```
+
+默认地址：
+
+- frontend: `http://127.0.0.1:5173`
+- backend: `http://127.0.0.1:8080`
+- recommend-service: `http://127.0.0.1:8000`
+
+推荐服务会优先通过 Conda 环境 `lab_autumn` 启动；如需切换可设置 `RECOMMEND_CONDA_ENV`。脚本默认会一直等待后端启动完成；如需设置等待上限，可设置 `BACKEND_READY_TIMEOUT_SECONDS`。
+
+常用覆盖项可直接在命令前设置，例如：
+
+```bash
+FRONTEND_PORT=5174 BACKEND_PORT=8081 RECOMMEND_PORT=8001 ./scripts/dev.sh
+```
+
+完整手动启动、Flyway 接管旧库、数据库重建和排查步骤见 [docs/OPERATION_MANUAL.md](OPERATION_MANUAL.md)。
+
+
+### 演示流程
+
+1. 注册或登录一个普通学生账号
+2. 首次进入学生端会自动跳到 `/onboarding`
+3. 依次选择当前基础、学习目标和至少一个兴趣标签
+4. 完成后进入 `/recommendations`，推荐卡片会显示推荐分、原因、准备度和来源标签
+5. 可继续进入课程详情、播放视频并回写学习行为，再刷新推荐观察结果变化
+
+推荐来源字段由后端 `GET /api/v1/recommendations` 透出为 `recommendSource`：
+
+| 值 | 含义 |
+| --- | --- |
+| `CF` | 协同过滤候选，经课程状态、已选过滤和图谱准备度加权 |
+| `COLD_START_USER` | 新用户或行为不足时，基于引导画像和兴趣标签生成 |
+| `COLD_START_COURSE` | 常规链路中的新课注入候选 |
+| `HOT_FALLBACK` | CF 和新课候选不可用时的热门课程兜底 |

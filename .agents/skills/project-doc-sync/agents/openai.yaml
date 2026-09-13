@@ -1,0 +1,6 @@
+interface:
+  display_name: "项目文档同步"
+  short_description: "核对当前代码与配置，按概述、手册和模块说明分层更新项目文档"
+  default_prompt: "使用 $project-doc-sync，根据当前项目实际实现同步相关文档，保持 README 简洁，并检查链接与内容一致性。"
+policy:
+  allow_implicit_invocation: true

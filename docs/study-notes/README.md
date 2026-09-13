@@ -20,8 +20,15 @@
 |---|---|---|---|
 | 推荐构建线程池 | [recommend-build-thread-pool.md](recommend-build-thread-pool.md) | 核心线程、最大线程与队列容量；2 / 4 / 16 接收顺序；single-flight、拒绝与超时降级 | 2026-09-03 |
 | Micrometer 与推荐缓存指标观测 | [micrometer-observability.md](micrometer-observability.md) | Counter、Timer、Gauge；推荐缓存埋点；Actuator 暴露与 CON-04 实验观测 | 2026-09-04 |
+| 推荐缓存更新与失效 | [recommend-cache-invalidation.md](recommend-cache-invalidation.md) | 缓存三态、软/强失效、版本校验；Outbox 依赖、租约续租与超时接管 | 2026-09-12 |
+| 推荐评分快照刷新 | [recommend-score-snapshot.md](recommend-score-snapshot.md) | 隐式评分与重建；FOR UPDATE、REQUIRES_NEW、挂起不释放锁；MANDATORY 原子入队、Outbox 事务拆分与训练边界 | 2026-09-13 |
+| 热度 Lua 与任务去重 | [learning-hot-lua.md](learning-hot-lua.md) | ZINCRBY 与执行凭证、Lua 原子性和失败边界、参数序列化、unchecked 泛型警告 | 2026-09-12 |
+| Java record 与数据对象 | [java-record.md](java-record.md) | 自动生成方法、浅不可变、值相等、Outbox 数据载体与普通类的选择 | 2026-09-12 |
+| Outbox 关闭流程与线程中断 | [outbox-shutdown.md](outbox-shutdown.md) | @PreDestroy 生命周期、线程池关闭顺序、续租收尾、中断标记恢复与外层响应示例 | 2026-09-13 |
 
 ## 组织约定
+
+需要在手机上复习时，参考 [同步到个人博客](../STUDY_NOTES_BLOG_SYNC.md)，将这里的原稿导出到博客。
 
 - 主题文件使用英文 kebab-case 文件名，正文使用中文。
 - 代码引用使用仓库相对路径，并优先记录类名和方法名。

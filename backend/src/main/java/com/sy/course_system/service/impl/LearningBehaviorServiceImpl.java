@@ -5,13 +5,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sy.course_system.common.UserContext;
@@ -22,12 +17,11 @@ import com.sy.course_system.enums.BehaviorRecordOutcome;
 import com.sy.course_system.enums.LearnBehaviorType;
 import com.sy.course_system.exception.LearningBehaviorEventConflictException;
 import com.sy.course_system.mapper.LearningBehaviorMapper;
-import com.sy.course_system.recommend.RecommendCacheInvalidator;
-import com.sy.course_system.repository.KnowledgeRepository;
+import com.sy.course_system.mapper.UserCourseRelationMapper;
+import com.sy.course_system.outbox.LearningOutboxWriter;
+import com.sy.course_system.outbox.LearningOutboxPayload;
 import com.sy.course_system.service.CourseService;
-import com.sy.course_system.service.LearningAnalysisService;
 import com.sy.course_system.service.LearningBehaviorService;
-import com.sy.course_system.service.RecommendScoreSnapshotService;
 import com.sy.course_system.service.UserCourseService;
 import com.sy.course_system.service.VideoService;
 
@@ -35,40 +29,25 @@ import com.sy.course_system.service.VideoService;
 public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMapper, LearningBehavior>
         implements LearningBehaviorService {
 
-    private static final Logger log = LoggerFactory.getLogger(LearningBehaviorServiceImpl.class);
-
     private static final int MAX_SINGLE_SESSION_SECONDS = 6 * 60 * 60; // 每次上报的最大学习时长: 6小时
     private static final double FINISH_HOT_SCORE = 2.0; // 完成课程后增加的热度分数
     private static final double BASE_SCORE_THRESHOLD = 40.0; // 基础分数阈值
     private static final Pattern STUDY_EVENT_ID_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._:-]{0,63}");
 
     private final CourseService courseService;
-    private final KnowledgeRepository knowledgeRepository;
-    private final LearningAnalysisService learningAnalysisService;
     private final UserCourseService userCourseService;
     private final VideoService videoService;
-    private final StringRedisTemplate stringRedisTemplate;
-    private final RecommendCacheInvalidator recommendCacheInvalidator;
-    private final RecommendScoreSnapshotService recommendScoreSnapshotService;
+    private final UserCourseRelationMapper relationMapper;
+    private final LearningOutboxWriter outbox;
+    private static final long VIEW_COOLDOWN_SECONDS = 600;
 
-    private static final long VIEW_COOLDOWN_SECONDS = 10 * 60; // 10分钟冷却时间
-
-    public LearningBehaviorServiceImpl(CourseService courseService,
-            KnowledgeRepository knowledgeRepository,
-            LearningAnalysisService learningAnalysisService,
-            UserCourseService userCourseService,
-            VideoService videoService,
-            StringRedisTemplate stringRedisTemplate,
-            RecommendCacheInvalidator recommendCacheInvalidator,
-            RecommendScoreSnapshotService recommendScoreSnapshotService) {
+    public LearningBehaviorServiceImpl(CourseService courseService, UserCourseService userCourseService,
+            VideoService videoService, UserCourseRelationMapper relationMapper, LearningOutboxWriter outbox) {
         this.courseService = courseService;
-        this.knowledgeRepository = knowledgeRepository;
-        this.learningAnalysisService = learningAnalysisService;
         this.userCourseService = userCourseService;
         this.videoService = videoService;
-        this.stringRedisTemplate = stringRedisTemplate;
-        this.recommendCacheInvalidator = recommendCacheInvalidator;
-        this.recommendScoreSnapshotService = recommendScoreSnapshotService;
+        this.relationMapper = relationMapper;
+        this.outbox = outbox;
     }
 
     /**
@@ -90,7 +69,7 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
                 ? normalizeStudyEventId(eventId)
                 : null;
 
-        UserCourseRelation relation = userCourseService.getUserCourseRelation(userId, courseId);
+        UserCourseRelation relation = relationMapper.selectForUpdate(userId, courseId);
         if (relation == null) {
             // 保留原接口语义：未选课时忽略行为；不占用 eventId，选课后仍可安全重试。
             return BehaviorRecordOutcome.PROCESSED;
@@ -115,25 +94,24 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
         BehaviorHandleResult result = handleUserCourseRelation(
                 relation, userId, courseId, behaviorType, safeDuration);
 
-        // 2.决定是否入库（行为表）
-        // 约定： IGNORE 表示本次不写"learning_behavior"表（例如UNFAVORITE）
-        if (result != BehaviorHandleResult.IGNORE) {
-            // STUDY 已在业务更新前写入，并以唯一键决定本次是否有处理资格。
-            if (behaviorType != LearnBehaviorType.STUDY) {
-                saveBehavior(userId, courseId, behaviorType, safeDuration);
-            }
-            // 热度： 对本行为加一次（STUDY/VIEW/FAVORITE）
-            double hotScore = calcHotScore(behaviorType, safeDuration);
-            learningAnalysisService.increaseCourseHot(courseId, hotScore);
+        boolean finish = result == BehaviorHandleResult.TRIGGER_FINISH;
+        boolean recorded = result != BehaviorHandleResult.IGNORE;
+        if (recorded && behaviorType != LearnBehaviorType.STUDY) {
+            saveBehavior(userId, courseId, behaviorType, safeDuration);
         }
-        if (behaviorType == LearnBehaviorType.STUDY && result == BehaviorHandleResult.NORMAL) {
-            recommendCacheInvalidator.invalidateStudyUserRecommend(userId);
+        // 在 FINISH 写入前冻结掌握度，保持原有隐式评分的计算时点。
+        LearningOutboxPayload mastery = finish ? captureMastery(userId, courseId) : null;
+        if (finish) saveBehavior(userId, courseId, LearnBehaviorType.FINISH, 0);
+        if (recorded || behaviorType == LearnBehaviorType.UNFAVORITE) {
+            String mode = finish || behaviorType == LearnBehaviorType.FAVORITE
+                    || behaviorType == LearnBehaviorType.UNFAVORITE ? "strong"
+                    : behaviorType == LearnBehaviorType.STUDY ? "soft" : null;
+            double hot = recorded ? calcHotScore(behaviorType, safeDuration) + (finish ? FINISH_HOT_SCORE : 0) : 0;
+            outbox.enqueue(userId, courseId, LearningOutboxPayload.of(hot,
+                    mastery == null ? List.of() : mastery.knowledgePointIds(),
+                    mastery == null ? null : mastery.mastery(),
+                    mastery == null ? null : mastery.finishedAt(), mode), recorded, finish);
         }
-        // 3.若首次完成：补写FINISH行为 + FINISH热度（里程碑事件）
-        if (result == BehaviorHandleResult.TRIGGER_FINISH) {
-            recordFinishInternal(userId, courseId);
-        }
-        refreshScoreSnapshotIfNeeded(userId, courseId, behaviorType, result);
         return BehaviorRecordOutcome.PROCESSED;
     }
 
@@ -162,39 +140,6 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
         }
     }
 
-    private void refreshScoreSnapshotIfNeeded(Long userId, Long courseId,
-            LearnBehaviorType behaviorType, BehaviorHandleResult result) {
-        boolean shouldRefresh = switch (behaviorType) {
-            case VIEW, STUDY, FAVORITE -> result != BehaviorHandleResult.IGNORE;
-            case UNFAVORITE -> true;
-            default -> false;
-        };
-        if (shouldRefresh) {
-            runAfterCommit(() -> refreshScoreSnapshotQuietly(userId, courseId));
-        }
-    }
-
-    private void refreshScoreSnapshotQuietly(Long userId, Long courseId) {
-        try {
-            recommendScoreSnapshotService.refreshUserCourseScore(userId, courseId);
-        } catch (RuntimeException e) {
-            log.warn("Failed to refresh recommend score snapshot for user {}, course {}", userId, courseId, e);
-        }
-    }
-
-    private void runAfterCommit(Runnable action) {
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            action.run();
-            return;
-        }
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                action.run();
-            }
-        });
-    }
-
     /**
      * 用户课程关系处理
      */
@@ -208,7 +153,7 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
         return switch (behaviorType) {
 
             case VIEW -> {
-                boolean allowed = allowViewOnceInCooldown(userId, courseId);
+                boolean allowed = allowViewOnceInCooldown(relation, now);
                 if (!allowed) {
                     // 冷却中：不入库、不加热度
                     yield BehaviorHandleResult.IGNORE; // 冷却中，忽略本次VIEW行为
@@ -228,7 +173,6 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
                 relation.setLastLearnTime(now);
                 userCourseService.updateUserCourseRelation(relation);
 
-                recommendCacheInvalidator.invalidateStrongUserRecommend(userId);
                 yield BehaviorHandleResult.NORMAL;
             }
             case UNFAVORITE -> {
@@ -236,7 +180,6 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
                 relation.setLastLearnTime(now);
                 userCourseService.updateUserCourseRelation(relation);
 
-                recommendCacheInvalidator.invalidateStrongUserRecommend(userId);
                 yield BehaviorHandleResult.IGNORE; // 不记录该行为
             }
 
@@ -245,15 +188,13 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
 
     }
 
-    // VIEW行为冷却检查
-    // 成功返回 true → 允许记 VIEW；失败 false → 冷却中。
-    private boolean allowViewOnceInCooldown(Long userId, Long courseId) {
-        String key = "view:cooldown:" + userId + ":" + courseId;
-
-        Boolean ok = stringRedisTemplate.opsForValue().setIfAbsent(key, "1",
-                java.time.Duration.ofSeconds(VIEW_COOLDOWN_SECONDS));
-
-        return Boolean.TRUE.equals(ok);
+    private boolean allowViewOnceInCooldown(UserCourseRelation relation, LocalDateTime now) {
+        LocalDateTime last = relation.getLastViewRecordedAt();
+        if (last != null && now.isBefore(last.plusSeconds(VIEW_COOLDOWN_SECONDS))) return false;
+        if (relationMapper.updateViewTime(relation.getId(), now) != 1) {
+            throw new IllegalStateException("浏览冷却更新失败");
+        }
+        return true;
     }
 
     /**
@@ -294,7 +235,6 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
         // 3) 首次完成门闩：只有第一次会返回 1
         int marked = userCourseService.tryMarkFinished(userId, courseId, now);
         if (marked == 1) {
-            handleCourseFinished(userId, courseId); // 更新 Neo4j MASTERED + 刷新缓存
             return BehaviorHandleResult.TRIGGER_FINISH; // 外层会写 FINISH 行为
         }
 
@@ -308,7 +248,9 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
             Long courseId,
             LearnBehaviorType behaviorType,
             Integer duration) {
-        this.save(newBehavior(userId, courseId, behaviorType, duration, null));
+        if (!this.save(newBehavior(userId, courseId, behaviorType, duration, null))) {
+            throw new IllegalStateException("学习行为写入失败");
+        }
     }
 
     private LearningBehavior newBehavior(Long userId,
@@ -326,14 +268,6 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
     }
 
     /**
-     * FINISH 内部统一逻辑
-     */
-    private void recordFinishInternal(Long userId, Long courseId) {
-        saveBehavior(userId, courseId, LearnBehaviorType.FINISH, 0);
-        learningAnalysisService.increaseCourseHot(courseId, FINISH_HOT_SCORE);
-    }
-
-    /**
      * 计算热度分数
      */
     private double calcHotScore(LearnBehaviorType behaviorType, Integer duration) {
@@ -347,19 +281,18 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
     }
 
     /**
-     * 完成课程处理
+     * 冻结完课时的掌握度输入，消费端只执行该事件的确定值。
      */
-    private void handleCourseFinished(Long userId, Long courseId) {
-        recommendCacheInvalidator.invalidateStrongUserRecommend(userId);
+    private LearningOutboxPayload captureMastery(Long userId, Long courseId) {
 
         // 获取该课程的所有知识点ID
         List<Long> kpIds = courseService.getKnowledgePointIdsByCourseId(courseId);
         if (kpIds == null || kpIds.isEmpty()) {
-            return;
+            return LearningOutboxPayload.of(0, List.of(), null, LocalDateTime.now(), null);
         }
 
         // completionRate: 完成触发时基本为1，但保留写法更严谨
-        UserCourseRelation relation = userCourseService.getUserCourseRelation(userId, courseId);
+        UserCourseRelation relation = relationMapper.selectForUpdate(userId, courseId);
         Integer learnedSeconds = relation.getLearnedSeconds() != null ? relation.getLearnedSeconds() : 0;
         Integer courseTotalSeconds = videoService.getVideoDurationInSeconds(courseId);
         double completionRate = courseTotalSeconds != null && courseTotalSeconds > 0
@@ -372,8 +305,7 @@ public class LearningBehaviorServiceImpl extends ServiceImpl<LearningBehaviorMap
 
         // 融合掌握度
         double mastery = 0.7 * completionRate + 0.3 * bahaviorMastery;
-        // 标记用户掌握这些知识点
-        knowledgeRepository.markUserMasteredBatch(userId, kpIds, mastery);
+        return LearningOutboxPayload.of(0, kpIds, mastery, relation.getCompleteTime(), null);
     }
 
 }

@@ -29,6 +29,7 @@ class RecommendScoreSnapshotServiceImplTest {
     @Mock
     private RecommendScoreSnapshotMapper recommendScoreSnapshotMapper;
 
+    @Mock private com.sy.course_system.mapper.UserCourseRelationMapper relationMapper;
     private RecommendScoreSnapshotServiceImpl service;
 
     @BeforeEach
@@ -38,7 +39,8 @@ class RecommendScoreSnapshotServiceImplTest {
                 recommendScoreSnapshotMapper,
                 RecommendPropertiesFixture.builder()
                         .scoreSnapshot(snapshot -> snapshot.batchSize(2).rawScoreScale(20.0).minScore(0.1))
-                        .build());
+                        .build(), relationMapper);
+        org.mockito.Mockito.lenient().when(relationMapper.selectForUpdate(1L, 10L)).thenReturn(new com.sy.course_system.entity.UserCourseRelation());
     }
 
     @Test
